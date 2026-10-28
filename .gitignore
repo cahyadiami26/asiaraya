@@ -1,0 +1,17 @@
+vendor/
+node_modules/
+.env
+.env.local
+*.env.php
+config/config.php
+uploads/*
+!uploads/**/.keep
+*.log
+error_log
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini

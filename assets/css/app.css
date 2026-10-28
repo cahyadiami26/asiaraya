@@ -1,0 +1,91 @@
+/* ===== HRIS PT Asia Raya Group - Clean Professional Elegant ===== */
+:root{
+  --primary:#0d3b66; --primary-2:#14532d00; --accent:#1d7a8c;
+  --bg:#f4f6fa; --card:#ffffff; --text:#212529; --muted:#6c757d;
+  --sidebar-w:260px; --radius:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,Roboto,'Helvetica Neue',Arial,sans-serif;font-size:.92rem}
+
+/* Topbar */
+.topbar{position:fixed;inset:0 0 auto 0;height:58px;background:linear-gradient(90deg,var(--primary),#124e86);
+  color:#fff;display:flex;align-items:center;gap:.5rem;padding:0 1rem;z-index:1040;box-shadow:0 2px 10px rgba(13,59,102,.25)}
+.topbar .brand{display:flex;align-items:center;gap:.6rem;color:#fff;text-decoration:none;font-size:1.02rem}
+.topbar .brand img{height:34px;width:34px;object-fit:contain;background:#fff;border-radius:8px;padding:2px}
+.avatar-circle{width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.2);
+  display:inline-flex;align-items:center;justify-content:center;font-weight:700;border:1px solid rgba(255,255,255,.4)}
+
+/* Sidebar */
+.layout{display:flex;padding-top:58px;min-height:100vh}
+.sidebar{position:fixed;top:58px;bottom:0;left:0;width:var(--sidebar-w);background:#0a2e52;overflow-y:auto;z-index:1030;
+  transition:transform .25s ease;display:flex;flex-direction:column}
+.sidebar .nav-link{color:#c8d6e5;padding:.6rem 1rem;display:flex;align-items:center;gap:.7rem;border-left:3px solid transparent;font-size:.9rem}
+.sidebar .nav-link i{font-size:1.05rem;width:20px;text-align:center}
+.sidebar .nav-link:hover{background:rgba(255,255,255,.06);color:#fff}
+.sidebar .nav-link.active{background:rgba(29,122,140,.25);color:#fff;border-left-color:#37b8cc;font-weight:600}
+.nav-section{padding:1rem 1rem .35rem;font-size:.7rem;letter-spacing:.09em;text-transform:uppercase;color:#7f9bb8;font-weight:700}
+.sidebar-footer{margin-top:auto}
+.sidebar-backdrop{display:none;position:fixed;inset:58px 0 0 0;background:rgba(0,0,0,.45);z-index:1025}
+.content{margin-left:var(--sidebar-w);flex:1;padding:1.4rem;max-width:1400px}
+
+@media (max-width: 991.98px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.show{transform:translateX(0)}
+  .sidebar-backdrop.show{display:block}
+  .content{margin-left:0;padding:1rem}
+}
+
+/* Cards & tables */
+.card{border:none;border-radius:var(--radius);box-shadow:0 1px 3px rgba(16,24,40,.08);background:var(--card)}
+.card-header{background:#fff;border-bottom:1px solid #edf0f4;font-weight:700;border-radius:var(--radius) var(--radius) 0 0!important}
+.table{font-size:.88rem}
+.table thead th{background:#f0f4f9;color:#40506a;font-weight:700;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em;white-space:nowrap}
+.table-hover tbody tr:hover{background:#f7fafc}
+.stat-card{border-radius:var(--radius);padding:1.1rem;color:#fff;display:flex;gap:1rem;align-items:center;box-shadow:0 4px 12px rgba(13,59,102,.15)}
+.stat-card .icon{font-size:2rem;opacity:.85}
+.stat-card .num{font-size:1.55rem;font-weight:800;line-height:1.1}
+.stat-card .lbl{font-size:.78rem;opacity:.9}
+.bg-grad-blue{background:linear-gradient(135deg,#0d3b66,#1d7a8c)}
+.bg-grad-green{background:linear-gradient(135deg,#134e48,#2f9e7d)}
+.bg-grad-orange{background:linear-gradient(135deg,#8a4b08,#d97b29)}
+.bg-grad-purple{background:linear-gradient(135deg,#3d2a6d,#7c5bd0)}
+.bg-grad-red{background:linear-gradient(135deg,#7a1f1f,#c0392b)}
+
+.page-title{font-weight:800;color:var(--primary);font-size:1.35rem;margin:0}
+.text-muted-sm{color:var(--muted);font-size:.83rem}
+
+/* Buttons */
+.btn-primary{background:var(--primary);border-color:var(--primary)}
+.btn-primary:hover,.btn-primary:focus{background:#0a2f52;border-color:#0a2f52}
+.btn-outline-primary{color:var(--primary);border-color:var(--primary)}
+.btn-outline-primary:hover{background:var(--primary);border-color:var(--primary)}
+
+/* Login */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#0d3b66 0%,#1d7a8c 100%);padding:1rem}
+.login-card{width:100%;max-width:430px;background:#fff;border-radius:18px;padding:2.2rem;box-shadow:0 20px 60px rgba(0,0,0,.35)}
+.login-logo{width:74px;height:74px;border-radius:16px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.9rem;margin:0 auto .8rem}
+.btn-google{display:flex;align-items:center;justify-content:center;gap:.6rem;border:1px solid #dadce0;background:#fff;color:#3c4043;font-weight:600;padding:.6rem;border-radius:8px;width:100%}
+.btn-google:hover{background:#f8f9fa}
+.divider-text{display:flex;align-items:center;gap:.8rem;color:#9aa5b1;font-size:.8rem;margin:1.1rem 0}
+.divider-text::before,.divider-text::after{content:"";flex:1;height:1px;background:#e5e9ef}
+
+/* Attendance / camera */
+.camera-shell{position:relative;border-radius:var(--radius);overflow:hidden;background:#0b1220;aspect-ratio:4/3;max-width:440px;margin:0 auto}
+.camera-shell video,.camera-shell canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.selfie-preview{width:100%;max-width:440px;border-radius:var(--radius);border:3px solid var(--primary)}
+.pulse-btn{width:74px;height:74px;border-radius:50%;border:4px solid #fff;background:var(--primary);color:#fff;font-size:1.6rem;box-shadow:0 0 0 6px rgba(13,59,102,.2)}
+
+/* Schedule grid */
+.sched-day{border:1px solid #e7ecf2;border-radius:10px;padding:.55rem .7rem;background:#fff;min-width:150px}
+.sched-day.today{border-color:#1d7a8c;box-shadow:0 0 0 2px rgba(29,122,140,.18)}
+
+/* Timeline approval */
+.timeline{list-style:none;padding-left:1.1rem;border-left:2px solid #dbe4ee;margin:0}
+.timeline li{position:relative;padding:0 0 .8rem 1rem;font-size:.85rem}
+.timeline li::before{content:"";position:absolute;left:-.55rem;top:.25rem;width:.8rem;height:.8rem;border-radius:50%;background:#9fb3c8}
+.timeline li.ok::before{background:#2f9e7d}.timeline li.rej::before{background:#c0392b}.timeline li.wait::before{background:#e0a800}
+
+/* Print */
+@media print{.topbar,.sidebar,.sidebar-backdrop,.no-print{display:none!important}.content{margin:0;padding:0}}
