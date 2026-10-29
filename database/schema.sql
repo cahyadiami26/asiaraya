@@ -770,6 +770,43 @@ CREATE TABLE IF NOT EXISTS offboarding_stages (
 );
 
 -- ---------------------------------------------------------------------------
+-- Batch 18 — Email (SMTP) & penjadwal tugas (cron)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS email_queue (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    recipient_email VARCHAR(150) NOT NULL,
+    recipient_name VARCHAR(150) NULL,
+    employee_id INT UNSIGNED NULL,
+    template VARCHAR(40) NOT NULL DEFAULT 'generic',
+    subject VARCHAR(200) NOT NULL,
+    body_html TEXT NULL,
+    body_text TEXT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    attempts INT NOT NULL DEFAULT 0,
+    driver VARCHAR(20) NULL,
+    error VARCHAR(500) NULL,
+    next_attempt_at DATETIME NULL,
+    sent_at DATETIME NULL,
+    created_at DATETIME NULL,
+    KEY idx_email_queue_status (status, next_attempt_at),
+    KEY idx_email_queue_employee (employee_id),
+    KEY idx_email_queue_created (created_at)
+);
+
+CREATE TABLE IF NOT EXISTS cron_runs (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    job VARCHAR(60) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'RUNNING',
+    source VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+    processed INT NOT NULL DEFAULT 0,
+    message VARCHAR(500) NULL,
+    duration_ms INT NOT NULL DEFAULT 0,
+    started_at DATETIME NULL,
+    finished_at DATETIME NULL,
+    KEY idx_cron_runs_job (job, started_at)
+);
+
+-- ---------------------------------------------------------------------------
 -- Batch 17.1 — Target pengumuman berlapis (unit, departemen, jabatan, peran,
 -- karyawan tertentu, atau kombinasi beberapa sekaligus)
 -- ---------------------------------------------------------------------------

@@ -10,8 +10,8 @@ define('APP_PATH', BASE_PATH . '/app');
 define('STORAGE_PATH', BASE_PATH . '/storage');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 define('VENDOR_PATH', BASE_PATH . '/vendor');
-define('APP_VERSION', '2.13.0');
-define('APP_BUILD', '2026.10.11');
+define('APP_VERSION', '2.14.0');
+define('APP_BUILD', '2026.10.29');
 
 $GLOBALS['config'] = require APP_PATH . '/config/config.php';
 
@@ -80,4 +80,14 @@ if (\App\Core\Schema::needsUpgrade()) {
 // Pulihkan sesi dari cookie "ingat saya" bila sesi PHP sudah kedaluwarsa.
 if (!isset($_SESSION['auth_id']) && !empty($_COOKIE[\App\Core\Auth::REMEMBER_COOKIE])) {
     \App\Core\Auth::rememberFromCookie();
+}
+
+// Penjadwal (Batch 18): sapuan ringan agar job tetap jalan tanpa cron server.
+// Dimatikan lewat Pengaturan → Penjadwal, dan tidak pernah berjalan untuk CLI.
+if (PHP_SAPI !== 'cli' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET') {
+    try {
+        \App\Core\Scheduler::autoRun();
+    } catch (\Throwable $e) {
+        error_log('scheduler otomatis gagal: ' . $e->getMessage());
+    }
 }

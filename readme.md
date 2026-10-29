@@ -35,8 +35,9 @@ dengan slip gaji ber-QR.
 | **16** | Offboarding & exit: pengunduran diri mandiri, PHK/akhir kontrak/pensiun oleh HR, persetujuan atasan → HR, checklist serah terima (aset, dokumen, akses, keuangan), exit interview + penyelesaian akhir, penonaktifan karyawan otomatis, export CSV | ✅ selesai |
 | **17** | Register aset & BAST offboarding: daftar aset/inventaris yang dipegang karyawan (kode, qty, kondisi), status pengembalian per item, **BAST PDF** bertanda tangan, blokir penutupan offboarding bila aset belum kembali, serta halaman **Reset Sistem** (bersihkan data uji, akun admin dipertahankan) | ✅ selesai |
 | **17.1** | Penyempurnaan: **target pengumuman berlapis** (unit bisnis, departemen, jabatan, peran, dan karyawan tertentu — bisa dikombinasikan) serta **denda keterlambatan progresif** berbasis tier 0–1 jam, 1–2 jam, 2–3 jam, dan >3 jam dengan batas & nominal yang dapat diatur | ✅ selesai |
+| **18** | Email & penjadwal: konfigurasi SMTP (SSL/STARTTLS) + email uji, antrean email keluar dengan template ber-kop perusahaan (pengingat kontrak, sisa cuti, pengumuman, reset sandi), kirim ulang/batal, serta **cron job** (antrean email, pengingat kontrak H-N, pengingat sisa cuti, notifikasi pengumuman terjadwal) lengkap dengan riwayat eksekusi, mode otomatis, dan endpoint cron bertoken | ✅ selesai |
 
-Seluruh tujuh belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh delapan belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -96,7 +97,7 @@ mysql -u user -p asiaraya_hris < database/schema.sql
   (`HRIS_DB_HOST`, `HRIS_DB_DATABASE`, `HRIS_DB_USERNAME`, `HRIS_DB_PASSWORD`,
   `HRIS_GOOGLE_CLIENT_SECRET`, dst.). Daftar kunci lengkap ada di
   `app/config/env.example.php`.
-* `database/demo-data.sql` — **dump data demo** (6.356 baris pada 39 tabel,
+* `database/demo-data.sql` — **dump data demo** (6.880 baris pada 42 tabel,
   `INSERT` saja) untuk MySQL/MariaDB, dibuat dari database pratinjau:
 
 ```bash
@@ -114,8 +115,13 @@ cp database/demo-preview.sqlite storage/database.sqlite
 ```
 
 * Isi data demo sepenuhnya fiktif (118 karyawan contoh, 5 pengajuan offboarding,
-  presensi 26 hari kerja, payroll, pelatihan, rekrutmen, BAST). Untuk memulai
-  dari nol, login sebagai HR lalu buka **Reset Sistem** (`/system/reset`).
+  presensi 26 hari kerja, payroll, pelatihan, rekrutmen, BAST, 118 email pada
+  antrean keluar beserta riwayat cron). Untuk memulai dari nol, login sebagai HR
+  lalu buka **Reset Sistem** (`/system/reset`).
+* Driver email pada profil demo adalah **Log berkas** — email otomatis tetap
+  terlihat di `/mail` (status *Terkirim*) tetapi hanya dicatat ke
+  `storage/logs/mail.log`, tidak dikirim ke alamat asli. Isi kredensial SMTP
+  sungguhan di **Pengaturan → Email** bila ingin pengiriman nyata.
 
 ### 2.3 Login dengan Google Workspace
 1. Buat OAuth Client (Web application) di Google Cloud Console.
@@ -1111,6 +1117,105 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.21 Batch 18 — Email/SMTP & Penjadwal Tugas (Cron)
+
+### Konfigurasi email (`/settings?tab=email`) — HR
+* Tiga driver pengiriman, semuanya **native PHP tanpa library**:
+  * **SMTP** — soket langsung via `stream_socket_client()`, mendukung
+    **SSL (port 465)** maupun **STARTTLS (port 587)**, autentikasi `AUTH LOGIN`
+    dan `AUTH PLAIN`, timeout koneksi yang dapat diatur.
+  * **`mail()` PHP** — untuk shared hosting yang memakai sendmail.
+  * **Log berkas** — mode uji; email tidak dikirim, hanya dicatat ke
+    `storage/logs/mail.log` (+ `mail-outbox.log` berisi HTML lengkap).
+* Identitas pengirim: email & nama **From**, **Reply-To**, serta timeout.
+  Password disimpan di tabel `settings` dan hanya ditimpa bila field diisi
+  (ada opsi *hapus password tersimpan*).
+* Tombol **Kirim email uji** mengirim pesan contoh ke alamat pilihan dan
+  menampilkan hasil nyata (berhasil/gagal beserta pesan server) sebagai flash.
+* Tab yang sama menampilkan status antrean (menunggu/terkirim/gagal/hari ini),
+  daftar template, dan tips penyedia populer (Gmail App Password, Outlook 365,
+  cPanel mail.domain.tld).
+
+### Antrean email (`/mail`) — HR
+* **Setiap** email otomatis masuk tabel `email_queue` lebih dulu: penerima,
+  template, subjek, isi HTML + teks, status, percobaan, driver, error,
+  jadwal percobaan berikutnya, waktu kirim.
+* Status: `PENDING` → `SENT` / `FAILED` (setelah **3 percobaan** dengan jeda
+  mundur 5, 10, 15 menit) / `CANCELLED`.
+* Halaman antrean: kartu ringkasan, filter status/template/pencarian,
+  pagination 20 baris, aksi **kirim ulang** dan **batal** per baris,
+  tombol **kirim antrean sekarang**, pembersihan riwayat lama (> 7–730 hari),
+  serta grafik distribusi per template.
+* Halaman detail `/mail/{id}` menampilkan **pratinjau HTML asli** di iframe
+  ber-sandbox, versi teks fallback, detail percobaan, dan pesan error terakhir.
+* Template email (`app/Views/mail/`): `layout` (kop + footer inline CSS agar
+  aman di Gmail/Outlook), `generic`, `contract_expiry`, `leave_expiry`,
+  `announcement`, `password_reset`, `test`. Template tak dikenal otomatis
+  memakai `generic`.
+* Semua tautan aksi di dalam email dibuat **absolut** (memakai `app_url` bila
+  diisi, jika tidak dari host request) sehingga tombol tetap berfungsi di luar
+  aplikasi.
+
+### Penjadwal tugas (`/scheduler`) — HR
+Empat job bawaan, semuanya dapat dijalankan manual dari UI:
+
+| Job | Isi | Interval otomatis |
+|-----|-----|-------------------|
+| `email_queue` | Mengirim email `PENDING` yang jatuh tempo (batch 1–200) | 5 menit |
+| `contract_expiry` | Pengingat kontrak berakhir H-N (default 30 hari): email + notifikasi lonceng | 12 jam |
+| `leave_expiry` | Pengingat sisa cuti menjelang 31 Desember (jendela H-N, default 70 hari) | 24 jam |
+| `announcement_publish` | Mengirim notifikasi (opsional email) untuk pengumuman terjadwal yang jadwal tayangnya tiba | 15 menit |
+
+* **Idempoten** — pengingat kontrak/cuti tidak dikirim dua kali untuk penerima
+  dan subjek yang sama dalam jendela dedup 60/30 hari; notifikasi pengumuman
+  dideteksi lewat baris `notifications` dengan tautan pengumuman tersebut.
+* Setiap eksekusi dicatat ke `cron_runs` (job, status, sumber `MANUAL`/`CRON`/`AUTO`,
+  jumlah data, durasi, pesan) dan ditampilkan sebagai riwayat 15 baris terakhir
+  + kartu statistik (total, hari ini, gagal, eksekusi terakhir).
+* Preferensi job: aktif/nonaktif per job, jendela pengingat kontrak & cuti,
+  ukuran batch email, retensi riwayat, serta opsi **email pengumuman**.
+* Tiga cara menjalankan:
+  1. **Cron server** (disarankan) — `php public/cron.php [job]`
+  2. **HTTP bertoken** — `/cron?token=…` (token dibuat/di-rotasi dari halaman
+     penjadwal; juga diterima lewat header `X-Cron-Token`), atau
+     `public/cron.php?token=…`
+  3. **Mode otomatis** — sapuan ringan sekali per menit saat ada halaman dibuka,
+     memakai lock file `storage/cache/cron.lock` agar tidak dobel; dapat
+     dimatikan bila cron server sudah dipasang.
+* Contoh crontab ditampilkan langsung di halaman penjadwal (path absolut
+  aplikasi + alternatif `curl`).
+
+### Integrasi dengan modul lain
+* **Reset kata sandi** (`/forgot-password`) kini mengirim tautan sekali pakai
+  lewat email (`password_reset`), bukan hanya menulis `password-reset.log`.
+  Tautan tetap dicatat di log untuk audit/keadaan darurat.
+* **Pengumuman** — audiens berlapis (Batch 17.1) dipakai apa adanya untuk
+  notifikasi lonceng dan email pengumuman.
+* **Kontrak** — data `employees.contract_end` menjadi sumber pengingat;
+  karyawan non-aktif tidak dikirimi email.
+* **Cuti** — `leave_balances` (jatah + carry − terpakai) menjadi dasar
+  pengingat; info carry over ikut memengaruhi catatan di email.
+
+### Catatan teknis
+* Versi skema naik ke **19**; tabel baru `email_queue` (indeks status+publish,
+  karyawan, tanggal) dan `cron_runs` (indeks job+tanggal).
+* `App\Core\Mailer` — driver & antrean (`queue()`, `deliver()`,
+  `processQueue()`, `sendTemplate()`, `sendTest()`, `toEmployee()`, `stats()`),
+  penyusun pesan MIME multipart/alternative dengan quoted-printable dan
+  encoded-word UTF-8 untuk subjek/nama.
+* `App\Core\Scheduler` — definisi job, `run()/runAll()/autoRun()`, `due()`,
+  riwayat & statistik, `prune()`, plus `cronLines()` untuk panduan crontab.
+* Model: `MailModel` (query antrean, retry/cancel/prune, template, stats) dan
+  `SchedulerModel` (job + preferensi + token). Controller baru:
+  `MailController`, `SchedulerController`; `SettingsController` mendapat
+  `saveEmail()`/`testEmail()`.
+* Setelan baru: `mail_{enabled,driver,host,port,encryption,username,password,`
+  `from_email,from_name,reply_to,timeout}` dan
+  `cron_{auto,job_*,contract_lead_days,leave_lead_days,email_batch,`
+  `announcement_email,prune_days,secret}`.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1118,15 +1223,17 @@ app/
   bootstrap.php          # autoloader, config, session, DB, settings, auth
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
-                         # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report (query/aggregation layer)
-  Views/                 # layouts, partials, auth, dashboard, errors
+                         # Validator, Schema, Audit, Nav, GoogleAuth, Mailer,
+                         # Scheduler, helpers
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Log, Mail, Scheduler, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Mail, Scheduler (query/aggregation layer)
+  Views/                 # layouts, partials, auth, dashboard, errors, mail/ (template email)
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
   seed.php               # data contoh PT Asia Raya Group
 public/
   index.php              # front controller (semua route terdaftar di sini)
+  cron.php               # entry penjadwal untuk crontab server (CLI/HTTP bertoken)
   install.php            # wizard instalasi
   assets/{css,js,img}    # design system, progressive enhancement, aset visual
   manifest.webmanifest   # PWA
@@ -1162,6 +1269,7 @@ storage/                 # logs, cache, uploads, database preview
 | Reset sistem | ✅ bersihkan data uji (akun admin dipertahankan) | – | – |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
+| Email & penjadwal (SMTP, antrean email, cron job) | ✅ | – | – |
 
 Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
 payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani
@@ -1189,6 +1297,12 @@ diperlukan pada server produksi dan aman untuk dihapus.
 
 ## 6. Catatan keamanan
 * Kata sandi: `password_hash()` bcrypt; CSRF token pada seluruh form POST.
+* Email keluar: password SMTP disimpan di tabel `settings` (tidak pernah
+  ditampilkan ulang ke form), pengiriman lewat koneksi TLS/SSL, dan seluruh upaya
+  tercatat di `email_queue` + `storage/logs/mail.log` untuk audit.
+* Endpoint cron HTTP wajib menyertakan token rahasia 160-bit
+  (`hash_equals`), dapat di-rotasi dari UI, dan dapat dimatikan dengan
+  mengosongkan token.
 * Reset kata sandi: token acak 256-bit (disimpan sebagai hash), berlaku 60 menit,
   sekali pakai, dibatasi frekuensinya; ganti sandi mandiri mewajibkan sandi lama.
 * Sesi: batas absolut 8 jam + idle 2 jam; "ingat perangkat" 30 hari dengan token

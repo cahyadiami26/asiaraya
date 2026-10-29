@@ -6,8 +6,10 @@ namespace App\Controllers;
 use App\Core\Audit;
 use App\Core\Controller;
 use App\Core\Database;
+use App\Core\Mailer;
 use App\Core\Settings;
 use App\Core\Validator;
+use App\Models\MailModel;
 use App\Models\SalaryModel;
 
 /**
@@ -31,11 +33,14 @@ final class SettingsController extends Controller
             'pph'         => 'PPh 21',
             'bpjs'        => 'BPJS',
             'integration' => 'Integrasi & Login',
+            'email'       => 'Email',
             'advanced'    => 'Laporan & Audit',
         ];
         if (!isset($tabs[$tab])) {
             $tab = 'payroll';
         }
+
+        $mail = new MailModel();
 
         $this->view('settings/index', [
             'title'     => 'Pengaturan HR & Payroll',
@@ -60,6 +65,9 @@ final class SettingsController extends Controller
             'sample'    => $this->salary->simulationSample(5),
             'stats'     => $this->salary->stats(),
             'preview'   => $this->samplePreview(),
+            'mail'      => $mail->settings(),
+            'mailStats' => $mail->stats(),
+            'mailTemplates' => $mail->templates(),
             'advanced'  => [
                 'signer_hr'  => (string) (Settings::get('report_signer_hr') ?: ''),
                 'signer_fin' => (string) (Settings::get('report_signer_fin') ?: ''),
@@ -169,6 +177,94 @@ final class SettingsController extends Controller
         ]);
         flash('success', 'Pengaturan laporan & audit disimpan.');
         redirect('/settings?tab=advanced');
+    }
+
+    /**
+     * Simpan konfigurasi email/SMTP (Batch 18).
+     *
+     * Password hanya ditimpa bila field diisi; centang "hapus password" untuk
+     * mengosongkannya (mis. saat berpindah ke relay tanpa autentikasi).
+     */
+    public function saveEmail(): void
+    {
+        $data = $this->validateOrRedirect(static function (Validator $v): void {
+            $v->in('mail_driver', 'Driver email', array_keys(Mailer::DRIVERS));
+            $driver = (string) ($_POST['mail_driver'] ?? 'log');
+            $v->custom($driver === 'smtp' && trim((string) ($_POST['mail_host'] ?? '')) === '',
+                'mail_host', 'Host SMTP wajib diisi bila driver SMTP dipilih.');
+            $port = (int) ($_POST['mail_port'] ?? 0);
+            $v->custom($driver === 'smtp' && ($port < 1 || $port > 65535),
+                'mail_port', 'Port SMTP harus antara 1–65535.');
+            $v->custom(!in_array((string) ($_POST['mail_encryption'] ?? 'tls'), ['tls', 'ssl', 'none'], true),
+                'mail_encryption', 'Pilih enkripsi TLS, SSL, atau tanpa enkripsi.');
+            $from = trim((string) ($_POST['mail_from_email'] ?? ''));
+            $v->custom($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL),
+                'mail_from_email', 'Format email pengirim tidak valid.');
+            $reply = trim((string) ($_POST['mail_reply_to'] ?? ''));
+            $v->custom($reply !== '' && !filter_var($reply, FILTER_VALIDATE_EMAIL),
+                'mail_reply_to', 'Format email Reply-To tidak valid.');
+            $timeout = (int) ($_POST['mail_timeout'] ?? 0);
+            $v->custom($timeout < 5 || $timeout > 120, 'mail_timeout', 'Timeout harus antara 5–120 detik.');
+        }, '/settings?tab=email');
+
+        $port = max(1, min(65535, (int) ($data['mail_port'] ?? 587)));
+        $timeout = max(5, min(120, (int) ($data['mail_timeout'] ?? 15)));
+
+        $pairs = [
+            'mail_enabled'    => (int) ($_POST['mail_enabled'] ?? 0),
+            'mail_driver'     => (string) $data['mail_driver'],
+            'mail_host'       => trim((string) ($data['mail_host'] ?? '')),
+            'mail_port'       => $port,
+            'mail_encryption' => (string) ($data['mail_encryption'] ?? 'tls'),
+            'mail_username'   => trim((string) ($data['mail_username'] ?? '')),
+            'mail_from_email' => trim((string) ($data['mail_from_email'] ?? '')),
+            'mail_from_name'  => trim((string) ($data['mail_from_name'] ?? '')),
+            'mail_reply_to'   => trim((string) ($data['mail_reply_to'] ?? '')),
+            'mail_timeout'    => $timeout,
+        ];
+
+        $password = (string) ($_POST['mail_password'] ?? '');
+        if ($password !== '') {
+            $pairs['mail_password'] = $password;
+        } elseif (!empty($_POST['mail_password_clear'])) {
+            $pairs['mail_password'] = '';
+        }
+
+        Settings::many($pairs, 'email');
+
+        Audit::log('settings.email', 'settings', null, [
+            'driver'  => $pairs['mail_driver'],
+            'enabled' => $pairs['mail_enabled'] === 1,
+            'host'    => $pairs['mail_host'],
+            'port'    => $pairs['mail_port'],
+            'auth'    => $pairs['mail_username'] !== '',
+        ]);
+
+        flash('success', 'Konfigurasi email disimpan. Gunakan tombol "Kirim email uji" untuk memastikan koneksi.');
+        redirect('/settings?tab=email');
+    }
+
+    /** Kirim email uji ke alamat yang dimasukkan HR. */
+    public function testEmail(): void
+    {
+        $to = trim((string) ($_POST['test_email'] ?? ''));
+        $result = Mailer::sendTest($to);
+
+        Audit::log('mail.test', 'settings', null, [
+            'to'     => $to,
+            'driver' => $result['driver'],
+            'ok'     => $result['ok'],
+        ]);
+
+        if ($result['ok'] && $result['driver'] === 'log') {
+            flash('info', 'Driver masih "Log berkas" — pesan uji hanya dicatat di storage/logs/mail.log, belum benar-benar dikirim.');
+        } elseif ($result['ok']) {
+            flash('success', 'Email uji terkirim ke ' . $to . ' melalui ' . strtoupper((string) $result['driver']) . '.');
+        } else {
+            flash('error', 'Email uji gagal: ' . (string) $result['error']);
+        }
+
+        redirect('/settings?tab=email');
     }
 
     /** Dua contoh karyawan (gaji tertinggi & terendah) untuk pratinjau dampak. */

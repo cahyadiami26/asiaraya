@@ -8,6 +8,7 @@ use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
 use App\Core\GoogleAuth;
+use App\Core\Mailer;
 use App\Core\Session;
 use App\Core\Validator;
 
@@ -196,6 +197,27 @@ final class AuthController extends Controller
                 '[' . date('Y-m-d H:i:s') . '] ' . $email . ' → ' . $link . PHP_EOL,
                 FILE_APPEND
             );
+
+            // Kirim tautan reset lewat email (Batch 18). Bila email dinonaktifkan
+            // atau driver masih "log", tautan tetap tercatat di password-reset.log.
+            try {
+                Mailer::toEmployee(
+                    ['id' => (int) $employee['id'], 'email' => $email, 'full_name' => (string) $employee['full_name'], 'flag' => 'ACTIVE'],
+                    'password_reset',
+                    'Atur ulang kata sandi HRIS',
+                    [
+                        'heading'        => 'Atur ulang kata sandi',
+                        'greeting'       => 'Halo ' . explode(' ', trim((string) $employee['full_name']))[0] . ',',
+                        'message'        => 'Kami menerima permintaan pengaturan ulang kata sandi untuk akun HRIS Anda. Klik tombol di bawah untuk membuat kata sandi baru.',
+                        'actionUrl'      => $link,
+                        'actionLabel'    => 'Atur Ulang Kata Sandi',
+                        'expiresMinutes' => 60,
+                        'note'           => 'Permintaan dibuat dari ' . ($_SERVER['REMOTE_ADDR'] ?? 'alamat tidak dikenal') . ' pada ' . date('d M Y H:i') . '.',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                error_log('email reset password gagal: ' . $e->getMessage());
+            }
 
             Audit::log('password.request', 'employee', (int) $employee['id'], ['email' => $email]);
 

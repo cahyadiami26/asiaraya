@@ -53,6 +53,9 @@ abstract class Controller
                 $badges['training'] = $training->pendingNominationCount();
                 $badges['recruitment'] = (new \App\Models\RecruitmentModel())->freshCount();
                 $badges['offboarding'] = (new \App\Models\OffboardingModel())->pendingCount();
+                $badges['mail_pending'] = \App\Core\Database::tableExists('email_queue')
+                    ? (int) \App\Core\Database::value("SELECT COUNT(*) FROM email_queue WHERE status = 'PENDING'", [], 0)
+                    : 0;
                 $badges['performance'] = (int) \App\Core\Database::value(
                     "SELECT COUNT(*) FROM performance_reviews r
                        JOIN review_periods p ON p.id = r.period_id

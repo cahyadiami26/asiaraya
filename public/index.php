@@ -22,6 +22,7 @@ use App\Controllers\MediaController;
 use App\Controllers\NotificationController;
 use App\Controllers\LeaveController;
 use App\Controllers\LogController;
+use App\Controllers\MailController;
 use App\Controllers\OvertimeController;
 use App\Controllers\OffboardingController;
 use App\Controllers\OrgController;
@@ -32,6 +33,7 @@ use App\Controllers\TrainingController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ReportController;
 use App\Controllers\ScheduleController;
+use App\Controllers\SchedulerController;
 use App\Controllers\SettingsController;
 use App\Controllers\ShiftController;
 use App\Controllers\SystemController;
@@ -333,6 +335,27 @@ $router->get('/me/offboarding', [OffboardingController::class, 'mine'], ['name' 
 $router->post('/me/offboarding', [OffboardingController::class, 'submitMine'], ['name' => 'me.offboarding.store']);
 $router->post('/me/offboarding/{id}/withdraw', [OffboardingController::class, 'withdrawMine'], ['name' => 'me.offboarding.withdraw']);
 $router->post('/me/offboarding/{id}/feedback', [OffboardingController::class, 'feedbackMine'], ['name' => 'me.offboarding.feedback']);
+
+/* ------------------------------------------ Email & penjadwal (Batch 18) */
+$router->get('/mail', [MailController::class, 'index'], ['roles' => ['HR'], 'name' => 'mail.index']);
+$router->post('/mail/process', [MailController::class, 'process'], ['roles' => ['HR'], 'name' => 'mail.process']);
+$router->post('/mail/prune', [MailController::class, 'prune'], ['roles' => ['HR'], 'name' => 'mail.prune']);
+$router->get('/mail/{id}', [MailController::class, 'show'], ['roles' => ['HR'], 'name' => 'mail.show']);
+$router->post('/mail/{id}/retry', [MailController::class, 'retry'], ['roles' => ['HR'], 'name' => 'mail.retry']);
+$router->post('/mail/{id}/cancel', [MailController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'mail.cancel']);
+
+$router->post('/settings/email', [SettingsController::class, 'saveEmail'], ['roles' => ['HR'], 'name' => 'settings.email.save']);
+$router->post('/settings/email/test', [SettingsController::class, 'testEmail'], ['roles' => ['HR'], 'name' => 'settings.email.test']);
+
+$router->get('/scheduler', [SchedulerController::class, 'index'], ['roles' => ['HR'], 'name' => 'scheduler.index']);
+$router->post('/scheduler/run-all', [SchedulerController::class, 'runAll'], ['roles' => ['HR'], 'name' => 'scheduler.run_all']);
+$router->post('/scheduler/run/{job}', [SchedulerController::class, 'run'], ['roles' => ['HR'], 'name' => 'scheduler.run']);
+$router->post('/scheduler/settings', [SchedulerController::class, 'saveSettings'], ['roles' => ['HR'], 'name' => 'scheduler.settings']);
+$router->post('/scheduler/secret', [SchedulerController::class, 'rotateSecret'], ['roles' => ['HR'], 'name' => 'scheduler.secret']);
+$router->post('/scheduler/prune', [SchedulerController::class, 'prune'], ['roles' => ['HR'], 'name' => 'scheduler.prune']);
+
+// Endpoint cron via HTTP (token, tanpa login) — untuk layanan cron eksternal.
+$router->get('/cron', [SchedulerController::class, 'http'], ['auth' => false, 'csrf' => false, 'name' => 'cron.http']);
 
 /* --------------------------------------------------- Reset sistem (Batch 17) */
 $router->get('/system/reset', [SystemController::class, 'reset'], ['roles' => ['HR'], 'name' => 'system.reset']);

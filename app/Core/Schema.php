@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 18;
+    public const VERSION = 19;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -49,6 +49,10 @@ final class Schema
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_category_code ON expense_categories (code)',
         'CREATE INDEX IF NOT EXISTS idx_announcement_status ON announcements (status, publish_at)',
         'CREATE INDEX IF NOT EXISTS idx_announcement_audience ON announcements (audience, audience_value)',
+        'CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue (status, next_attempt_at)',
+        'CREATE INDEX IF NOT EXISTS idx_email_queue_employee ON email_queue (employee_id)',
+        'CREATE INDEX IF NOT EXISTS idx_email_queue_created ON email_queue (created_at)',
+        'CREATE INDEX IF NOT EXISTS idx_cron_runs_job ON cron_runs (job, started_at)',
         'CREATE INDEX IF NOT EXISTS idx_ann_target_ann ON announcement_targets (announcement_id)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_announcement_target ON announcement_targets (announcement_id, target_type, target_value)',
         'CREATE INDEX IF NOT EXISTS idx_ann_target_type ON announcement_targets (target_type, target_value)',

@@ -3,7 +3,7 @@
  * Pengaturan HR & Payroll — tab: perusahaan, payroll, PPh 21, BPJS.
  * @var string $tab
  * @var array $tabs, $company, $payroll, $sample, $stats, $preview
- * @var array $old, $errors
+ * @var array $old, $errors, $mail, $mailStats, $mailTemplates
  */
 $val = static function (string $key, mixed $default = '') use ($old): mixed {
     return array_key_exists($key, $old) ? $old[$key] : $default;
@@ -95,6 +95,175 @@ $pphMethods = [
             </section>
         </div>
     </div>
+
+<?php elseif ($tab === 'email'): ?>
+    <?php
+    $mailEnabled = (int) $val('mail_enabled', $mail['enabled'] ? '1' : '0') === 1;
+    $driverNow = (string) $val('mail_driver', $mail['driver']);
+    $encNow = (string) $val('mail_encryption', $mail['encryption']);
+    ?>
+    <div class="split-grid wide-left">
+        <div class="flex-col gap-16">
+            <section class="card">
+                <div class="card__head">
+                    <div><h2>Konfigurasi Email (SMTP)</h2>
+                        <div class="sub">Dipakai untuk pengingat kontrak, sisa cuti, pengumuman, dan reset kata sandi.</div></div>
+                    <span class="badge badge-<?= $mail['delivers'] ? 'teal' : 'slate' ?>"><?= $mail['delivers'] ? 'Aktif mengirim' : 'Belum mengirim' ?></span>
+                </div>
+                <form class="card__body" method="post" action="<?= url('settings/email') ?>">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="mail_enabled" value="0">
+                    <div class="flex-col gap-12">
+                        <label class="checkbox"><input type="checkbox" name="mail_enabled" value="1" <?= $mailEnabled ? 'checked' : '' ?>> <span>Kirim email otomatis dari sistem HRIS</span></label>
+
+                        <div class="form-grid">
+                            <div class="field">
+                                <label>Driver Pengiriman <span class="req">*</span></label>
+                                <select class="select" name="mail_driver" id="mail-driver">
+                                    <?php foreach (\App\Core\Mailer::DRIVERS as $key => $label): ?>
+                                        <option value="<?= e($key) ?>" <?= $driverNow === $key ? 'selected' : '' ?>><?= e($label) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span class="hint">Pilih <b>Log berkas</b> selama uji coba — email tidak benar-benar dikirim.</span>
+                            </div>
+                            <div class="field">
+                                <label>Enkripsi</label>
+                                <select class="select" name="mail_encryption">
+                                    <option value="tls" <?= $encNow === 'tls' ? 'selected' : '' ?>>STARTTLS (biasanya port 587)</option>
+                                    <option value="ssl" <?= $encNow === 'ssl' ? 'selected' : '' ?>>SSL/TLS langsung (port 465)</option>
+                                    <option value="none" <?= $encNow === 'none' ? 'selected' : '' ?>>Tanpa enkripsi</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-grid" data-mail-smtp>
+                            <div class="field">
+                                <label>Host SMTP</label>
+                                <input class="input" name="mail_host" maxlength="150" value="<?= e($val('mail_host', $mail['host'])) ?>" placeholder="smtp.gmail.com">
+                            </div>
+                            <div class="field">
+                                <label>Port</label>
+                                <input class="input" type="number" min="1" max="65535" name="mail_port" value="<?= e($val('mail_port', (string) $mail['port'])) ?>">
+                            </div>
+                            <div class="field">
+                                <label>Username SMTP</label>
+                                <input class="input" name="mail_username" maxlength="150" value="<?= e($val('mail_username', $mail['username'])) ?>" placeholder="nama@perusahaan.co.id" autocomplete="off">
+                            </div>
+                            <div class="field">
+                                <label>Password / App Password</label>
+                                <input class="input" type="password" name="mail_password" maxlength="150" value="" autocomplete="new-password"
+                                       placeholder="<?= $mail['has_password'] ? '•••••••• (tersimpan)' : 'Belum diisi' ?>">
+                                <span class="hint">Biarkan kosong untuk mempertahankan password yang tersimpan.</span>
+                                <?php if ($mail['has_password']): ?>
+                                    <label class="checkbox" style="margin-top:6px">
+                                        <input type="checkbox" name="mail_password_clear" value="1">
+                                        <span class="small">Hapus password tersimpan</span>
+                                    </label>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="field">
+                                <label>Email Pengirim</label>
+                                <input class="input" type="email" name="mail_from_email" maxlength="150" value="<?= e($val('mail_from_email', $mail['from_email'])) ?>" placeholder="no-reply@asiaraya.co.id">
+                                <span class="hint">Sebagian penyedia SMTP menolak alamat di luar domain akun.</span>
+                            </div>
+                            <div class="field">
+                                <label>Nama Pengirim</label>
+                                <input class="input" name="mail_from_name" maxlength="100" value="<?= e($val('mail_from_name', $mail['from_name'])) ?>" placeholder="<?= e($company['name']) ?>">
+                            </div>
+                            <div class="field">
+                                <label>Reply-To (opsional)</label>
+                                <input class="input" type="email" name="mail_reply_to" maxlength="150" value="<?= e($val('mail_reply_to', $mail['reply_to'])) ?>" placeholder="hrd@asiaraya.co.id">
+                            </div>
+                            <div class="field">
+                                <label>Timeout Koneksi (detik)</label>
+                                <input class="input" type="number" min="5" max="120" name="mail_timeout" value="<?= e($val('mail_timeout', (string) $mail['timeout'])) ?>">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-actions" style="margin-top:16px">
+                        <button class="btn btn-primary" type="submit"><?= icon('check') ?> Simpan Konfigurasi Email</button>
+                        <a class="btn btn-ghost" href="<?= url('mail') ?>"><?= icon('mail') ?> Buka Antrean Email</a>
+                    </div>
+                </form>
+            </section>
+
+            <section class="card">
+                <div class="card__head"><div><h2>Template Email</h2>
+                    <div class="sub">Setiap template memakai layout HTML yang sama dengan kop perusahaan.</div></div></div>
+                <div class="list-rows">
+                    <?php foreach ($mailTemplates as $key => $label): ?>
+                        <div class="list-row">
+                            <div class="list-row__body">
+                                <b><?= e($label) ?></b>
+                                <span class="mono" style="font-size:10px">app/Views/mail/<?= e($key) ?>.php</span>
+                            </div>
+                            <span class="chip chip-slate"><?= e($key) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php if (!$mailTemplates): ?>
+                        <div class="empty-state" style="padding:18px"><h3>Belum ada template</h3></div>
+                    <?php endif; ?>
+                </div>
+            </section>
+        </div>
+
+        <div class="flex-col gap-16">
+            <section class="card">
+                <div class="card__head"><div><h2>Kirim Email Uji</h2>
+                    <div class="sub">Pastikan konfigurasi tersimpan sebelum mengirim.</div></div></div>
+                <form class="card__body" method="post" action="<?= url('settings/email/test') ?>">
+                    <?= csrf_field() ?>
+                    <div class="field">
+                        <label>Alamat Tujuan</label>
+                        <input class="input" type="email" name="test_email" value="<?= e($val('test_email', $currentUser['email'] ?? '')) ?>" placeholder="nama@perusahaan.co.id">
+                        <span class="hint">Driver aktif: <b><?= e($mailStats['driver_label']) ?></b>.</span>
+                    </div>
+                    <div class="form-actions" style="margin-top:12px">
+                        <button class="btn btn-teal btn-block" type="submit"><?= icon('send') ?> Kirim Email Uji</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="card">
+                <div class="card__head"><div><h2>Status Antrean</h2>
+                    <div class="sub">Ringkasan email yang diproses sistem.</div></div></div>
+                <div class="card__body">
+                    <div class="flex-between small" style="padding:8px 0;border-bottom:1px solid var(--line)"><span class="muted">Menunggu</span><b><?= number_id($mailStats['pending']) ?></b></div>
+                    <div class="flex-between small" style="padding:8px 0;border-bottom:1px solid var(--line)"><span class="muted">Terkirim</span><b style="color:var(--teal-600)"><?= number_id($mailStats['sent']) ?></b></div>
+                    <div class="flex-between small" style="padding:8px 0;border-bottom:1px solid var(--line)"><span class="muted">Gagal</span><b style="color:var(--rose-600)"><?= number_id($mailStats['failed']) ?></b></div>
+                    <div class="flex-between small" style="padding:8px 0"><span class="muted">Terkirim hari ini</span><b><?= number_id($mailStats['today']) ?></b></div>
+                    <a class="btn btn-outline btn-sm btn-block" style="margin-top:12px" href="<?= url('mail') ?>"><?= icon('mail') ?> Lihat Antrean Email</a>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card__head"><div><h2>Tips Penyedia Umum</h2></div></div>
+                <div class="card__body small muted" style="line-height:1.7">
+                    <p><b>Gmail / Google Workspace</b>: aktifkan 2FA lalu buat <i>App Password</i>; host <span class="mono">smtp.gmail.com</span> port 587 STARTTLS.</p>
+                    <p><b>Outlook 365</b>: <span class="mono">smtp.office365.com</span> port 587 STARTTLS, autentikasi <i>Modern auth</i> memerlukan app password.</p>
+                    <p><b>Hosting cPanel</b>: gunakan <span class="mono">mail.domainanda.com</span> port 465 SSL, atau driver <b>mail() PHP</b>.</p>
+                    <p>Password disimpan pada tabel <span class="mono">settings</span>; batasi akses basis data ke admin server.</p>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+    (function () {
+        var driver = document.getElementById('mail-driver');
+        if (!driver) { return; }
+        function sync() {
+            document.querySelectorAll('[data-mail-smtp]').forEach(function (node) {
+                node.style.display = driver.value === 'smtp' ? '' : 'none';
+            });
+        }
+        driver.addEventListener('change', sync);
+        sync();
+    })();
+    </script>
 
 <?php elseif ($tab === 'payroll'): ?>
     <div class="split-grid">

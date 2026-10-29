@@ -22,6 +22,8 @@ final class NotificationModel
         'payroll'      => ['label' => 'Payroll', 'icon' => 'wallet', 'tone' => 'teal'],
         'announcement' => ['label' => 'Pengumuman', 'icon' => 'bell', 'tone' => 'indigo'],
         'approval'     => ['label' => 'Persetujuan', 'icon' => 'check', 'tone' => 'indigo'],
+        'contract'     => ['label' => 'Kontrak', 'icon' => 'file', 'tone' => 'amber'],
+        'leave'        => ['label' => 'Cuti', 'icon' => 'calendar', 'tone' => 'teal'],
     ];
 
     /** Daftar notifikasi satu karyawan. */

@@ -640,7 +640,7 @@ final class AnnouncementModel
     /** Daftar karyawan aktif yang menjadi target sebuah pengumuman. */
     public function audienceEmployees(array $announcement): array
     {
-        $base = 'SELECT DISTINCT e.id, e.full_name FROM employees e WHERE e.flag = \'ACTIVE\'';
+        $base = 'SELECT DISTINCT e.id, e.full_name, e.email FROM employees e WHERE e.flag = \'ACTIVE\'';
         $targets = $this->targetsOf((int) ($announcement['id'] ?? 0));
 
         if (!$targets) {
