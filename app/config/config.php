@@ -2,8 +2,9 @@
 /**
  * PT Asia Raya Group - HRIS configuration.
  *
- * Real credentials live in app/config/env.php (created by the installer, gitignored).
- * Environment variables always win so the app can run containerised.
+ * app/config/env.php (profil pratinjau, tanpa kredensial) menimpa nilai default
+ * di bawah; environment variables HRIS_* selalu menang. Simpan kredensial
+ * produksi di environment variables agar repository tidak memuat rahasia.
  */
 $root = dirname(__DIR__, 2);
 

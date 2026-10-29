@@ -1,5 +1,6 @@
 # Local environment / secrets
-app/config/env.php
+# app/config/env.php ikut di-commit sebagai profil pratinjau (tanpa kredensial).
+# Kredensial produksi: pakai environment variables HRIS_* atau berkas .env.
 .env
 
 # Runtime storage

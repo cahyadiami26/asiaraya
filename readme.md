@@ -88,6 +88,34 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 6. **Hapus/rename `public/install.php`** setelah selesai.
 7. Login pertama: `hr@asiaraya.co.id` / `Password123!` (ganti kata sandi segera).
 
+### 2.2.1 Berkas konfigurasi & data demo di repository
+* `app/config/env.php` **ikut di-commit** sebagai profil pratinjau (SQLite +
+  `demo_mode`, tanpa kredensial). Aman dibaca siapa pun; jangan menaruh kata
+  sandi produksi di sana — pakai environment variables `HRIS_*`
+  (`HRIS_DB_HOST`, `HRIS_DB_DATABASE`, `HRIS_DB_USERNAME`, `HRIS_DB_PASSWORD`,
+  `HRIS_GOOGLE_CLIENT_SECRET`, dst.). Daftar kunci lengkap ada di
+  `app/config/env.example.php`.
+* `database/demo-data.sql` — **dump data demo** (6.335 baris pada 38 tabel,
+  `INSERT` saja) untuk MySQL/MariaDB, dibuat dari database pratinjau:
+
+```bash
+mysql -u user -p asiaraya_hris < database/schema.sql
+mysql -u user -p asiaraya_hris < database/demo-data.sql
+```
+
+  Berkas diawali `SET SESSION sql_mode = 'NO_BACKSLASH_ESCAPES'` agar isi JSON
+  (mis. snapshot BAST) tersimpan apa adanya. Impor ke database kosong.
+* `database/demo-preview.sqlite` — salinan database SQLite pratinjau untuk
+  menjalankan aplikasi tanpa instalasi:
+
+```bash
+cp database/demo-preview.sqlite storage/database.sqlite
+```
+
+* Isi data demo sepenuhnya fiktif (118 karyawan contoh, 5 pengajuan offboarding,
+  presensi 26 hari kerja, payroll, pelatihan, rekrutmen, BAST). Untuk memulai
+  dari nol, login sebagai HR lalu buka **Reset Sistem** (`/system/reset`).
+
 ### 2.3 Login dengan Google Workspace
 1. Buat OAuth Client (Web application) di Google Cloud Console.
 2. Authorized redirect URI: `https://domain-anda/login/google/callback`.

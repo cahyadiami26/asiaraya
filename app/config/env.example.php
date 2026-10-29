@@ -1,7 +1,10 @@
 <?php
 /**
- * Copy this file to app/config/env.php and adjust for your server.
- * app/config/env.php is git-ignored and must never be committed.
+ * Salin berkas ini ke app/config/env.php bila ingin konfigurasi berbasis berkas.
+ * app/config/env.php bawaan repo hanya berisi profil pratinjau (SQLite, demo_mode)
+ * tanpa kredensial, jadi aman di-commit. Untuk produksi jangan menyimpan kata
+ * sandi di berkas itu — gunakan environment variables HRIS_* (lihat config.php)
+ * atau isi nilai di sini pada server Anda dan hindari men-commit rahasia.
  */
 return [
     'app_env'     => 'production',          // production | development
