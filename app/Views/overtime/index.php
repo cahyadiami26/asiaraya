@@ -263,7 +263,12 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                                 <?= $row['type'] === 'SCHEDULED' ? 'Terjadwal' : 'Pengajuan' ?>
                             </span>
                         </td>
-                        <td class="num small"><?= number_id($row['planned_hours'], 1) ?> j</td>
+                        <td class="num small">
+                            <?= number_id($row['planned_hours'], 1) ?> j
+                            <?php if (!empty($row['hours_capped'])): ?>
+                                <div class="small" style="font-size:9.6px;color:var(--rose-600)">di atas batas</div>
+                            <?php endif; ?>
+                        </td>
                         <td class="num small">
                             <?php if ($row['actual_hours'] !== null): ?>
                                 <b><?= number_id($row['actual_hours'], 1) ?> j</b>
@@ -279,6 +284,16 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                                 <b><?= rupiah($row['compensation_amount']) ?></b>
                             <?php else: ?>
                                 <span class="muted" title="Estimasi bila disetujui">≈ <?= rupiah($row['estimated_amount']) ?></span>
+                            <?php endif; ?>
+                            <?php if (!empty($row['amount_capped'])): ?>
+                                <div class="small" style="font-size:9.6px;color:var(--amber-600)" title="Kompensasi dipotong pada batas maksimum <?= rupiah($row['cap']) ?>">
+                                    <?= icon('shield') ?> batas <?= rupiah($row['cap']) ?>
+                                </div>
+                            <?php elseif (!empty($row['above_current_cap'])): ?>
+                                <div class="small" style="font-size:9.6px;color:var(--muted)"
+                                     title="Disetujui sebelum kebijakan berubah; tidak dihitung ulang otomatis">
+                                    di atas batas baru <?= rupiah($row['cap']) ?>
+                                </div>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -362,17 +377,32 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
 
     <div class="flex-col gap-16">
         <section class="card">
-            <div class="card__head"><div><h2>Kebijakan Lembur</h2>
-                <div class="sub">Berlaku untuk seluruh perhitungan kompensasi.</div></div></div>
+            <div class="card__head">
+                <div><h2>Kebijakan Lembur</h2>
+                    <div class="sub">Approver HR menentukan batas jam &amp; kompensasi maksimum.</div></div>
+                <span class="badge badge-<?= $policy['enabled'] ? 'teal' : 'rose' ?>"><?= $policy['enabled'] ? 'Aktif' : 'Nonaktif' ?></span>
+            </div>
             <div class="card__body">
                 <div class="ot-policy">
                     <div><span class="k">Upah per jam</span><span class="v">Gaji pokok ÷ <?= number_id($policy['divisor']) ?></span></div>
+                    <div><span class="k">Maks / hari</span><span class="v"><?= number_id($policy['max_hours']) ?> jam</span></div>
                     <div><span class="k">Jam pertama</span><span class="v">×<?= number_id($policy['first'], 1) ?></span></div>
                     <div><span class="k">Jam berikutnya</span><span class="v">×<?= number_id($policy['next'], 1) ?></span></div>
                     <div><span class="k">Hari libur</span><span class="v">×<?= number_id($policy['holiday'], 1) ?></span></div>
-                    <div><span class="k">Maks / hari</span><span class="v"><?= number_id($policy['max_hours']) ?> jam</span></div>
                     <div><span class="k">Min / pengajuan</span><span class="v"><?= number_id($policy['min_minutes']) ?> menit</span></div>
+                    <div style="grid-column:1 / -1;<?= $policy['max_amount'] > 0 ? 'border-color:var(--teal-300, #5eead4);background:#f5fffd' : '' ?>">
+                        <span class="k">Kompensasi maksimum / pengajuan</span>
+                        <span class="v"><?= $policy['max_amount'] > 0 ? rupiah($policy['max_amount']) : 'Tanpa batas' ?></span>
+                    </div>
                 </div>
+
+                <?php if ($policy['max_amount'] > 0): ?>
+                    <div class="alert alert-info" style="margin-top:10px;padding:9px 11px">
+                        <?= icon('shield') ?>
+                        <div class="small">Nominal kompensasi dihitung ulang saat approval, lalu <b>dipotong maksimum <?= rupiah($policy['max_amount']) ?></b> per pengajuan. Nilai lebih besar tetap tercatat sebagai estimasi sebelum pemotongan.</div>
+                    </div>
+                <?php endif; ?>
+
                 <div class="divider"></div>
                 <div class="small" style="font-weight:700;margin-bottom:6px">Simulasi (gaji <?= rupiah(10000000) ?>)</div>
                 <div class="table-wrap" style="border:1px solid var(--line);border-radius:10px">
@@ -381,7 +411,12 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                         <tbody>
                         <?php foreach ($preview as $line): ?>
                             <tr>
-                                <td class="small"><?= (int) $line['hours'] ?> jam</td>
+                                <td class="small">
+                                    <?= (int) $line['hours'] ?> jam
+                                    <?php if (!empty($line['capped'])): ?>
+                                        <span class="badge badge-amber" style="margin-left:4px">batas</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="num small"><?= rupiah($line['amount']) ?></td>
                                 <td class="num small"><?= rupiah($line['holiday']) ?></td>
                             </tr>
@@ -389,6 +424,66 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                         </tbody>
                     </table>
                 </div>
+
+                <details class="policy-edit" style="margin-top:12px">
+                    <summary><?= icon('sliders', 'ico') ?> Ubah batas &amp; multiplier</summary>
+                    <form method="post" action="<?= url('overtime/policy') ?>" class="policy-edit__body">
+                        <?= csrf_field() ?>
+                        <div class="form-grid">
+                            <div class="field">
+                                <label>Maksimum Jam / Hari <span class="req">*</span></label>
+                                <input class="input" type="number" name="max_hours" min="1" max="12" step="0.5"
+                                       value="<?= e(number_format((float) $policy['max_hours'], 1, '.', '')) ?>" required>
+                                <span class="hint">Pengajuan, penugasan terjadwal, dan jam aktual di atas nilai ini ditolak.</span>
+                            </div>
+                            <div class="field">
+                                <label>Maksimum Kompensasi (Rp)</label>
+                                <input class="input" type="number" name="max_amount" min="0" max="100000000" step="50000"
+                                       value="<?= e((float) $policy['max_amount']) ?>">
+                                <span class="hint">Isi <b>0</b> untuk tanpa batas nominal.</span>
+                            </div>
+                            <div class="field">
+                                <label>Durasi Minimum (menit)</label>
+                                <input class="input" type="number" name="min_minutes" min="0" max="720" step="5"
+                                       value="<?= e((int) $policy['min_minutes']) ?>">
+                            </div>
+                            <div class="field">
+                                <label>Pembagi Upah per Jam</label>
+                                <input class="input" type="number" name="divisor" min="1" max="400" step="1"
+                                       value="<?= e($policy['divisor']) ?>" required>
+                                <span class="hint">Standar 173 jam/bulan.</span>
+                            </div>
+                            <div class="field">
+                                <label>Multiplier Jam Pertama</label>
+                                <input class="input" type="number" name="first" min="1" max="5" step="0.1"
+                                       value="<?= e($policy['first']) ?>" required>
+                            </div>
+                            <div class="field">
+                                <label>Multiplier Jam Berikutnya</label>
+                                <input class="input" type="number" name="next" min="1" max="5" step="0.1"
+                                       value="<?= e($policy['next']) ?>" required>
+                            </div>
+                            <div class="field">
+                                <label>Multiplier Hari Libur</label>
+                                <input class="input" type="number" name="holiday" min="1" max="5" step="0.1"
+                                       value="<?= e($policy['holiday']) ?>" required>
+                            </div>
+                            <div class="field">
+                                <label>Status Modul</label>
+                                <label class="switch" style="height:38px">
+                                    <input type="checkbox" name="enabled" value="1" <?= $policy['enabled'] ? 'checked' : '' ?>>
+                                    <span class="switch__track"></span>
+                                    <span>Aktifkan pengajuan lembur</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="hint" style="margin-top:8px">
+                            Perubahan langsung berlaku untuk pengajuan/persetujuan berikutnya. Lembur yang sudah
+                            <b>disetujui</b> tidak dihitung ulang.
+                        </div>
+                        <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px"><?= icon('check') ?> Simpan Kebijakan</button>
+                    </form>
+                </details>
             </div>
         </section>
 

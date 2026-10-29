@@ -296,6 +296,40 @@ final class OvertimeController extends Controller
         back('/overtime/schedules');
     }
 
+    /**
+     * Approver final (HR) menyimpan kebijakan lembur: batas jam, batas maksimum
+     * kompensasi, multiplier, durasi minimum, dan status modul.
+     */
+    public function savePolicy(): void
+    {
+        $result = $this->overtime->savePolicy([
+            'enabled'     => (int) ($_POST['enabled'] ?? 0),
+            'max_hours'   => (float) ($_POST['max_hours'] ?? 0),
+            'max_amount'  => (float) ($_POST['max_amount'] ?? 0),
+            'min_minutes' => (int) ($_POST['min_minutes'] ?? 0),
+            'divisor'     => (float) ($_POST['divisor'] ?? 0),
+            'first'       => (float) ($_POST['first'] ?? 0),
+            'next'        => (float) ($_POST['next'] ?? 0),
+            'holiday'     => (float) ($_POST['holiday'] ?? 0),
+        ], $this->employeeId());
+
+        if (!$result['saved']) {
+            flash('error', reset($result['errors']) ?: 'Kebijakan lembur gagal disimpan.');
+            back('/overtime');
+        }
+
+        $policy = $this->overtime->settings();
+        Audit::log('overtime.policy', 'settings', null, [
+            'max_hours'  => $policy['max_hours'],
+            'max_amount' => $policy['max_amount'],
+        ]);
+
+        flash('success', 'Kebijakan lembur diperbarui: maksimum '
+            . number_id($policy['max_hours']) . ' jam/hari dan kompensasi maksimum '
+            . ($policy['max_amount'] > 0 ? rupiah($policy['max_amount']) : 'tanpa batas') . '.');
+        redirect('/overtime');
+    }
+
     /* ------------------------------------------------------------------- export */
 
     public function export(): void

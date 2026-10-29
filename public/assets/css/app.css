@@ -1004,6 +1004,15 @@ a:hover > .thumb { border-color: var(--teal-400); }
 .ot-estimate .k { display: block; font-size: 9.6px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
 .ot-estimate .v { display: block; font-size: 14.5px; font-weight: 700; color: var(--teal-800, #115e59); margin-top: 1px; }
 
+.policy-edit { border-top: 1px dashed var(--line-strong); margin-top: 14px; padding-top: 10px; }
+.policy-edit > summary {
+  display: flex; align-items: center; gap: 7px; cursor: pointer; list-style: none;
+  font-size: 11.8px; font-weight: 650; color: var(--teal-700);
+}
+.policy-edit > summary::-webkit-details-marker { display: none; }
+.policy-edit > summary .ico { width: 14px; height: 14px; }
+.policy-edit__body { padding-top: 12px; }
+
 .preset-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .multi-select { height: auto; min-height: 132px; padding: 6px 8px; }
 .multi-select option { padding: 4px 6px; border-radius: 5px; }

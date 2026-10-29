@@ -223,6 +223,9 @@ $weekendDays = count(array_filter($daily, static fn ($day) => $day['dow'] >= 6 |
                         </td>
                         <td class="num small">
                             <?= $row['compensation_amount'] > 0 ? rupiah($row['compensation_amount']) : '<span class="muted">≈ ' . rupiah($row['estimated_amount']) . '</span>' ?>
+                            <?php if (!empty($row['amount_capped'])): ?>
+                                <div style="font-size:9.6px;color:var(--amber-600)" title="Dipotong batas maksimum kompensasi"><?= icon('shield') ?> batas</div>
+                            <?php endif; ?>
                         </td>
                         <td><?= status_badge($row['status']) ?></td>
                         <td>
@@ -331,6 +334,7 @@ $weekendDays = count(array_filter($daily, static fn ($day) => $day['dow'] >= 6 |
                     <li>Entri terjadwal yang disetujui otomatis masuk rekap lembur dan payroll.</li>
                     <li>Jam aktual dapat diisi HR setelah pekerjaan selesai.</li>
                     <li>Penugasan pada hari besar dihitung dengan tarif libur.</li>
+                    <li>Durasi di atas <b><?= number_id($policy['max_hours']) ?> jam/hari</b> ditolak, dan kompensasi per entri dibatasi <b><?= $policy['max_amount'] > 0 ? rupiah($policy['max_amount']) : 'tanpa batas' ?></b>.</li>
                 </ul>
             </div>
         </section>

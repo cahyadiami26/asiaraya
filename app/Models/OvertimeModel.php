@@ -75,9 +75,10 @@ final class OvertimeModel
         $policy = $this->settings();
         $hourly = $policy['divisor'] > 0 ? $salary / $policy['divisor'] : 0.0;
 
-        $requested = max(0.0, $hours);
-        $capped = $requested > $policy['max_hours'];
-        $hours = min($requested, $policy['max_hours']);
+        $requested = max(0.0, round($hours, 2));
+        $limit = (float) $policy['max_hours'];
+        $hoursCapped = $limit > 0 && $requested > $limit + 0.0001;
+        $hours = $hoursCapped ? $limit : $requested;
         $holidayRate = $date !== null ? $this->isHolidayRate($date) : false;
         $multiplier = $holidayRate ? $policy['holiday'] : 1.0;
 
@@ -104,19 +105,24 @@ final class OvertimeModel
             ];
         }
 
-        $amount = array_sum(array_column($breakdown, 'amount'));
-        if ($policy['max_amount'] > 0 && $amount > $policy['max_amount']) {
-            $amount = $policy['max_amount'];
-        }
+        $calculated = array_sum(array_column($breakdown, 'amount'));
+        $cap = (float) $policy['max_amount'];
+        $amountCapped = $cap > 0 && $calculated > $cap + 0.0001;
+        $amount = $amountCapped ? $cap : $calculated;
 
         return [
-            'amount'     => round($amount, 2),
-            'hourly'     => round($hourly, 2),
-            'hours'      => round($hours, 2),
-            'capped'     => $capped,
-            'multiplier' => $multiplier,
-            'holiday'    => $holidayRate,
-            'breakdown'  => $breakdown,
+            'amount'          => round($amount, 2),
+            'amount_uncapped' => round($calculated, 2),
+            'amount_capped'   => $amountCapped,
+            'cap'             => round($cap, 2),
+            'hourly'          => round($hourly, 2),
+            'hours'           => round($hours, 2),
+            'requested_hours' => $requested,
+            'hours_capped'    => $hoursCapped,
+            'capped'          => $hoursCapped || $amountCapped,
+            'multiplier'      => $multiplier,
+            'holiday'         => $holidayRate,
+            'breakdown'       => $breakdown,
         ];
     }
 
@@ -130,17 +136,78 @@ final class OvertimeModel
     {
         $policy = $this->settings();
         $hourly = $policy['divisor'] > 0 ? $salary / $policy['divisor'] : 0;
+        $cap = (float) $policy['max_amount'];
+        $maxIndex = max(1, min(8, (int) $policy['max_hours']));
         $rows = [];
-        foreach ([1, 2, 3, 4] as $index) {
+        for ($index = 1; $index <= $maxIndex; $index++) {
             $firstHours = min(1, $index);
             $rest = max(0, $index - 1);
+            $regular = $firstHours * $hourly * $policy['first'] + $rest * $hourly * $policy['next'];
+            $holidayRate = $regular * $policy['holiday'];
             $rows[] = [
-                'hours'  => $index,
-                'amount' => round($firstHours * $hourly * $policy['first'] + $rest * $hourly * $policy['next'], 2),
-                'holiday' => round(($firstHours * $hourly * $policy['first'] + $rest * $hourly * $policy['next']) * $policy['holiday'], 2),
+                'hours'    => $index,
+                'amount'   => round($cap > 0 ? min($regular, $cap) : $regular, 2),
+                'holiday'  => round($cap > 0 ? min($holidayRate, $cap) : $holidayRate, 2),
+                'capped'   => $cap > 0 && ($regular > $cap || $holidayRate > $cap),
             ];
         }
         return $rows;
+    }
+
+    /**
+     * Simpan kebijakan lembur oleh approver final (HR).
+     * Nilai maksimum jam & maksimum kompensasi 0 berarti tanpa batas nominal.
+     * @return array{errors: array<string, string>, saved: bool}
+     */
+    public function savePolicy(array $input, ?int $actorId = null): array
+    {
+        $errors = [];
+
+        $maxHours = round((float) ($input['max_hours'] ?? 0), 2);
+        $maxAmount = round((float) ($input['max_amount'] ?? 0), 2);
+        $minMinutes = (int) ($input['min_minutes'] ?? 0);
+        $divisor = round((float) ($input['divisor'] ?? 0), 2);
+        $first = round((float) ($input['first'] ?? 0), 2);
+        $next = round((float) ($input['next'] ?? 0), 2);
+        $holiday = round((float) ($input['holiday'] ?? 0), 2);
+
+        if ($maxHours < 1 || $maxHours > 12) {
+            $errors['max_hours'] = 'Batas maksimum jam lembur harus antara 1 dan 12 jam per hari.';
+        }
+        if ($maxAmount < 0 || $maxAmount > 100000000) {
+            $errors['max_amount'] = 'Batas maksimum kompensasi harus antara Rp0 (tanpa batas) dan Rp100.000.000.';
+        }
+        if ($minMinutes < 0 || ($maxHours > 0 && $minMinutes > $maxHours * 60)) {
+            $errors['min_minutes'] = 'Durasi minimum tidak boleh melebihi batas maksimum jam per hari.';
+        }
+        if ($divisor < 1 || $divisor > 400) {
+            $errors['divisor'] = 'Pembagi upah per jam harus antara 1 dan 400.';
+        }
+        foreach (['first' => $first, 'next' => $next, 'holiday' => $holiday] as $key => $value) {
+            if ($value < 1 || $value > 5) {
+                $errors[$key] = 'Nilai multiplier harus antara 1 dan 5.';
+            }
+        }
+        if ($next + 0.001 < $first) {
+            $errors['next'] = 'Multiplier jam berikutnya tidak boleh lebih kecil dari jam pertama.';
+        }
+
+        if ($errors) {
+            return ['errors' => $errors, 'saved' => false];
+        }
+
+        Settings::many([
+            'overtime_enabled'                => (int) ($input['enabled'] ?? 0),
+            'overtime_max_hours'              => $this->trim($maxHours),
+            'overtime_max_compensation'       => $this->trim($maxAmount),
+            'overtime_min_minutes'            => $minMinutes,
+            'overtime_divisor'                => $this->trim($divisor),
+            'overtime_first_hour_multiplier'  => $this->trim($first),
+            'overtime_next_hour_multiplier'   => $this->trim($next),
+            'overtime_holiday_multiplier'     => $this->trim($holiday),
+        ], 'overtime');
+
+        return ['errors' => [], 'saved' => true];
     }
 
     /* ----------------------------------------------------------------- lookups */
@@ -254,9 +321,17 @@ final class OvertimeModel
         $row['compensation_amount'] = (float) $row['compensation_amount'];
         $row['holiday_name'] = $this->holiday((string) $row['work_date']);
         $row['suggested_actual'] = $this->suggestActual($row);
-        $row['estimated_amount'] = $row['compensation_amount'] > 0
-            ? $row['compensation_amount']
-            : $this->compute((float) ($row['basic_salary'] ?? 0), $row['hours_effective'], (string) $row['work_date'])['amount'];
+        $calc = $this->compute((float) ($row['basic_salary'] ?? 0), $row['hours_effective'], (string) $row['work_date']);
+        $row['estimated_amount'] = $row['compensation_amount'] > 0 ? $row['compensation_amount'] : $calc['amount'];
+        $row['amount_uncapped'] = $calc['amount_uncapped'];
+        $stored = (float) $row['compensation_amount'];
+        $row['amount_capped'] = $stored > 0
+            ? ($calc['cap'] > 0 && $stored <= $calc['cap'] + 0.01 && $calc['amount_uncapped'] > $calc['cap'] + 0.01)
+            : $calc['amount_capped'];
+        // Kompensasi lama yang disetujui sebelum kebijakan berubah bisa melebihi batas saat ini.
+        $row['above_current_cap'] = $stored > 0 && $calc['cap'] > 0 && $stored > $calc['cap'] + 0.01;
+        $row['hours_capped'] = $calc['hours_capped'];
+        $row['cap'] = $calc['cap'];
 
         $start = (string) ($row['planned_start'] ?? '');
         $end = (string) ($row['planned_end'] ?? '');
@@ -460,6 +535,13 @@ final class OvertimeModel
         if ($hours * 60 < $policy['min_minutes']) {
             return ['id' => null, 'error' => 'Durasi lembur minimal ' . $policy['min_minutes'] . ' menit.'];
         }
+        if ($policy['max_hours'] > 0 && $hours > $policy['max_hours'] + 0.0001) {
+            return [
+                'id' => null,
+                'error' => 'Durasi ' . $this->trim($hours) . ' jam melebihi batas maksimum '
+                    . $this->trim($policy['max_hours']) . ' jam per hari. Sesuaikan jam atau ubah batas pada kebijakan lembur.',
+            ];
+        }
         if ($hours > 12) {
             return ['id' => null, 'error' => 'Durasi lembur maksimal 12 jam per hari.'];
         }
@@ -521,6 +603,13 @@ final class OvertimeModel
         if ($hours <= 0 || $hours > 12) {
             return ['error' => 'Durasi lembur harus antara 1 menit dan 12 jam.'];
         }
+        $policy = $this->settings();
+        if ($policy['max_hours'] > 0 && $hours > $policy['max_hours'] + 0.0001) {
+            return [
+                'error' => 'Durasi ' . $this->trim($hours) . ' jam melebihi batas maksimum '
+                    . $this->trim($policy['max_hours']) . ' jam per hari.',
+            ];
+        }
         if ($this->overlaps((int) $row['employee_id'], (string) $row['work_date'], $start, $end, $id)) {
             return ['error' => 'Jam tersebut bertabrakan dengan lembur lain karyawan ini.'];
         }
@@ -551,7 +640,13 @@ final class OvertimeModel
         }
 
         $policy = $this->settings();
-        $hours = round(min($hours, $policy['max_hours']), 2);
+        $hours = round($hours, 2);
+        if ($policy['max_hours'] > 0 && $hours > $policy['max_hours'] + 0.0001) {
+            return [
+                'error' => 'Jam aktual ' . $this->trim($hours) . ' jam melebihi batas maksimum '
+                    . $this->trim($policy['max_hours']) . ' jam per hari. Ubah batas pada kebijakan lembur bila perlu.',
+            ];
+        }
         $update = [
             'actual_hours' => $hours,
             'updated_at'   => date('Y-m-d H:i:s'),

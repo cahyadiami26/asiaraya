@@ -241,7 +241,8 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 | Jam pertama | ×`overtime_first_hour_multiplier` (1,5) |
 | Jam berikutnya | ×`overtime_next_hour_multiplier` (2) |
 | Hari libur (Sabtu/Minggu & `holidays`) | dikali `overtime_holiday_multiplier` (2) |
-| Batas per pengajuan | `overtime_max_hours` (4 jam) dan `overtime_max_compensation` (Rp3.500.000) |
+| Batas jam per hari | `overtime_max_hours` (default 4 jam) — **ditolak** bila durasi melebihi batas |
+| Kompensasi maksimum | `overtime_max_compensation` (default Rp3.500.000) — nominal dipotong, `0` = tanpa batas |
 | Durasi minimum | `overtime_min_minutes` (30 menit) |
 
 Status: `PENDING` → `MANAGER_APPROVED` → `APPROVED` (final), dengan `REJECTED` /
@@ -249,6 +250,23 @@ Status: `PENDING` → `MANAGER_APPROVED` → `APPROVED` (final), dengan `REJECTE
 `APPROVED` dan dihitung ulang ketika jam aktual diubah — nilai inilah yang dipakai payroll.
 Rumus kompensasi dipusatkan di `OvertimeModel::compensation()` sehingga approval engine,
 halaman lembur, dan payroll selalu konsisten.
+
+### Batas jam & kompensasi (dapat diatur approver)
+* **Batas jam** ditegakkan pada semua jalur: pengajuan karyawan, entri manual HR,
+  penjadwalan massal, perubahan jam rencana, dan pengisian jam aktual. Permintaan di atas
+  batas **ditolak dengan pesan jelas** (bukan dipotong diam-diam), menyebutkan batas aktif.
+* **Kompensasi maksimum** per pengajuan diterapkan saat perhitungan: nominal penuh tetap
+  dihitung sebagai `amount_uncapped`, lalu dipotong ke batas. Baris yang terkena batas
+  ditandai `batas Rp…`; lembur yang sudah disetujui sebelum kebijakan berubah tidak
+  dihitung ulang dan diberi keterangan `di atas batas baru`.
+* **Approver (HR) mengatur nilai maksimum** langsung dari panel *Kebijakan Lembur →
+  Ubah batas & multiplier* di `/overtime` (route `POST /overtime/policy`): maksimum jam/hari
+  (1–12), maksimum kompensasi (0 = tanpa batas), durasi minimum, pembagi upah, dan
+  multiplier jam pertama/berikutnya/hari libur. Validasi menolak nilai di luar rentang
+  atau bila multiplier jam berikutnya lebih kecil dari jam pertama, dan setiap perubahan
+  dicatat pada log aktivitas (`overtime.policy`).
+* Tabel simulasi pada panel kebijakan langsung memakai batas baru sehingga approver dapat
+  melihat dampak perubahan sebelum menyimpan.
 
 ---
 

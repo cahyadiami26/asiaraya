@@ -93,7 +93,11 @@ $statusOrder = ['PENDING' => 1, 'MANAGER_APPROVED' => 2, 'APPROVED' => 3];
                 <span class="v" id="estimate-amount">—</span>
             </div>
             <div class="hint" id="estimate-note" style="margin-left:auto;max-width:280px;text-align:right">
-                Estimasi mengikuti tarif lembur yang berlaku. Nilai final dihitung saat pengajuan disetujui HR.
+                <?php if ($policy['max_amount'] > 0): ?>
+                    Estimasi dibatasi maksimum <b><?= rupiah($policy['max_amount']) ?></b> per pengajuan. Nilai final dihitung saat disetujui HR.
+                <?php else: ?>
+                    Estimasi mengikuti tarif lembur yang berlaku. Nilai final dihitung saat pengajuan disetujui HR.
+                <?php endif; ?>
             </div>
         </div>
 
@@ -222,6 +226,7 @@ $statusOrder = ['PENDING' => 1, 'MANAGER_APPROVED' => 2, 'APPROVED' => 3];
                     <div><span class="k">Berikutnya</span><span class="v">×<?= number_id($policy['next'], 1) ?></span></div>
                     <div><span class="k">Hari libur</span><span class="v">×<?= number_id($policy['holiday'], 1) ?></span></div>
                     <div><span class="k">Maks / hari</span><span class="v"><?= number_id($policy['max_hours']) ?> jam</span></div>
+                    <div><span class="k">Kompensasi maks.</span><span class="v"><?= $policy['max_amount'] > 0 ? rupiah($policy['max_amount']) : 'Tanpa batas' ?></span></div>
                 </div>
             </div>
         </section>
@@ -280,6 +285,8 @@ $statusOrder = ['PENDING' => 1, 'MANAGER_APPROVED' => 2, 'APPROVED' => 3];
     var next = <?= (float) $policy['next'] ?>;
     var holidayMul = <?= (float) $policy['holiday'] ?>;
     var maxHours = <?= (float) $policy['max_hours'] ?>;
+    var maxAmount = <?= (float) $policy['max_amount'] ?>;
+    var note = document.getElementById('estimate-note');
 
     function money(value) {
         return 'Rp ' + Math.round(value).toLocaleString('id-ID');
@@ -301,7 +308,16 @@ $statusOrder = ['PENDING' => 1, 'MANAGER_APPROVED' => 2, 'APPROVED' => 3];
         var hourly = salary / divisor;
         var firstHours = Math.min(1, hours);
         var rest = Math.max(0, hours - 1);
-        outAmount.textContent = money(firstHours * hourly * first + rest * hourly * next);
+        var computed = firstHours * hourly * first + rest * hourly * next;
+        var capped = maxAmount > 0 && computed > maxAmount;
+        outAmount.textContent = money(capped ? maxAmount : computed) + (capped ? ' (maks.)' : '');
+
+        if (note) {
+            note.dataset.default = note.dataset.default || note.innerHTML;
+            note.innerHTML = capped
+                ? 'Hitungan penuh ' + money(computed) + ', dibatasi maksimum kompensasi ' + money(maxAmount) + ' per pengajuan.'
+                : note.dataset.default;
+        }
     }
 
     start.addEventListener('change', update);

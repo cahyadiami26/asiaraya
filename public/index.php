@@ -102,6 +102,7 @@ $router->get('/overtime/schedules', [OvertimeController::class, 'schedules'], ['
 $router->post('/overtime/schedules', [OvertimeController::class, 'storeScheduled'], ['roles' => ['HR'], 'name' => 'overtime.schedules.store']);
 $router->get('/overtime/export', [OvertimeController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'overtime.export']);
 $router->post('/overtime/bulk-decide', [OvertimeController::class, 'bulkDecide'], ['roles' => ['HR'], 'name' => 'overtime.bulk-decide']);
+$router->post('/overtime/policy', [OvertimeController::class, 'savePolicy'], ['roles' => ['HR'], 'name' => 'overtime.policy']);
 $router->post('/overtime/{id}/actual', [OvertimeController::class, 'actual'], ['roles' => ['HR'], 'name' => 'overtime.actual']);
 $router->post('/overtime/{id}/cancel', [OvertimeController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'overtime.cancel']);
 $router->add('POST|PUT', '/overtime/{id}', [OvertimeController::class, 'update'], ['roles' => ['HR'], 'name' => 'overtime.update']);
