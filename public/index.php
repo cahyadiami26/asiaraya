@@ -13,6 +13,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\ApprovalController;
 use App\Controllers\AttendanceController;
 use App\Controllers\AuthController;
+use App\Controllers\ComponentController;
 use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
 use App\Controllers\MediaController;
@@ -21,6 +22,7 @@ use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ScheduleController;
+use App\Controllers\SettingsController;
 use App\Controllers\ShiftController;
 use App\Core\Router;
 
@@ -126,6 +128,21 @@ $router->get('/me/leave', [LeaveController::class, 'mine'], ['name' => 'me.leave
 $router->post('/me/leave', [LeaveController::class, 'request'], ['name' => 'me.leave.request']);
 $router->post('/me/leave/{id}/cancel', [LeaveController::class, 'myCancel'], ['name' => 'me.leave.cancel']);
 
+/* ------------------------------------ Batch 7: komponen gaji & pengaturan */
+$router->get('/components', [ComponentController::class, 'index'], ['roles' => ['HR'], 'name' => 'components.index']);
+$router->post('/components', [ComponentController::class, 'store'], ['roles' => ['HR'], 'name' => 'components.store']);
+$router->post('/components/assign', [ComponentController::class, 'assign'], ['roles' => ['HR'], 'name' => 'components.assign']);
+$router->post('/components/apply-defaults', [ComponentController::class, 'applyDefaults'], ['roles' => ['HR'], 'name' => 'components.apply-defaults']);
+$router->get('/components/simulate/{id}', [ComponentController::class, 'simulate'], ['roles' => ['HR'], 'name' => 'components.simulate', 'csrf' => false]);
+$router->add('POST|PUT', '/components/assignments/{id}', [ComponentController::class, 'updateAssignment'], ['roles' => ['HR'], 'name' => 'components.assignments.update']);
+$router->add('POST|DELETE', '/components/assignments/{id}/delete', [ComponentController::class, 'unassign'], ['roles' => ['HR'], 'name' => 'components.assignments.delete']);
+$router->add('POST|DELETE', '/components/{id}/delete', [ComponentController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'components.delete']);
+$router->add('POST|PUT', '/components/{id}', [ComponentController::class, 'update'], ['roles' => ['HR'], 'name' => 'components.update']);
+
+$router->get('/settings', [SettingsController::class, 'index'], ['roles' => ['HR'], 'name' => 'settings.index']);
+$router->post('/settings/integration', [SettingsController::class, 'saveIntegration'], ['roles' => ['HR'], 'name' => 'settings.integration.save']);
+$router->post('/settings/payroll', [SettingsController::class, 'savePayroll'], ['roles' => ['HR'], 'name' => 'settings.payroll.save']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -137,12 +154,10 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
     '/payroll'        => ['Payroll', 'Batch 8'],
-    '/components'     => ['Komponen Gaji', 'Batch 7'],
     '/reports'        => ['Laporan', 'Batch 9'],
     '/reports/payroll'=> ['Laporan Payroll', 'Batch 9'],
     '/me/payslip'     => ['Slip Gaji Saya', 'Batch 8'],
     '/logs'           => ['Log Aktivitas', 'Batch 9'],
-    '/settings'       => ['Pengaturan HR & Payroll', 'Batch 7'],
 ];
 foreach ($pending as $path => [$label, $batch]) {
     $router->get($path, [PlaceholderController::class, 'show'], [

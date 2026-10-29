@@ -22,7 +22,7 @@ multi-unit dengan slip gaji ber-QR.
 | **4** | Presensi PWA (GPS geofence + selfie ber-cap waktu), live monitoring, presensi harian, rekap bulanan + export CSV, pengaturan toleransi/denda/alpha | ✅ selesai |
 | **5** | Lembur: pengajuan mandiri, approval dua tahap, lembur terjadwal massal, jam aktual, rekap & export CSV | ✅ selesai |
 | **6** | Cuti: jenis & jatah, saldo tahunan (carry over), pengajuan + lampiran, approval dua tahap, integrasi presensi | ✅ selesai |
-| 7 | Komponen gaji (CRUD & assign), PPh, BPJS | ⏳ |
+| **7** | Komponen gaji: master tunjangan/potongan, penugasan per karyawan/unit/departemen, simulasi take-home (PPh 21 TER/flat/progresif + BPJS), pengaturan payroll & BPJS | ✅ selesai |
 | 8 | Payroll: periode per unit, kalkulasi, rekap per unit/departemen, slip gaji PDF ber-QR, alur HR → FIN → PAID | ⏳ |
 | 9 | Laporan & cetak (PDF Excel-ready), log aktivitas, pengaturan lanjutan | ⏳ |
 
@@ -327,6 +327,63 @@ lain, serta saldo mencukupi kecuali `leave_allow_negative` diaktifkan.
 
 ---
 
+## 2.9 Modul Batch 7 — Komponen Gaji & Pengaturan Payroll
+
+### Master komponen (`/components`) — HR
+* Dua kelompok: **Tunjangan** (menambah bruto) dan **Potongan** (mengurangi take-home
+  di luar BPJS & PPh).
+* CRUD penuh: kode unik, nama, tipe perhitungan **nominal tetap / persentase / prorata**,
+  dasar persentase (gaji pokok atau bruto), flag **objek PPh 21**, **dasar BPJS**,
+  **terapkan otomatis** ke karyawan aktif, serta aktif/nonaktif.
+* Nilai persentase dibatasi 0–100%; nominal tidak boleh negatif.
+* Kode sistem (`BASIC`, `BPJS_KES_EE`, `BPJS_JHT_EE`, `BPJS_JP_EE`, `PPH21`) tidak dapat
+  dihapus; komponen yang masih ditugaskan juga ditolak saat dihapus (nonaktifkan dulu).
+
+### Penugasan komponen
+* Tiga cakupan: **karyawan terpilih** (multi-select), **seluruh karyawan aktif pada unit**,
+  atau **seluruh karyawan aktif pada departemen**.
+* Setiap baris penugasan menyimpan `amount_override` (override nominal per karyawan,
+  isi `0` untuk meniadakan), `effective_date`, `end_date`, dan status aktif.
+* Penugasan massal **tidak menimpa** override/end-date khusus yang sudah ada: nilai kosong
+  berarti "pertahankan nilai karyawan".
+* Tabel penugasan bisa difilter komponen/unit/departemen/pencarian, diubah inline,
+  atau dilepas satu per satu; tombol **Terapkan Komponen Default** menugaskan seluruh
+  komponen bertanda default ke semua karyawan aktif sekaligus.
+* KPI halaman: komponen aktif (tunjangan/potongan), jumlah penugasan, cakupan karyawan (%),
+  dan jumlah komponen default; dilengkapi bilah cakupan per unit.
+
+### Simulasi take-home pay
+Mesin hitung `SalaryModel::preview()` (dipakai juga oleh modal **Simulasi** dan endpoint
+`/components/simulate/{employee}`):
+
+| Langkah | Rumus |
+| --- | --- |
+| Bruto | gaji pokok + seluruh tunjangan aktif (persentase berbasis BASIC dihitung lebih dulu, lalu berbasis GROSS) |
+| BPJS karyawan | Kesehatan `min(upah, plafon) × %`, JHT `upah × %`, JP `min(upah, plafon) × %` |
+| Dasar PPh | bruto − komponen tunjangan non-objek pajak − iuran BPJS karyawan |
+| PPh 21 | **TER** (tarif efektif rata-rata berjenjang, PP 58/2023), **FLAT** (satu tarif), atau **PROGRESSIVE** (proyeksi setahun: bruto × 12 − biaya jabatan 5% (maks Rp 6 jt) − PTKP, lalu lapisan UU HPP 5/15/25/30/35%) |
+| Potongan lain | seluruh komponen potongan aktif (mis. koperasi, absensi) |
+| Take home | bruto − BPJS karyawan − PPh 21 − potongan lain |
+| Biaya perusahaan | bruto + BPJS perusahaan (Kesehatan, JHT, JP, JKK, JKM) |
+
+PTKP mengikuti status karyawan: TK/0 54 jt, TK/1 & K/0 58,5 jt, TK/2 & K/1 63 jt,
+TK/3 & K/2 67,5 jt, K/3 72 jt. Pembulatan PPh mengikuti `payroll_pph_round` (default Rp 100).
+
+### Pengaturan HR & Payroll (`/settings`) — HR
+Empat tab, seluruhnya tersimpan di tabel `settings`:
+
+| Tab | Isi |
+| --- | --- |
+| **Payroll** | tanggal cutoff (default 25), tanggal pembayaran (28), cutoff otomatis; ringkasan estimasi biaya 5 karyawan bergaji tertinggi |
+| **PPh 21** | aktif/nonaktif, metode (TER/FLAT/PROGRESSIVE), tarif flat 0–35%, contoh perhitungan gaji terendah & tertinggi, tabel lapisan UU HPP |
+| **BPJS** | toggle Kesehatan & Ketenagakerjaan, persentase karyawan/perusahaan (Kesehatan 1%/4%, JHT 2%/3,7%, JP 1%/2%, JKK 0,24%, JKM 0,3%), plafon upah Kesehatan Rp 12 jt & JP Rp 10 jt, pratinjau dampak ke take-home |
+| **Integrasi & Login** | tombol Google Sign-In on/off, OAuth Client ID, URI callback, ringkasan identitas perusahaan (edit di `/company`) |
+
+Validasi server: tanggal 1–31, metode PPh dikenal, tarif 0–35%, rentang persentase tiap
+iuran, dan plafon upah 0–100 jt. Semua perubahan langsung dipakai simulasi berikutnya.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -335,8 +392,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -365,7 +422,8 @@ storage/                 # logs, cache, uploads, database preview
 | Presensi (live monitoring, harian, rekap, pengaturan) | ✅ | – | presensi diri (PWA) |
 | Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
 | Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
-| Komponen gaji & payroll | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
+| Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
+| Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
