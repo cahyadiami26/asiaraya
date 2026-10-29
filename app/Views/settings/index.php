@@ -238,7 +238,7 @@ $pphMethods = [
         </div>
     </div>
 
-<?php else: ?>
+<?php elseif ($tab === 'bpjs'): ?>
     <div class="split-grid">
         <section class="card">
             <div class="card__head"><div><h2>Iuran BPJS</h2>
@@ -340,6 +340,51 @@ $pphMethods = [
                 </div>
             </section>
         </div>
+    </div>
+<?php elseif ($tab === 'advanced'): ?>
+    <div class="split-grid">
+        <section class="card">
+            <div class="card__head"><div><h2>Penandatangan Laporan</h2>
+                <div class="sub">Nama yang tercetak pada blok tanda tangan PDF laporan.</div></div></div>
+            <form class="card__body" method="post" action="<?= url('settings/advanced') ?>">
+                <?= csrf_field() ?>
+                <div class="flex-col gap-12">
+                    <div class="field">
+                        <label>Penandatangan HR</label>
+                        <input class="input" name="report_signer_hr" maxlength="120" value="<?= e($val('report_signer_hr', $advanced['signer_hr'])) ?>" placeholder="Contoh: Rani Puspita — HR Manager">
+                        <span class="hint">Kosongkan untuk memakai label bawaan "HR Department".</span>
+                    </div>
+                    <div class="field">
+                        <label>Penandatangan Finance</label>
+                        <input class="input" name="report_signer_fin" maxlength="120" value="<?= e($val('report_signer_fin', $advanced['signer_fin'])) ?>" placeholder="Contoh: Budi Hartono — Finance Director">
+                        <span class="hint">Kosongkan untuk memakai label bawaan "Finance Division".</span>
+                    </div>
+                    <div class="field">
+                        <label>Retensi Log Audit (hari)</label>
+                        <input class="input" type="number" min="30" max="1825" name="audit_retention_days" value="<?= e($val('audit_retention_days', (string) $advanced['retention'])) ?>">
+                        <span class="hint">Antara 30–1825 hari. Tombol "Bersihkan" di halaman Log Aktivitas menghapus data lebih tua dari batas ini.</span>
+                    </div>
+                </div>
+                <div class="form-actions" style="margin-top:14px">
+                    <button class="btn btn-primary" type="submit"><?= icon('check') ?> Simpan Pengaturan</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card">
+            <div class="card__head"><div><h2>Status Log Audit</h2>
+                <div class="sub">Ringkasan jejak aktivitas yang tersimpan.</div></div></div>
+            <div class="card__body">
+                <div class="flex-between small" style="padding:9px 0;border-bottom:1px solid var(--line)"><span class="muted">Total baris log</span><b><?= number_id($advanced['log_total']) ?></b></div>
+                <div class="flex-between small" style="padding:9px 0;border-bottom:1px solid var(--line)"><span class="muted">Log terlama</span><b><?= $advanced['log_oldest'] ? tanggal($advanced['log_oldest'], 'd M Y H:i') : '—' ?></b></div>
+                <div class="flex-between small" style="padding:9px 0"><span class="muted">Batas retensi aktif</span><b><?= (int) $advanced['retention'] ?> hari</b></div>
+                <div class="flex gap-8" style="margin-top:14px">
+                    <a class="btn btn-outline btn-sm" href="<?= url('logs') ?>"><?= icon('activity') ?> Buka Log Aktivitas</a>
+                    <a class="btn btn-ghost btn-sm" href="<?= url('logs/export') ?>"><?= icon('download') ?> Export CSV</a>
+                </div>
+                <p class="small muted" style="margin-top:14px;line-height:1.6">Log mencatat login, perubahan data karyawan, approval cuti/lembur, perhitungan payroll, ekspor laporan, dan perubahan pengaturan. Hanya peran HR yang dapat melihat dan membersihkan log.</p>
+            </div>
+        </section>
     </div>
 <?php endif; ?>
 

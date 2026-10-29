@@ -24,11 +24,11 @@ multi-unit dengan slip gaji ber-QR.
 | **6** | Cuti: jenis & jatah, saldo tahunan (carry over), pengajuan + lampiran, approval dua tahap, integrasi presensi | ✅ selesai |
 | **7** | Komponen gaji: master tunjangan/potongan, penugasan per karyawan/unit/departemen, simulasi take-home (PPh 21 TER/flat/progresif + BPJS), pengaturan payroll & BPJS | ✅ selesai |
 | **8** | Payroll: periode per unit, kalkulasi slip dari presensi/lembur/komponen, rekap per departemen, slip gaji PDF ber-QR + verifikasi publik, alur HR → FIN → PAID | ✅ selesai |
-| 9 | Laporan & cetak (PDF Excel-ready), log aktivitas, pengaturan lanjutan | ⏳ |
+| **9** | Laporan & cetak (PDF & CSV Excel-ready) untuk presensi/lembur/cuti/payroll, log aktivitas (audit trail) + retensi, pengaturan lanjutan (penandatangan laporan) | ✅ selesai |
 
-Modul yang belum aktif tetap dapat diklik dan menampilkan halaman "modul
-dijadwalkan" — tidak ada tautan mati. Skema database untuk seluruh modul sudah
-dipasang sejak batch 1 sehingga batch berikutnya tidak memerlukan migrasi besar.
+Seluruh sembilan batch sudah aktif — tidak ada lagi tautan mati atau menu
+"Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
+cukup menambah query, rute, dan tampilan tanpa migrasi besar.
 
 ---
 
@@ -444,6 +444,54 @@ dan periode yang sudah dikirim tidak dapat dihapus.
 ### Slip Gaji Saya (`/me/payslip`) — semua peran
 * Kartu ringkas (jumlah slip, total net, slip terakhir) + riwayat slip berstatus
   `FINANCE_APPROVED`/`PAID` dengan tautan detail dan unduh PDF.
+
+## 2.11 Modul Batch 9 — Laporan & Cetak, Log Aktivitas
+
+### Pusat Laporan (`/reports`) — HR & Finance
+Empat laporan dengan tab terpisah, semuanya membaca data operasional terkini
+(bukan tabel salinan): **Rekap Presensi**, **Rekap Lembur**, **Rekap Cuti**, dan
+**Rekap Payroll**. Filter yang tersedia menyesuaikan jenis laporan:
+
+| Laporan | Filter | Kolom kunci |
+|---------|--------|-------------|
+| Presensi | bulan, unit, departemen, pencarian | hadir, terlambat (hari/menit), absen, cuti, jam kerja, kehadiran %, tanpa check-out |
+| Lembur | bulan, unit, departemen, pencarian | pengajuan, disetujui, menunggu atasan, menunggu HR, ditolak, jam disetujui, kompensasi |
+| Cuti | tahun, unit, departemen, jenis cuti, pencarian | jatah, carry over, terpakai, sisa, disetujui, pengajuan menunggu + rekap per jenis |
+| Payroll | tahun, unit, periode | ringkasan per periode/unit (bruto, potongan, net, BPJS perusahaan) atau detail slip bila periode dipilih |
+
+* Setiap laporan punya baris **TOTAL** dan kartu KPI di atas tabel.
+* `/reports/payroll` adalah alias langsung ke tab payroll (dipakai menu).
+
+### Export CSV & PDF
+* `GET /reports/{type}/csv` — CSV ber-BOM UTF-8 (langsung rapi di Excel),
+  nama berkas `laporan-{type}-{periode}.csv`, satu baris TOTAL di akhir.
+* `GET /reports/{type}/pdf` — dompdf A4 **landscape**, berkop identitas perusahaan
+  (nama, alamat, telepon, email, NPWP dari `/company`), judul + periode,
+  keterangan "Dicetak … oleh …", tabel zebra dengan angka rata kanan
+  (format Rupiah/ribuan Indonesia), baris TOTAL, blok tanda tangan
+  **Disusun oleh (HR)** & **Disetujui oleh (Finance)**, serta catatan kaki.
+* Maksimal 400 baris per PDF (data lebih besar tetap lengkap di CSV); jumlah
+  baris total selalu dicantumkan agar pemotongan transparan.
+* Setiap ekspor dicatat ke audit trail (`report.export`).
+
+### Log Aktivitas (`/logs`) — HR
+* KPI: total log, aktivitas hari ini, pengguna aktif, login gagal.
+* Filter: modul (login, payroll, komponen, pengaturan, karyawan, presensi,
+  lembur, cuti, jadwal, organisasi), rentang tanggal, dan pencarian bebas
+  (aksi/entitas/meta/IP) — 30 baris per halaman.
+* Detail meta ditampilkan sebagai JSON yang bisa dibuka per baris; kolom IP dan
+  perangkat membantu investigasi.
+* `GET /logs/export` — CSV maksimal 5.000 baris terbaru sesuai filter.
+* `POST /logs/purge` — hapus log lebih tua dari batas retensi (tombol
+  "Bersihkan" dengan konfirmasi). Batas retensi diambil dari pengaturan,
+  minimal 30 hari, dan aksi pembersihan itu sendiri ikut tercatat.
+
+### Pengaturan Lanjutan (`/settings?tab=advanced`) — HR
+* **Penandatangan laporan**: nama HR & Finance yang tercetak pada blok tanda
+  tangan PDF (kosong = "HR Department" / "Finance Division").
+* **Retensi log audit**: 30–1825 hari (default 180).
+* Ringkasan status log (total baris, log terlama, batas retensi aktif) dan
+  pintasan ke halaman log serta export CSV.
 
 ---
 

@@ -18,10 +18,12 @@ use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
 use App\Controllers\MediaController;
 use App\Controllers\LeaveController;
+use App\Controllers\LogController;
 use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PayrollController;
 use App\Controllers\PlaceholderController;
+use App\Controllers\ReportController;
 use App\Controllers\ScheduleController;
 use App\Controllers\SettingsController;
 use App\Controllers\ShiftController;
@@ -143,6 +145,7 @@ $router->add('POST|PUT', '/components/{id}', [ComponentController::class, 'updat
 $router->get('/settings', [SettingsController::class, 'index'], ['roles' => ['HR'], 'name' => 'settings.index']);
 $router->post('/settings/integration', [SettingsController::class, 'saveIntegration'], ['roles' => ['HR'], 'name' => 'settings.integration.save']);
 $router->post('/settings/payroll', [SettingsController::class, 'savePayroll'], ['roles' => ['HR'], 'name' => 'settings.payroll.save']);
+$router->post('/settings/advanced', [SettingsController::class, 'saveAdvanced'], ['roles' => ['HR'], 'name' => 'settings.advanced.save']);
 
 /* ------------------------------------------------------- Batch 8: payroll */
 $router->get('/payroll', [PayrollController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'payroll.index']);
@@ -169,19 +172,18 @@ $router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOverti
 $router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.decide']);
 $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'decideShiftChange'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.decide']);
 
-/* ------------------------------------- Modules scheduled for later batches */
-$pending = [
-    '/reports'        => ['Laporan', 'Batch 9'],
-    '/reports/payroll'=> ['Laporan Payroll', 'Batch 9'],
-    '/logs'           => ['Log Aktivitas', 'Batch 9'],
-];
-foreach ($pending as $path => [$label, $batch]) {
-    $router->get($path, [PlaceholderController::class, 'show'], [
-        'name'   => 'soon.' . trim(str_replace('/', '.', $path), '.'),
-        'csrf'   => false,
-        'params' => ['module' => $label, 'batch' => $batch],
-    ]);
-}
+
+/* ---------------------------------------- Batch 9: laporan & log aktivitas */
+$router->get('/reports', [ReportController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'reports.index']);
+$router->get('/reports/payroll', [ReportController::class, 'payroll'], ['roles' => ['HR', 'FIN'], 'name' => 'reports.payroll']);
+$router->get('/reports/{type}/csv', [ReportController::class, 'csv'], ['roles' => ['HR', 'FIN'], 'name' => 'reports.csv', 'csrf' => false]);
+$router->get('/reports/{type}/pdf', [ReportController::class, 'pdf'], ['roles' => ['HR', 'FIN'], 'name' => 'reports.pdf', 'csrf' => false]);
+
+$router->get('/logs', [LogController::class, 'index'], ['roles' => ['HR'], 'name' => 'logs.index']);
+$router->get('/logs/export', [LogController::class, 'export'], ['roles' => ['HR'], 'name' => 'logs.export', 'csrf' => false]);
+$router->post('/logs/purge', [LogController::class, 'purge'], ['roles' => ['HR'], 'name' => 'logs.purge']);
+
+/* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);
 
 $router->dispatch();

@@ -5,6 +5,7 @@ namespace App\Controllers;
 
 use App\Core\Audit;
 use App\Core\Controller;
+use App\Core\Database;
 use App\Core\Settings;
 use App\Core\Validator;
 use App\Models\SalaryModel;
@@ -30,6 +31,7 @@ final class SettingsController extends Controller
             'pph'         => 'PPh 21',
             'bpjs'        => 'BPJS',
             'integration' => 'Integrasi & Login',
+            'advanced'    => 'Laporan & Audit',
         ];
         if (!isset($tabs[$tab])) {
             $tab = 'payroll';
@@ -58,6 +60,13 @@ final class SettingsController extends Controller
             'sample'    => $this->salary->simulationSample(5),
             'stats'     => $this->salary->stats(),
             'preview'   => $this->samplePreview(),
+            'advanced'  => [
+                'signer_hr'  => (string) (Settings::get('report_signer_hr') ?: ''),
+                'signer_fin' => (string) (Settings::get('report_signer_fin') ?: ''),
+                'retention'  => (int) Settings::get('audit_retention_days', 180),
+                'log_total'  => (int) Database::value('SELECT COUNT(*) FROM activity_logs'),
+                'log_oldest' => (string) (Database::value('SELECT MIN(created_at) FROM activity_logs') ?? ''),
+            ],
         ] + $this->withInput());
     }
 
@@ -127,6 +136,29 @@ final class SettingsController extends Controller
         $tab = (string) ($_POST['_tab'] ?? 'payroll');
         flash('success', 'Pengaturan ' . ($tab === 'bpjs' ? 'BPJS' : ($tab === 'pph' ? 'PPh 21' : 'payroll')) . ' disimpan. Perubahan langsung dipakai simulasi dan payroll berikutnya.');
         redirect('/settings?tab=' . $tab);
+    }
+
+    /** Pengaturan lanjutan: penandatangan laporan & retensi log audit. */
+    public function saveAdvanced(): void
+    {
+        $data = $this->validateOrRedirect(static function (Validator $v): void {
+            $v->custom(mb_strlen((string) ($_POST['report_signer_hr'] ?? '')) > 120, 'report_signer_hr', 'Nama penandatangan maksimal 120 karakter.');
+            $v->custom(mb_strlen((string) ($_POST['report_signer_fin'] ?? '')) > 120, 'report_signer_fin', 'Nama penandatangan maksimal 120 karakter.');
+            $retention = (int) ($_POST['audit_retention_days'] ?? 0);
+            $v->custom($retention < 30 || $retention > 1825, 'audit_retention_days', 'Retensi log harus antara 30 dan 1825 hari.');
+        }, '/settings?tab=advanced');
+
+        Settings::many([
+            'report_signer_hr'     => trim((string) ($data['report_signer_hr'] ?? '')),
+            'report_signer_fin'    => trim((string) ($data['report_signer_fin'] ?? '')),
+            'audit_retention_days' => (int) ($data['audit_retention_days'] ?? 180),
+        ], 'general');
+
+        Audit::log('settings.advanced', 'settings', null, [
+            'retention' => (int) ($data['audit_retention_days'] ?? 180),
+        ]);
+        flash('success', 'Pengaturan laporan & audit disimpan.');
+        redirect('/settings?tab=advanced');
     }
 
     /** Dua contoh karyawan (gaji tertinggi & terendah) untuk pratinjau dampak. */
