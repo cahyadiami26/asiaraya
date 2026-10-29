@@ -111,7 +111,7 @@ final class AttendanceModel
      * @param array{lat?:float,lng?:float,accuracy?:float,photo?:?string,note?:string,device?:string} $input
      * @return array{ok:bool,error?:string,data?:array,message?:string}
      */
-    public function checkIn(int $employeeId, array $input, ?string $date = null): array
+    public function checkIn(int $employeeId, array $input, ?string $date = null, string $source = 'PWA'): array
     {
         $date = $date ?: date('Y-m-d');
         $context = $this->context($employeeId, $date);
@@ -173,7 +173,7 @@ final class AttendanceModel
             'check_in_note'    => substr(trim((string) ($input['note'] ?? '')), 0, 255) ?: null,
             'late_minutes'     => $lateMinutes,
             'status'           => $status,
-            'source'           => 'PWA',
+            'source'           => in_array($source, ['PWA', 'ANDROID', 'IOS', 'KIOSK'], true) ? $source : 'PWA',
             'ip_address'       => $_SERVER['REMOTE_ADDR'] ?? null,
             'device_info'      => substr((string) ($input['device'] ?? ($_SERVER['HTTP_USER_AGENT'] ?? '')), 0, 255),
             'created_at'       => $now,

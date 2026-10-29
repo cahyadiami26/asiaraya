@@ -639,7 +639,9 @@ final class ScheduleModel
     public function myRequests(int $employeeId, int $limit = 10): array
     {
         return Database::all(
-            "SELECT r.*, cs.name AS current_shift_name, rs.name AS requested_shift_name,
+            "SELECT r.*, cs.name AS current_shift_name, cs.code AS current_shift_code,
+                    rs.name AS requested_shift_name, rs.code AS requested_shift_code,
+                    rs.check_in_time AS requested_start, rs.check_out_time AS requested_end,
                     m.full_name AS manager_name, h.full_name AS hr_name
              FROM shift_change_requests r
              LEFT JOIN work_shifts cs ON cs.id = r.current_shift_id

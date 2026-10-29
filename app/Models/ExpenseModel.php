@@ -126,6 +126,9 @@ final class ExpenseModel
         $status = (string) ($filters['status'] ?? '');
         if ($status === 'OPEN') {
             $clauses[] = "c.status IN ('PENDING','MANAGER_APPROVED','APPROVED','SCHEDULED')";
+        } elseif ($status === 'AWAITING') {
+            // Menunggu keputusan atasan / HR-Finance (dipakai kotak masuk API).
+            $clauses[] = "c.status IN ('PENDING','MANAGER_APPROVED')";
         } elseif ($status !== '' && isset(self::STATUSES[$status])) {
             $clauses[] = 'c.status = ?';
             $params[] = $status;

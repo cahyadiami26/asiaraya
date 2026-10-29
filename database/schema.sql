@@ -940,3 +940,43 @@ CREATE TABLE IF NOT EXISTS offboarding_bast (
     UNIQUE KEY uq_offboarding_bast_number (bast_number),
     KEY idx_offboarding_bast_request (request_id, issued_at)
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 21 — REST API /api/v1 untuk aplikasi Android karyawan
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    name VARCHAR(80) NOT NULL DEFAULT 'Android',
+    token_hash CHAR(64) NOT NULL,
+    refresh_hash CHAR(64) NULL,
+    abilities VARCHAR(255) NULL,
+    device_name VARCHAR(120) NULL,
+    device_platform VARCHAR(40) NULL,
+    app_version VARCHAR(30) NULL,
+    last_used_at DATETIME NULL,
+    last_ip VARCHAR(45) NULL,
+    expires_at DATETIME NOT NULL,
+    refresh_expires_at DATETIME NULL,
+    revoked_at DATETIME NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_api_token_hash (token_hash),
+    UNIQUE KEY uq_api_refresh_hash (refresh_hash),
+    KEY idx_api_token_employee (employee_id, revoked_at),
+    KEY idx_api_token_expiry (expires_at)
+);
+
+CREATE TABLE IF NOT EXISTS api_punch_logs (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    action VARCHAR(40) NOT NULL DEFAULT 'attendance.punch',
+    idempotency_key VARCHAR(80) NOT NULL,
+    request_hash CHAR(64) NULL,
+    response_code INT NOT NULL DEFAULT 200,
+    response_body TEXT NULL,
+    created_at DATETIME NULL,
+    UNIQUE KEY uq_api_punch_idem (employee_id, action, idempotency_key),
+    KEY idx_api_punch_created (created_at)
+);

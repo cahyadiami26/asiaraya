@@ -39,8 +39,9 @@ dengan slip gaji ber-QR.
 | **19** | Dokumen karyawan & riwayat jabatan: arsip digital berjenis (KTP, NPWP, KK, ijazah, sertifikat, kontrak, SK, BPJS, SIM, paspor) dengan nomor, masa berlaku, penanda rahasia, verifikasi HR + alasan penolakan, pencarian/filter/pagination, unggah mandiri karyawan, serta **riwayat jabatan** (pengangkatan, promosi, mutasi, demosi, kontrak, gaji, status) bertanggal efektif dengan snapshot organisasi dan penyelarasan data karyawan otomatis, plus job pengingat dokumen kedaluwarsa | ✅ selesai |
 | **20** | Pajak & jaminan sosial: rekap PPh 21 setahun (biaya jabatan, PTKP, PKP, lapisan UU HPP), **bukti potong 1721-A1 PDF ber-QR** dengan verifikasi publik, penerbitan massal + penarikan, **export CSV siap olah e-SPT (1721-I)**, serta **rekap BPJS** Kesehatan & Ketenagakerjaan per program (KES, JHT, JP, JKK, JKM — porsi karyawan vs perusahaan), tren bulanan, kelengkapan nomor peserta, dan cetak PDF/CSV | ✅ selesai |
 | **20.1** | Konfigurasi tampilan menu: berkas `app/config/menu.php` untuk meng-enable/disable setiap item & grup menu, plus tab **Pengaturan → Menu Navigasi** untuk mengaturnya dari aplikasi (per item/grup, item terkunci selalu tampil, tombol “Tampilkan Semua” & “Bawaan Config”) | ✅ selesai |
+| **21** | **REST API `/api/v1` untuk aplikasi Android karyawan**: login token perangkat (bearer + refresh 30 hari, dapat dicabut), pengumuman, jadwal & pengajuan tukar shift, presensi online (geofence + selfie, `Idempotency-Key`), data presensi bulanan, lembur, cuti, slip gaji & bukti potong 1721-A1 (PDF via token atau URL bertanda tangan), klaim biaya, notifikasi, serta **kotak masuk persetujuan** (cuti/lembur/jadwal/klaim) untuk atasan langsung, HR, dan Finance — dilengkapi `docs/openapi.yaml` | ✅ selesai |
 
-Seluruh dua puluh batch (plus penyempurnaan 17.1 & 20.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1 & 20.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1444,6 +1445,147 @@ return [
 
 ---
 
+## 2.25 Batch 21 — REST API `/api/v1` untuk Aplikasi Android
+
+Aplikasi Android karyawan berbicara dengan server lewat REST API JSON di
+`/api/v1` (spesifikasi lengkap: **`docs/openapi.yaml`**, OpenAPI 3.1 — bisa
+dibuka di Swagger Editor/Postman). API memakai model, aturan, dan mesin
+persetujuan yang sama dengan aplikasi web, jadi tidak ada logika ganda.
+
+### Autentikasi token
+
+```bash
+# 1) Masuk → dapat access + refresh token
+curl -X POST https://hris.asiaraya.co.id/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"dimas.aditya@asiaraya.co.id","password":"Password123!","device_name":"Pixel 8","platform":"android","app_version":"1.0.0"}'
+
+# 2) Pakai token pada setiap request
+curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…'
+```
+
+* **Access token** berlaku 8 jam, **refresh token** 30 hari dan **dirotasi**
+  setiap kali dipakai (`POST /auth/refresh`). Keduanya opaque dan disimpan
+  sebagai SHA-256 di tabel `api_tokens`, sehingga bisa dicabut seketika
+  (`POST /auth/logout`, atau seluruh perangkat sekaligus oleh HR).
+* Maksimal **10 perangkat aktif** per karyawan; token kedaluwarsa dibersihkan
+  otomatis saat login berikutnya.
+* Login dibatasi 5 kegagalan/menit per IP (`429 TOO_MANY_ATTEMPTS`).
+
+### Format balasan
+
+```json
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.0" } }
+{ "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
+```
+
+Daftar berhalaman selalu menyertakan `meta.pagination`
+(`page`, `per_page`, `total`, `total_pages`, `has_more`). Setiap respons
+membawa header **`X-Request-Id`** (kirim sendiri untuk memakai ID yang sama di
+log aplikasi) dan `Accept-Language` tidak dipakai — seluruh pesan berbahasa
+Indonesia.
+
+### Daftar endpoint
+
+| Kelompok | Endpoint |
+|----------|----------|
+| Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /app/config` |
+| Pengumuman | `GET /announcements`, `GET /announcements/{id}`, `POST /announcements/{id}/read` |
+| Jadwal | `GET /schedule/today`, `GET /schedule?from&to`, `GET /shifts`, `GET /schedule-requests`, `POST /schedule-requests`, `POST /schedule-requests/{id}/cancel` |
+| Presensi | `GET /attendance/today`, `POST /attendance/punch`, `GET /attendance/history?month`, `GET /attendance/summary?month` |
+| Lembur | `GET /overtimes`, `GET /overtimes/policy`, `POST /overtimes`, `POST /overtimes/{id}/cancel` |
+| Cuti | `GET /leave/types`, `GET /leave/balances`, `GET /leaves`, `GET /leaves/{id}`, `POST /leaves`, `POST /leaves/{id}/cancel` |
+| Slip gaji | `GET /payslips`, `GET /payslips/{id}`, `GET /payslips/{id}/pdf` |
+| Klaim | `GET /claim-categories`, `GET /claims`, `GET /claims/{id}`, `POST /claims`, `POST /claims/{id}/cancel` |
+| Pajak | `GET /tax-slips`, `GET /tax-slips/{year}`, `GET /tax-slips/{year}/pdf` |
+| Notifikasi | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` |
+| Persetujuan | `GET /approvals?type=`, `GET /approvals/summary`, `POST /approvals/{type}/{id}/decide` |
+
+### Presensi dari Android
+
+`POST /attendance/punch` menerima JSON (selfie sebagai data URL base64) atau
+`multipart/form-data` (berkas `photo`). Aturan web tetap berlaku: koordinat
+wajib, geofence unit (radius per unit bisnis, bypass untuk shift WFH sesuai
+pengaturan), selfie wajib bila diaktifkan, dan cap waktu ditambahkan server.
+
+```bash
+curl -X POST https://hris.asiaraya.co.id/api/v1/attendance/punch \
+  -H 'Authorization: Bearer ar_…' \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 5f0c1e6a-punch-in' \
+  -d '{"type":"in","lat":-6.2242,"lng":106.8090,"accuracy":12,"photo":"data:image/jpeg;base64,…","note":"Datang lebih awal"}'
+```
+
+* **`Idempotency-Key`** (opsional, maks 80 karakter) menyimpan hasil presensi di
+  tabel `api_punch_logs`. Retry dengan kunci sama mengembalikan hasil yang sama
+  (`meta.idempotent_replay = true`) tanpa membuat baris presensi kedua — aman
+  untuk mode offline/antrean di aplikasi.
+* Sumber presensi dicatat sebagai `ANDROID` (web: `PWA`) sehingga mudah
+  dibedakan pada Live Monitoring.
+* Batas 30 permintaan presensi/menit per karyawan.
+
+### Unduhan PDF (slip gaji & 1721-A1)
+
+DownloadManager Android tidak bisa mengirim header, jadi setiap slip/bukti
+potong menyertakan `download_url` bertanda tangan:
+
+```
+/api/v1/payslips/897/pdf?employee=4&expires=1793317201&signature=c350e1aa…
+```
+
+Tanda tangan HMAC-SHA256 (`app_key`) terikat pada **resource + id + employee +
+waktu kedaluwarsa** dan berlaku **5 menit**; nilai yang diubah atau kedaluwarsa
+ditolak `401`. Dengan header `Authorization` biasa, endpoint yang sama juga
+bisa dipakai langsung (HR/Finance boleh mengunduh milik karyawan lain).
+
+### Kotak masuk persetujuan
+
+`GET /approvals` mengembalikan pengajuan yang menunggu keputusan **pengguna
+yang login**:
+
+* **Atasan langsung** (`employees.direct_manager_id`) melihat pengajuan timnya
+  pada tahap `PENDING`.
+* **HR** melihat semua `PENDING` dan `MANAGER_APPROVED` (cuti, lembur, jadwal,
+  klaim) — tahap final.
+* **Finance** melihat klaim yang menunggu keputusan akhir.
+
+`POST /approvals/{leave|overtime|schedule|claim}/{id}/decide` dengan
+`{"decision":"APPROVED|REJECTED","note":"…"}` menjalankan **`ApprovalEngine`**
+yang sama dengan halaman web: atasan → `MANAGER_APPROVED`, HR → `APPROVED`
+final, penolakan mengakhiri pengajuan. Efek samping ikut berjalan (saldo cuti
+dipotong, presensi ditandai `LEAVE`, shift ditulis ulang, kompensasi lembur
+dihitung, notifikasi + audit `approval.MANAGER`/`approval.HR`). Pengguna tidak
+bisa memutus pengajuannya sendiri.
+
+### Skema & data demo
+
+* `Schema::VERSION` naik ke **22** — tabel baru `api_tokens`
+  (employee, hash access/refresh, perangkat, masa berlaku, `revoked_at`) dan
+  `api_punch_logs` (idempotensi presensi). Migrasi berjalan otomatis saat
+  bootstrap.
+* `database/seed_api.php` membuat **token demo** (hanya pada instalasi demo):
+  `DEMO-API-HR-TOKEN-0001`, `DEMO-API-MANAGER-TOKEN-0002`,
+  `DEMO-API-EMPLOYEE-TOKEN-0004` (berlaku 1 tahun). Pada instalasi produksi
+  tabel kosong dan token dibuat lewat login.
+
+### Catatan teknis
+
+* `App\Core\ApiRequest` (header/JSON/idempotency/request-id),
+  `App\Core\ApiAuth` (token, rotasi, signature unduhan),
+  `App\Core\ApiController` (amplop JSON, validasi, PDF) dan
+  `App\Core\ApprovalEngine` (mesin persetujuan bersama web & API).
+* `App\Controllers\Api\V1\*` — 11 controller tipis di atas model yang sudah
+  ada; `ApiPresenter` menyeragamkan bentuk JSON.
+* `Auth::findById()`, `Auth::setUser()`, `Auth::verifyCredentials()` baru agar
+  request API memakai Auth/model yang sama tanpa sesi cookie.
+* `AttendanceModel::checkIn()` menerima parameter `$source` (`PWA`/`ANDROID`).
+* Route API didaftarkan dengan `auth=false, csrf=false` (stateless, bearer) dan
+  404 pada `/api/*` selalu JSON.
+* Tidak ada CORS: klien native tidak memerlukannya, dan cookie sesi tidak
+  dipakai pada jalur API.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1462,6 +1604,7 @@ database/
   seed.php               # data contoh PT Asia Raya Group (orkestrator)
   seed_documents.php     # 135 dokumen kepegawaian + PDF contoh, 24 riwayat jabatan
   seed_payroll.php       # 36 periode payroll (Feb–Okt 2026) + 75 bukti potong 1721-A1
+  seed_api.php           # token demo REST API (khusus instalasi demo)
   demo-data.sql          # dump INSERT data demo untuk MySQL/MariaDB
   demo-preview.sqlite    # salinan SQLite siap pakai untuk pratinjau
 public/
@@ -1472,6 +1615,8 @@ public/
   manifest.webmanifest   # PWA
   sw.js                  # service worker (offline shell aset)
 vendor/                  # dompdf 3.1.6 + font/svg/html5 libs & phpqrcode (manual, tanpa Composer)
+docs/
+  openapi.yaml           # spesifikasi REST API /api/v1 (OpenAPI 3.1)
 tools/preview/           # runtime pratinjau sandbox (bukan untuk produksi)
 storage/                 # logs, cache, uploads, database preview
 ```
@@ -1507,6 +1652,7 @@ storage/                 # logs, cache, uploads, database preview
 | Riwayat jabatan & mutasi | ✅ catat, ubah data karyawan otomatis | – | lihat linimasa sendiri |
 | PPh 21 & bukti potong 1721-A1 | ✅ rekap, terbitkan/tarik, cetak, export e-SPT | ✅ rekap, cetak, export | unduh bukti potong sendiri |
 | Rekap BPJS (Kesehatan & Ketenagakerjaan) | ✅ semua program, cetak PDF/CSV | ✅ semua program, cetak PDF/CSV | – |
+| REST API `/api/v1` (aplikasi Android) | ✅ semua endpoint + persetujuan akhir | ✅ slip/klaim/BPJS + persetujuan klaim | ✅ data & pengajuan sendiri + persetujuan tim |
 
 Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
 payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani

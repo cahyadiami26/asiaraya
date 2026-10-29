@@ -1,0 +1,1654 @@
+openapi: 3.1.0
+info:
+  title: HRIS Asia Raya — REST API v1
+  version: 2.17.0
+  description: |
+    API untuk aplikasi Android karyawan PT Asia Raya Group.
+
+    * Autentikasi memakai **bearer token** (opaque, dapat dicabut seketika).
+      Token dibuat lewat `POST /api/v1/auth/login`; access token berlaku 8 jam dan
+      refresh token 30 hari (dirotasi setiap kali dipakai).
+    * Semua balasan JSON memakai amplop `{success, data, meta}` — atau
+      `{success, code, message, errors, meta}` saat gagal.
+    * Setiap respons membawa header `X-Request-Id`; kirim `X-Request-Id` sendiri
+      bila ingin memakai ID yang sama di log aplikasi.
+    * Presensi mendukung `Idempotency-Key` agar retry saat jaringan buruk tidak
+      membuat dua baris presensi.
+    * Unduhan PDF dapat memakai bearer token **atau** URL bertanda tangan
+      (`employee`, `expires`, `signature`, berlaku 5 menit) untuk DownloadManager.
+  servers:
+    - url: https://hris.asiaraya.co.id
+      description: Produksi
+    - url: http://localhost:8080
+      description: Pratinjau lokal (php-wasm + SQLite)
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Konfigurasi
+  - name: Pengumuman
+  - name: Jadwal
+  - name: Presensi
+  - name: Lembur
+  - name: Cuti
+  - name: Slip Gaji
+  - name: Klaim
+  - name: Pajak
+  - name: Notifikasi
+  - name: Persetujuan
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Masuk dan dapatkan token perangkat
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier: { type: string, description: Email, NIK, atau username }
+                password: { type: string, format: password }
+                device_name: { type: string, examples: [Pixel 8] }
+                platform: { type: string, examples: [android] }
+                app_version: { type: string, examples: [1.0.0] }
+      responses:
+        '200':
+          description: Login berhasil
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tokens: { $ref: '#/components/schemas/TokenPair' }
+                          employee: { $ref: '#/components/schemas/Employee' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotasi refresh token menjadi pasangan token baru
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Token baru
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          tokens: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cabut token perangkat ini
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil karyawan + ringkasan beranda
+      responses:
+        '200':
+          description: Profil & penghitung
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          employee: { $ref: '#/components/schemas/Employee' }
+                          counters:
+                            type: object
+                            properties:
+                              notifications_unread: { type: integer }
+                              announcements_unread: { type: integer }
+                              approvals_pending: { type: integer }
+                              leave_open: { type: integer }
+                              overtime_open: { type: integer }
+                              claims_open: { type: integer }
+                          attendance_today: { $ref: '#/components/schemas/AttendanceToday' }
+                          permissions:
+                            type: object
+                            properties:
+                              can_approve: { type: boolean }
+                              role: { type: string, enum: [HR, FIN, KARYAWAN] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/app/config:
+    get:
+      tags: [Konfigurasi]
+      summary: Konfigurasi & kebijakan untuk aplikasi (wajib dipanggil saat start)
+      responses:
+        '200':
+          description: Konfigurasi aplikasi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          app:
+                            type: object
+                            properties:
+                              name: { type: string }
+                              version: { type: string }
+                              server_time: { type: string, format: date-time }
+                              timezone: { type: string }
+                              min_android_version: { type: string }
+                          company: { $ref: '#/components/schemas/Company' }
+                          employee: { $ref: '#/components/schemas/Employee' }
+                          features:
+                            type: object
+                            additionalProperties: { type: boolean }
+                          attendance:
+                            type: object
+                            properties:
+                              work_start: { type: string, examples: ['08:00'] }
+                              work_end: { type: string, examples: ['17:00'] }
+                              late_tolerance: { type: integer }
+                              geofence_required: { type: boolean }
+                              selfie_required: { type: boolean }
+                              wfh_bypass: { type: boolean }
+                              photo_max_width: { type: integer }
+                              photo_quality: { type: integer }
+                              punch_radius_m: { type: integer }
+                              unit:
+                                type: object
+                                properties:
+                                  name: { type: string }
+                                  lat: { type: number, nullable: true }
+                                  lng: { type: number, nullable: true }
+                          leave:
+                            type: object
+                            properties:
+                              default_quota: { type: number }
+                              allow_negative: { type: boolean }
+                              max_range_days: { type: integer }
+                              types:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id: { type: integer }
+                                    code: { type: string }
+                                    name: { type: string }
+                                    quota_days: { type: number }
+                                    requires_attachment: { type: boolean }
+                                    max_per_request: { type: integer }
+                                    min_notice_days: { type: integer }
+                          overtime:
+                            type: object
+                            properties:
+                              enabled: { type: boolean }
+                              divisor: { type: number }
+                              first: { type: number }
+                              next: { type: number }
+                              holiday: { type: number }
+                              max_hours: { type: number }
+                              min_minutes: { type: integer }
+                          claims:
+                            type: object
+                            properties:
+                              max_age_days: { type: integer }
+                          limits:
+                            type: object
+                            properties:
+                              upload_max_mb: { type: integer }
+                              photo_max_mb: { type: integer }
+                              per_page_default: { type: integer }
+                              per_page_max: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/v1/announcements:
+    get:
+      tags: [Pengumuman]
+      summary: Daftar pengumuman sesuai audiens karyawan
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - { name: category, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: unread, in: query, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Daftar pengumuman
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Announcement' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              unread_count: { type: integer }
+                              pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /api/v1/announcements/{id}:
+    get:
+      tags: [Pengumuman]
+      summary: Detail pengumuman (isi lengkap)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Announcement' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/announcements/{id}/read:
+    post:
+      tags: [Pengumuman]
+      summary: Tandai pengumuman sudah dibaca
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/schedule/today:
+    get:
+      tags: [Jadwal]
+      summary: Shift hari ini + 7 hari ke depan
+      responses:
+        '200':
+          description: Jadwal hari ini
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          date: { type: string, format: date }
+                          shift: { $ref: '#/components/schemas/Shift' }
+                          next_days:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                date: { type: string, format: date }
+                                weekend: { type: boolean }
+                                is_work: { type: boolean }
+                                shift: { $ref: '#/components/schemas/Shift' }
+
+  /api/v1/schedule:
+    get:
+      tags: [Jadwal]
+      summary: Kalender jadwal pada rentang tanggal
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: Daftar hari
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date: { type: string, format: date }
+                            dow: { type: integer }
+                            weekend: { type: boolean }
+                            is_work: { type: boolean }
+                            shift: { $ref: '#/components/schemas/Shift' }
+
+  /api/v1/shifts:
+    get:
+      tags: [Jadwal]
+      summary: Daftar shift aktif
+      responses:
+        '200':
+          description: Daftar shift
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Shift' }
+
+  /api/v1/schedule-requests:
+    get:
+      tags: [Jadwal]
+      summary: Riwayat pengajuan perubahan jadwal
+      responses:
+        '200':
+          description: Daftar pengajuan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ScheduleRequest' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              has_open_request: { type: boolean }
+    post:
+      tags: [Jadwal]
+      summary: Ajukan perubahan jadwal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requested_shift_id, start_date, end_date]
+              properties:
+                requested_shift_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '201':
+          description: Pengajuan dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          request: { $ref: '#/components/schemas/ScheduleRequest' }
+                          message: { type: string }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/schedule-requests/{id}/cancel:
+    post:
+      tags: [Jadwal]
+      summary: Batalkan pengajuan perubahan jadwal
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/attendance/today:
+    get:
+      tags: [Presensi]
+      summary: Status presensi hari ini + pengaturan geofence
+      responses:
+        '200':
+          description: Status hari ini
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/AttendanceToday' }
+
+  /api/v1/attendance/punch:
+    post:
+      tags: [Presensi]
+      summary: Presensi masuk/keluar (geofence + selfie)
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, maxLength: 80 }
+          description: Kunci unik per percobaan presensi; kirim ulang kunci yang sama saat retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, lat, lng]
+              properties:
+                type: { type: string, enum: [in, out] }
+                lat: { type: number, examples: [-6.2241] }
+                lng: { type: number, examples: [106.8089] }
+                accuracy: { type: number, description: Akurasi GPS (meter) }
+                photo: { type: string, description: Data URL selfie `data:image/jpeg;base64,...` }
+                note: { type: string, maxLength: 255 }
+                device: { type: string, examples: [Pixel 8 / Android 15] }
+                captured_at: { type: string, format: date-time, description: Waktu pengambilan di perangkat (mode offline) }
+                offline: { type: boolean }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                type: { type: string, enum: [in, out] }
+                lat: { type: number }
+                lng: { type: number }
+                accuracy: { type: number }
+                photo: { type: string, format: binary }
+                note: { type: string }
+      responses:
+        '200':
+          description: Presensi tercatat (atau hasil idempotent replay)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          punch:
+                            type: object
+                            properties:
+                              type: { type: string, enum: [in, out] }
+                              status: { type: string, nullable: true }
+                              late_minutes: { type: integer }
+                              work_minutes: { type: integer }
+                              distance: { type: number, nullable: true }
+                              geofence: { type: string }
+                              at: { type: string, format: date-time }
+                          attendance: { $ref: '#/components/schemas/AttendanceRecord' }
+                          today: { $ref: '#/components/schemas/AttendanceToday' }
+                          message: { type: string }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              idempotent_replay: { type: boolean }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /api/v1/attendance/history:
+    get:
+      tags: [Presensi]
+      summary: Riwayat presensi satu bulan
+      parameters:
+        - { name: month, in: query, schema: { type: string, examples: [2026-10] } }
+      responses:
+        '200':
+          description: Riwayat + total
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/AttendanceRecord' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              month: { type: string }
+                              totals: { type: object }
+
+  /api/v1/attendance/summary:
+    get:
+      tags: [Presensi]
+      summary: Rekap kehadiran bulan berjalan (hadir, terlambat, absen, jam kerja)
+      parameters:
+        - { name: month, in: query, schema: { type: string, examples: [2026-10] } }
+      responses:
+        '200':
+          description: Ringkasan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          month: { type: string }
+                          present: { type: integer }
+                          late: { type: integer }
+                          absent: { type: integer }
+                          late_minutes: { type: integer }
+                          work_hours: { type: number }
+
+  /api/v1/overtimes:
+    get:
+      tags: [Lembur]
+      summary: Riwayat pengajuan lembur
+      parameters:
+        - { name: month, in: query, schema: { type: string, examples: [2026-10] } }
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, MANAGER_APPROVED, APPROVED, REJECTED, CANCELLED, OPEN, ALL] } }
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Daftar lembur
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Overtime' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              summary: { type: object }
+                              policy: { type: object }
+    post:
+      tags: [Lembur]
+      summary: Ajukan lembur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [work_date, planned_start, planned_end]
+              properties:
+                work_date: { type: string, format: date }
+                planned_start: { type: string, examples: ['18:00'] }
+                planned_end: { type: string, examples: ['20:00'] }
+                reason: { type: string, maxLength: 255 }
+      responses:
+        '201':
+          description: Pengajuan dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          overtime: { $ref: '#/components/schemas/Overtime' }
+                          message: { type: string }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/overtimes/policy:
+    get:
+      tags: [Lembur]
+      summary: Kebijakan lembur + simulasi tarif per jam
+      responses:
+        '200':
+          description: Kebijakan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          policy: { type: object }
+                          preview: { type: object }
+                          rate: { type: object }
+
+  /api/v1/overtimes/{id}/cancel:
+    post:
+      tags: [Lembur]
+      summary: Batalkan pengajuan lembur (selama belum disetujui final)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note: { type: string, maxLength: 255 }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/leave/types:
+    get:
+      tags: [Cuti]
+      summary: Jenis cuti aktif + kebijakan
+      responses:
+        '200':
+          description: Jenis cuti
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/LeaveType' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              policy: { type: object }
+
+  /api/v1/leave/balances:
+    get:
+      tags: [Cuti]
+      summary: Saldo cuti per jenis untuk satu tahun
+      parameters:
+        - { name: year, in: query, schema: { type: integer, examples: [2026] } }
+      responses:
+        '200':
+          description: Saldo cuti
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            leave_type_id: { type: integer }
+                            type_name: { type: string }
+                            type_code: { type: string }
+                            year: { type: integer }
+                            quota: { type: number }
+                            carry_over: { type: number }
+                            used: { type: number }
+                            remaining: { type: number }
+                            unlimited: { type: boolean }
+                            progress: { type: number }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              year: { type: integer }
+                              summary: { type: object }
+
+  /api/v1/leaves:
+    get:
+      tags: [Cuti]
+      summary: Riwayat pengajuan cuti
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Daftar cuti
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Leave' }
+    post:
+      tags: [Cuti]
+      summary: Ajukan cuti
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [leave_type_id, start_date, reason]
+              properties:
+                leave_type_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+                reason: { type: string, maxLength: 255 }
+                attachment: { type: string, description: Data URL `data:application/pdf;base64,...` atau `data:image/jpeg;base64,...` }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                leave_type_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+                reason: { type: string }
+                attachment: { type: string, format: binary }
+      responses:
+        '201':
+          description: Pengajuan dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          leave: { $ref: '#/components/schemas/Leave' }
+                          warnings: { type: array, items: { type: string } }
+                          message: { type: string }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/leaves/{id}:
+    get:
+      tags: [Cuti]
+      summary: Detail satu pengajuan cuti
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Detail cuti
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Leave' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/leaves/{id}/cancel:
+    post:
+      tags: [Cuti]
+      summary: Batalkan pengajuan cuti
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/payslips:
+    get:
+      tags: [Slip Gaji]
+      summary: Daftar slip gaji final (maksimal 24 periode terakhir)
+      parameters:
+        - { name: year, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Daftar slip
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Payslip' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              years: { type: array, items: { type: integer } }
+                              total_net: { type: number }
+
+  /api/v1/payslips/{id}:
+    get:
+      tags: [Slip Gaji]
+      summary: Detail slip gaji + komponen
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Detail slip
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Payslip' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/payslips/{id}/pdf:
+    get:
+      tags: [Slip Gaji]
+      summary: Unduh slip gaji (PDF)
+      description: |
+        Menerima bearer token **atau** URL bertanda tangan (`employee`, `expires`,
+        `signature`) agar bisa dipakai DownloadManager Android.
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+        - { name: employee, in: query, schema: { type: integer } }
+        - { name: expires, in: query, schema: { type: integer } }
+        - { name: signature, in: query, schema: { type: string } }
+        - { name: download, in: query, schema: { type: boolean, default: true } }
+      responses:
+        '200':
+          description: Berkas PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/claim-categories:
+    get:
+      tags: [Klaim]
+      summary: Kategori reimbursement aktif
+      responses:
+        '200':
+          description: Kategori
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ClaimCategory' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              max_age_days: { type: integer }
+
+  /api/v1/claims:
+    get:
+      tags: [Klaim]
+      summary: Riwayat klaim biaya
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Daftar klaim
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Claim' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              stats: { type: object }
+    post:
+      tags: [Klaim]
+      summary: Ajukan klaim biaya
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category_id, claim_date, amount, description]
+              properties:
+                category_id: { type: integer }
+                claim_date: { type: string, format: date }
+                amount: { type: number, examples: [150000] }
+                description: { type: string, maxLength: 255 }
+                receipt: { type: string, description: Data URL bukti (JPG/PNG/PDF) }
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                category_id: { type: integer }
+                claim_date: { type: string, format: date }
+                amount: { type: number }
+                description: { type: string }
+                receipt: { type: string, format: binary }
+      responses:
+        '201':
+          description: Klaim dibuat
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          claim: { $ref: '#/components/schemas/Claim' }
+                          message: { type: string }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/claims/{id}:
+    get:
+      tags: [Klaim]
+      summary: Detail klaim
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Detail klaim
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/Claim' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/claims/{id}/cancel:
+    post:
+      tags: [Klaim]
+      summary: Batalkan klaim (selama belum disetujui final)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /api/v1/tax-slips:
+    get:
+      tags: [Pajak]
+      summary: Daftar bukti potong 1721-A1 yang sudah diterbitkan
+      parameters:
+        - { name: year, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Daftar bukti potong
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/TaxSlip' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              years: { type: array, items: { type: integer } }
+
+  /api/v1/tax-slips/{year}:
+    get:
+      tags: [Pajak]
+      summary: Rincian perhitungan PPh 21 satu tahun
+      parameters:
+        - { name: year, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Rincian pajak
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          year: { type: integer }
+                          slip: { $ref: '#/components/schemas/TaxSlip' }
+                          employee: { type: object }
+                          computed: { type: object }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/tax-slips/{year}/pdf:
+    get:
+      tags: [Pajak]
+      summary: Unduh bukti potong 1721-A1 (PDF)
+      security:
+        - bearerAuth: []
+        - {}
+      parameters:
+        - { name: year, in: path, required: true, schema: { type: integer } }
+        - { name: employee, in: query, schema: { type: integer } }
+        - { name: expires, in: query, schema: { type: integer } }
+        - { name: signature, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Berkas PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifikasi]
+      summary: Daftar notifikasi
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - { name: unread, in: query, schema: { type: boolean } }
+        - { name: type, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Daftar notifikasi
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Notification' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              unread_count: { type: integer }
+                              types: { type: object }
+                              pagination: { $ref: '#/components/schemas/Pagination' }
+
+  /api/v1/notifications/read-all:
+    post:
+      tags: [Notifikasi]
+      summary: Tandai semua notifikasi sudah dibaca
+      responses:
+        '200':
+          description: Jumlah diperbarui
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          updated: { type: integer }
+                          unread_count: { type: integer }
+
+  /api/v1/notifications/{id}/read:
+    post:
+      tags: [Notifikasi]
+      summary: Tandai satu notifikasi sudah dibaca
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/SimpleOk' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v1/approvals:
+    get:
+      tags: [Persetujuan]
+      summary: Kotak masuk persetujuan (atasan langsung / HR / Finance)
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [all, leave, overtime, schedule, claim] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Daftar pengajuan menunggu
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/ApprovalItem' }
+                      meta:
+                        allOf:
+                          - $ref: '#/components/schemas/Meta'
+                          - type: object
+                            properties:
+                              counts: { type: object }
+                              pagination: { $ref: '#/components/schemas/Pagination' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/approvals/summary:
+    get:
+      tags: [Persetujuan]
+      summary: Jumlah pengajuan menunggu per jenis
+      responses:
+        '200':
+          description: Ringkasan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          counts: { type: object }
+                          total: { type: integer }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/approvals/{type}/{id}/decide:
+    post:
+      tags: [Persetujuan]
+      summary: Setujui atau tolak pengajuan
+      description: |
+        Tahap 1 dilakukan atasan langsung (`direct_manager_id`) → status
+        `MANAGER_APPROVED`. Tahap 2 dilakukan HR → `APPROVED` final.
+        Klaim dapat diputus HR **atau** Finance. Penolakan di tahap mana pun
+        mengakhiri pengajuan sebagai `REJECTED`.
+      parameters:
+        - { name: type, in: path, required: true, schema: { type: string, enum: [leave, overtime, schedule, claim] } }
+        - { name: id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                note: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Keputusan tersimpan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          type: { type: string }
+                          status: { type: string }
+                          stage: { type: string, enum: [MANAGER, HR, FINAL] }
+                          message: { type: string }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PerPage:
+      name: per_page
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    Unauthorized:
+      description: Token tidak ada / kedaluwarsa / dicabut
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Peran pengguna tidak berhak
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Data tidak ditemukan / bukan milik pengguna
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Status data tidak memungkinkan aksi tersebut
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Payload tidak valid atau ditolak aturan bisnis
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Terlalu banyak percobaan
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    SimpleOk:
+      description: Berhasil
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Envelope'
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message: { type: string }
+
+  schemas:
+    Envelope:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, const: false }
+        code:
+          type: string
+          examples: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VALIDATION_ERROR, PUNCH_REJECTED]
+        message: { type: string }
+        errors:
+          type: object
+          additionalProperties: { type: string }
+        meta: { $ref: '#/components/schemas/Meta' }
+    Meta:
+      type: object
+      properties:
+        request_id: { type: string, examples: [req_511f69d7a558377c] }
+        server_time: { type: string, format: date-time }
+        version: { type: string, examples: [2.17.0] }
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        total_pages: { type: integer }
+        has_more: { type: boolean }
+    TokenPair:
+      type: object
+      properties:
+        token_type: { type: string, const: Bearer }
+        access_token: { type: string }
+        expires_at: { type: string, format: date-time }
+        expires_in: { type: integer, description: Detik }
+        refresh_token: { type: string }
+        refresh_expires_at: { type: string, format: date-time }
+    Company:
+      type: object
+      properties:
+        name: { type: string }
+        legal: { type: string }
+        address: { type: string }
+        phone: { type: string }
+        email: { type: string }
+        logo_url: { type: string, nullable: true }
+    Employee:
+      type: object
+      properties:
+        id: { type: integer }
+        employee_code: { type: string, examples: [ARG-JKT-0421] }
+        full_name: { type: string }
+        email: { type: string, format: email }
+        username: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+        role: { type: string, enum: [HR, FIN, KARYAWAN] }
+        flag: { type: string, examples: [ACTIVE] }
+        join_date: { type: string, format: date }
+        position: { type: string, nullable: true }
+        department: { type: string, nullable: true }
+        business_unit: { type: string, nullable: true }
+        manager:
+          type: object
+          properties:
+            id: { type: integer, nullable: true }
+            name: { type: string, nullable: true }
+        photo_url: { type: string, nullable: true }
+    Shift:
+      type: object
+      nullable: true
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        date: { type: string, format: date }
+        start_time: { type: string, examples: ['08:00'] }
+        end_time: { type: string, examples: ['17:00'] }
+        break_minutes: { type: integer }
+        late_tolerance: { type: integer }
+        operational_type: { type: string, enum: [NORMAL, WFH, FIELD, SHIFT] }
+    AttendanceRecord:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string, format: date }
+        status: { type: string, enum: [PRESENT, LATE, ABSENT, LEAVE, WFH, OFF] }
+        checked_in: { type: boolean }
+        checked_out: { type: boolean }
+        check_in_at: { type: string, format: date-time, nullable: true }
+        check_out_at: { type: string, format: date-time, nullable: true }
+        check_in_status: { type: string, nullable: true }
+        late_minutes: { type: integer }
+        early_leave_minutes: { type: integer }
+        work_minutes: { type: integer }
+        work_hours: { type: number }
+        check_in_photo_url: { type: string, nullable: true }
+        check_in_distance: { type: integer, nullable: true }
+        note: { type: string, nullable: true }
+        source: { type: string, examples: [ANDROID] }
+    AttendanceToday:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        shift: { $ref: '#/components/schemas/Shift' }
+        shift_start: { type: string }
+        shift_end: { type: string }
+        late_tolerance: { type: integer }
+        operational_type: { type: string }
+        can_check_in: { type: boolean }
+        can_check_out: { type: boolean }
+        attendance: { $ref: '#/components/schemas/AttendanceRecord' }
+        geofence:
+          type: object
+          properties:
+            required: { type: boolean }
+            selfie_required: { type: boolean }
+            unit: { type: string }
+            lat: { type: number }
+            lng: { type: number }
+            radius: { type: integer }
+    Announcement:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        category: { type: string }
+        audience: { type: string }
+        is_pinned: { type: boolean }
+        author: { type: string, nullable: true }
+        excerpt: { type: string }
+        body: { type: string, description: Hanya pada endpoint detail }
+        published_at: { type: string, format: date-time }
+        attachment_url: { type: string, nullable: true }
+        is_read: { type: boolean }
+        read_at: { type: string, format: date-time, nullable: true }
+    ScheduleRequest:
+      type: object
+      properties:
+        id: { type: integer }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        reason: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, MANAGER_APPROVED, APPROVED, REJECTED, CANCELLED] }
+        status_label: { type: string }
+        current_shift:
+          type: object
+          properties:
+            id: { type: integer, nullable: true }
+            code: { type: string, nullable: true }
+            name: { type: string, nullable: true }
+        requested_shift:
+          type: object
+          properties:
+            id: { type: integer }
+            code: { type: string, nullable: true }
+            name: { type: string, nullable: true }
+            start_time: { type: string, nullable: true }
+            end_time: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    Decision:
+      type: object
+      properties:
+        manager:
+          type: object
+          properties:
+            name: { type: string, nullable: true }
+            at: { type: string, format: date-time, nullable: true }
+            note: { type: string, nullable: true }
+        hr:
+          type: object
+          properties:
+            name: { type: string, nullable: true }
+            at: { type: string, format: date-time, nullable: true }
+            note: { type: string, nullable: true }
+    Leave:
+      type: object
+      properties:
+        id: { type: integer }
+        request_number: { type: string, nullable: true }
+        type:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string, nullable: true }
+            code: { type: string, nullable: true }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date }
+        days: { type: number }
+        reason: { type: string, nullable: true }
+        status: { type: string }
+        status_label: { type: string }
+        attachment_url: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        decision: { $ref: '#/components/schemas/Decision' }
+    LeaveType:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        quota_days: { type: number }
+        is_paid: { type: boolean }
+        deduct_salary: { type: boolean }
+        requires_attachment: { type: boolean }
+        max_per_request: { type: integer }
+        min_notice_days: { type: integer }
+        color: { type: string, nullable: true }
+    Overtime:
+      type: object
+      properties:
+        id: { type: integer }
+        work_date: { type: string, format: date }
+        planned_start: { type: string }
+        planned_end: { type: string }
+        planned_hours: { type: number }
+        actual_hours: { type: number, nullable: true }
+        type: { type: string, enum: [REQUEST, SCHEDULED] }
+        reason: { type: string, nullable: true }
+        status: { type: string }
+        status_label: { type: string }
+        compensation_amount: { type: number }
+        created_at: { type: string, format: date-time }
+        decision: { $ref: '#/components/schemas/Decision' }
+    Payslip:
+      type: object
+      properties:
+        id: { type: integer }
+        slip_number: { type: string }
+        period:
+          type: object
+          properties:
+            year: { type: integer }
+            month: { type: integer }
+            label: { type: string, examples: ['Oktober 2026'] }
+            pay_date: { type: string, format: date, nullable: true }
+            status: { type: string, enum: [FINANCE_APPROVED, PAID] }
+        business_unit: { type: string, nullable: true }
+        gross_salary: { type: number }
+        total_deduction: { type: number }
+        pph_amount: { type: number }
+        net_salary: { type: number }
+        take_home_pay: { type: number }
+        download_url: { type: string, description: URL bertanda tangan (5 menit) }
+        verify_url: { type: string, description: Halaman verifikasi QR }
+        components:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              type: { type: string }
+              amount: { type: number }
+    ClaimCategory:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        max_amount: { type: number, nullable: true }
+        requires_receipt: { type: boolean }
+        color: { type: string, nullable: true }
+    Claim:
+      type: object
+      properties:
+        id: { type: integer }
+        claim_number: { type: string, examples: ['KLM/JKT/202610/0001'] }
+        category:
+          type: object
+          properties:
+            id: { type: integer }
+            name: { type: string, nullable: true }
+            code: { type: string, nullable: true }
+        claim_date: { type: string, format: date }
+        amount: { type: number }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [PENDING, MANAGER_APPROVED, APPROVED, SCHEDULED, PAID, REJECTED, CANCELLED] }
+        status_label: { type: string }
+        receipt_url: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    TaxSlip:
+      type: object
+      properties:
+        id: { type: integer }
+        tax_year: { type: integer }
+        slip_number: { type: string, examples: ['1.1-2026-0016'] }
+        months_count: { type: integer }
+        employee_name: { type: string, nullable: true }
+        npwp: { type: string, nullable: true }
+        tax_status: { type: string, nullable: true }
+        gross_income: { type: number }
+        netto: { type: number }
+        pkp: { type: number }
+        tax_due: { type: number }
+        tax_withheld: { type: number }
+        tax_diff: { type: number }
+        issued_at: { type: string, format: date-time, nullable: true }
+        download_url: { type: string }
+    Notification:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        message: { type: string }
+        type: { type: string, enum: [info, success, warning, danger] }
+        link: { type: string, nullable: true }
+        is_read: { type: boolean }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    ApprovalItem:
+      type: object
+      properties:
+        type: { type: string, enum: [leave, overtime, schedule, claim] }
+        type_label: { type: string }
+        id: { type: integer }
+        employee:
+          type: object
+          properties:
+            id: { type: integer }
+            full_name: { type: string }
+            employee_code: { type: string }
+            department: { type: string, nullable: true }
+            position: { type: string, nullable: true }
+            photo_url: { type: string, nullable: true }
+        status: { type: string }
+        status_label: { type: string }
+        reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        decide_url: { type: string }
+        detail: { type: object }
