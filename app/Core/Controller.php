@@ -42,14 +42,27 @@ abstract class Controller
             $unreadAnnouncements = $announcements->unreadCount(Auth::user());
             $unreadNotifications = $notifications->unreadCount($employeeId);
 
+            $performance = new \App\Models\PerformanceModel();
+            $badges = [
+                'announcements' => $unreadAnnouncements,
+                'notifications' => $unreadNotifications,
+                'performance_team' => $performance->teamPendingCount($employeeId),
+            ];
+            if (Auth::hasRole('HR')) {
+                $badges['performance'] = (int) \App\Core\Database::value(
+                    "SELECT COUNT(*) FROM performance_reviews r
+                       JOIN review_periods p ON p.id = r.period_id
+                      WHERE r.status = 'MANAGER_DONE' AND p.status IN ('MANAGER','CALIBRATION')",
+                    [],
+                    0
+                );
+            }
+
             return [
                 'unreadNotifications' => $unreadNotifications,
                 'recentNotifications' => $notifications->recent($employeeId, 5),
                 'unreadAnnouncements' => $unreadAnnouncements,
-                'badges'              => [
-                    'announcements' => $unreadAnnouncements,
-                    'notifications' => $unreadNotifications,
-                ],
+                'badges'              => $badges,
             ];
         } catch (\Throwable) {
             return [

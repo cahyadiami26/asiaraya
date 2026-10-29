@@ -29,10 +29,12 @@ dengan slip gaji ber-QR.
 | **10** | Keamanan akun & sesi: reset kata sandi mandiri (tautan sekali pakai), ganti sandi dengan verifikasi sandi lama, "ingat perangkat" 30 hari, batas sesi 8 jam / idle 2 jam, proteksi brute-force | ✅ selesai |
 | **11** | Klaim & reimbursement: kategori dengan plafon, pengajuan + bukti, persetujuan atasan → HR/Finance, aksi massal, export CSV, integrasi otomatis ke slip payroll | ✅ selesai |
 | **12** | Pengumuman & notifikasi in-app: papan pengumuman dengan audiens (semua/unit/departemen/jabatan/peran), jadwal terbit, pin, pelacakan dibaca, pusat notifikasi + lonceng | ✅ selesai |
+| **13** | Penilaian kinerja: periode penilaian (self → atasan → kalibrasi HR → tutup), master indikator berbobot, self assessment karyawan, penilaian atasan, kalibrasi/nilai final + rating A–E, riwayat & konfirmasi hasil, export CSV/PDF | ✅ selesai |
 
-Seluruh dua belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh tiga belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
-cukup menambah query, rute, dan tampilan tanpa migrasi besar.
+cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
+migrasi otomatis bernomor versi (`Schema::VERSION`).
 
 ---
 
@@ -656,6 +658,85 @@ pembayaran. Akses dibatasi untuk pemilik, atasan langsungnya, HR, dan Finance.
 
 ---
 
+## 2.15 Modul Batch 13 — Penilaian Kinerja (Performance Review)
+
+### Ringkasan alur
+**DRAFT** → **SELF** → **MANAGER** → **CALIBRATION** → **CLOSED**. Setiap periode
+hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
+(seluruh unit bila periode tidak dibatasi unit).
+
+### Periode penilaian (`/performance/periods`) — HR
+* Tabel periode: nama, jenis (Tahunan / Semesteran / Triwulan / Probation), rentang
+  tanggal, tenggat self assessment & atasan, bobot self (%), unit bisnis, dan status
+  dengan warna tahap.
+* Formulir buat/ubah periode: nama, jenis, tanggal mulai–selesai, tenggat self &
+  atasan, unit bisnis (opsional), bobot self 0–100, dan catatan.
+* Aksi per periode: **Buka** (membuat baris penilaian untuk semua karyawan aktif
+  pada cakupan unit, menyiapkan skor tiap indikator, dan mengirim notifikasi
+  "Self assessment dibuka"), **Kalibrasi** (memindahkan tahap ke CALIBRATION),
+  **Tutup** (CLOSED; periode dengan penilaian belum final tetap ditutup dengan
+  peringatan jumlah yang tertinggal), dan **Hapus** (hanya untuk periode `DRAFT`).
+* Periode yang sudah pernah dibuka tidak dapat dibuka ulang, dan penilaian pada
+  periode `CLOSED` dikunci dari pengubahan.
+
+### Indikator penilaian (`/performance/indicators`) — HR
+* Master indikator dengan kode unik, nama, kategori (**Kompetensi**, **Hasil**,
+  **Perilaku**), bobot, urutan tampil, dan status aktif.
+* Bobot dipakai untuk merata-ratakan nilai per indikator menjadi nilai akhir
+  karyawan; indikator nonaktif tidak lagi dipakai pada periode baru tetapi tetap
+  tersimpan pada riwayat.
+* Indikator yang sudah dipakai pada penilaian tidak dapat dihapus — nonaktifkan
+  saja agar riwayat tetap utuh.
+
+### Penilaian Tim (`/performance/team`) — atasan langsung
+* Ringkasan bawahan: berapa yang belum mengisi self, menunggu dinilai, dan sudah
+  final, plus tenggat periode berjalan.
+* Daftar bawahan langsung dengan status tahap, nilai self, nilai atasan, dan
+  nilai akhir bila ada.
+* Formulir penilaian `/performance/team/{reviewId}`: skor 1–5 per indikator,
+  panel panduan skala, ringkasan self assessment karyawan, serta catatan atasan.
+  Hanya atasan langsung karyawan tersebut (atau HR) yang dapat menilai, dan hanya
+  setelah self assessment terkirim.
+
+### Penilaian Saya (`/me/performance`) — semua peran
+* Kartu siklus berjalan: status tahap, tenggat self & atasan, bobot self, dan
+  ajakan mengisi bila masih `PENDING`.
+* Formulir self assessment dikelompokkan per kategori indikator (skor 1–5 +
+  catatan), dengan panduan skala di sampingnya.
+* Riwayat penilaian lintas periode, nilai akhir, rating (A–E), dan status
+  konfirmasi karyawan.
+* Detail `/me/performance/{id}`: rincian skor per indikator, nilai akhir,
+  kalibrasi HR, dan tombol **Konfirmasi hasil**.
+* **Nilai atasan & nilai akhir hanya tampil setelah HR menetapkan hasil final.**
+
+### Daftar & detail penilaian (`/performance`, `/performance/{id}`) — HR
+* Statistik: periode berjalan, penilaian menunggu, hasil final, dan rata-rata
+  nilai akhir.
+* Distribusi rating A–E dengan bar peringkat, filter periode/status/rating/unit
+  dan pencarian nama atau NIK, serta ekspor **CSV/PDF** (`/performance/export`).
+* Detail penilaian: rincian skor self vs atasan per indikator, nilai berbobot,
+  panel kalibrasi, riwayat aktivitas (self terkirim → atasan menilai → final →
+  dikonfirmasi), dan form penetapan hasil.
+* Kalibrasi HR: nilai akhir dihitung dari
+  `(self × bobot_self + atasan × (100 − bobot_self)) / 100`, atau **diisi manual**
+  (1–5) untuk override; rating A≥4,5 · B≥3,5 · C≥2,5 · D≥1,5 · E<1,5. Menetapkan
+  hasil mengubah status menjadi `FINAL` dan mengirim notifikasi ke karyawan.
+
+### Catatan teknis
+* Tabel baru: `review_periods`, `review_indicators`, `performance_reviews`, dan
+  `performance_scores` (satu baris skor per indikator per penilaian), plus index
+  `performance_reviews (period_id, status)` dan `(employee_id)`.
+* Bobot indikator disalin ke `performance_scores.weight` saat periode dibuka,
+  sehingga riwayat tidak berubah bila bobot master diperbarui.
+* Badge navigasi: `performance` (HR, jumlah hasil menunggu kalibrasi) dan
+  `performance_team` (atasan, jumlah bawahan yang menunggu dinilai).
+* Notifikasi dikirim ke karyawan (self dibuka, hasil final) dan ke atasan
+  (self assessment masuk).
+* Upgrade skema otomatis (versi 13) saat basis data lama dibuka — idempoten dan
+  tidak menyentuh data operasional.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -664,8 +745,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -699,6 +780,7 @@ storage/                 # logs, cache, uploads, database preview
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
 | Pengumuman | ✅ tulis, terbitkan, arsipkan | baca (sesuai audiens) | baca (sesuai audiens) |
 | Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
+| Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 

@@ -550,6 +550,20 @@ final class DashboardModel
             'claims'    => $claims,
             'announcements' => $announcements,
             'notifications' => $notifications,
+            'performance'   => (int) Database::value(
+                "SELECT COUNT(*) FROM performance_reviews r
+                   JOIN review_periods p ON p.id = r.period_id
+                  WHERE r.status = 'MANAGER_DONE' AND p.status IN ('MANAGER','CALIBRATION')",
+                [],
+                0
+            ),
+            'performance_team' => (int) Database::value(
+                "SELECT COUNT(*) FROM performance_reviews r
+                   JOIN review_periods p ON p.id = r.period_id
+                  WHERE r.manager_id = ? AND r.status = 'SELF_DONE' AND p.status IN ('SELF','MANAGER')",
+                [(int) $user['id']],
+                0
+            ),
             'contracts' => (int) Database::value(
                 "SELECT COUNT(*) FROM employees
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",

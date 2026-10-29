@@ -25,6 +25,7 @@ use App\Controllers\LogController;
 use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PayrollController;
+use App\Controllers\PerformanceController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ReportController;
 use App\Controllers\ScheduleController;
@@ -222,6 +223,33 @@ $router->get('/notifications/latest', [NotificationController::class, 'latest'],
 $router->post('/notifications/read', [NotificationController::class, 'readAll'], ['name' => 'notifications.read']);
 $router->post('/notifications/{id}/read', [NotificationController::class, 'read'], ['name' => 'notifications.item.read']);
 $router->get('/notifications', [NotificationController::class, 'index'], ['name' => 'notifications']);
+
+/* ------------------------------ Batch 13: penilaian kinerja */
+$router->get('/performance/export', [PerformanceController::class, 'export'], ['roles' => ['HR'], 'name' => 'performance.export', 'csrf' => false]);
+$router->get('/performance/periods', [PerformanceController::class, 'periods'], ['roles' => ['HR'], 'name' => 'performance.periods']);
+$router->post('/performance/periods', [PerformanceController::class, 'storePeriod'], ['roles' => ['HR'], 'name' => 'performance.periods.store']);
+$router->post('/performance/periods/{id}/open', [PerformanceController::class, 'openPeriod'], ['roles' => ['HR'], 'name' => 'performance.periods.open']);
+$router->post('/performance/periods/{id}/calibration', [PerformanceController::class, 'calibration'], ['roles' => ['HR'], 'name' => 'performance.periods.calibration']);
+$router->post('/performance/periods/{id}/close', [PerformanceController::class, 'closePeriod'], ['roles' => ['HR'], 'name' => 'performance.periods.close']);
+$router->add('POST|PUT', '/performance/periods/{id}', [PerformanceController::class, 'updatePeriod'], ['roles' => ['HR'], 'name' => 'performance.periods.update']);
+$router->add('POST|DELETE', '/performance/periods/{id}/delete', [PerformanceController::class, 'destroyPeriod'], ['roles' => ['HR'], 'name' => 'performance.periods.delete']);
+
+$router->get('/performance/indicators', [PerformanceController::class, 'indicators'], ['roles' => ['HR'], 'name' => 'performance.indicators']);
+$router->post('/performance/indicators', [PerformanceController::class, 'storeIndicator'], ['roles' => ['HR'], 'name' => 'performance.indicators.store']);
+$router->add('POST|PUT', '/performance/indicators/{id}', [PerformanceController::class, 'updateIndicator'], ['roles' => ['HR'], 'name' => 'performance.indicators.update']);
+$router->add('POST|DELETE', '/performance/indicators/{id}/delete', [PerformanceController::class, 'destroyIndicator'], ['roles' => ['HR'], 'name' => 'performance.indicators.delete']);
+
+$router->get('/performance/team', [PerformanceController::class, 'team'], ['name' => 'performance.team']);
+$router->get('/performance/team/{id}', [PerformanceController::class, 'assess'], ['name' => 'performance.assess']);
+$router->post('/performance/team/{id}', [PerformanceController::class, 'submitAssessment'], ['name' => 'performance.assess.submit']);
+
+$router->get('/performance', [PerformanceController::class, 'index'], ['roles' => ['HR'], 'name' => 'performance.index']);
+$router->post('/performance/{id}/calibrate', [PerformanceController::class, 'calibrate'], ['roles' => ['HR'], 'name' => 'performance.calibrate']);
+$router->post('/performance/{id}/acknowledge', [PerformanceController::class, 'acknowledge'], ['name' => 'performance.acknowledge']);
+$router->get('/performance/{id}', [PerformanceController::class, 'show'], ['name' => 'performance.show']);
+
+$router->get('/me/performance', [PerformanceController::class, 'mine'], ['name' => 'me.performance']);
+$router->post('/me/performance/{id}', [PerformanceController::class, 'submitSelf'], ['name' => 'me.performance.submit']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

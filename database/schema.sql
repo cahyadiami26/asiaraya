@@ -384,6 +384,71 @@ CREATE TABLE IF NOT EXISTS holidays (
     is_national TINYINT(1) NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS review_periods (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(120) NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'TAHUNAN',
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    self_due DATE NULL,
+    manager_due DATE NULL,
+    business_unit_id INT UNSIGNED NULL,
+    self_weight TINYINT NOT NULL DEFAULT 30,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    note VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL
+);
+
+CREATE TABLE IF NOT EXISTS review_indicators (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(30) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    description VARCHAR(255) NULL,
+    category VARCHAR(20) NOT NULL DEFAULT 'KOMPETENSI',
+    weight DECIMAL(5,2) NOT NULL DEFAULT 10,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL
+);
+
+CREATE TABLE IF NOT EXISTS performance_reviews (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    period_id INT UNSIGNED NOT NULL,
+    employee_id INT UNSIGNED NOT NULL,
+    manager_id INT UNSIGNED NULL,
+    business_unit_id INT UNSIGNED NULL,
+    department_id INT UNSIGNED NULL,
+    position_id INT UNSIGNED NULL,
+    self_score DECIMAL(5,2) NULL,
+    manager_score DECIMAL(5,2) NULL,
+    final_score DECIMAL(5,2) NULL,
+    rating VARCHAR(2) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    self_note VARCHAR(500) NULL,
+    manager_note VARCHAR(500) NULL,
+    calibration_note VARCHAR(500) NULL,
+    self_submitted_at DATETIME NULL,
+    manager_submitted_at DATETIME NULL,
+    calibrated_by INT UNSIGNED NULL,
+    calibrated_at DATETIME NULL,
+    acknowledged_at DATETIME NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL
+);
+
+CREATE TABLE IF NOT EXISTS performance_scores (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    review_id INT UNSIGNED NOT NULL,
+    indicator_id INT UNSIGNED NOT NULL,
+    weight DECIMAL(5,2) NOT NULL DEFAULT 0,
+    self_score TINYINT NULL,
+    manager_score TINYINT NULL,
+    note VARCHAR(255) NULL
+);
+
 CREATE TABLE IF NOT EXISTS notifications (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     employee_id INT UNSIGNED NOT NULL,

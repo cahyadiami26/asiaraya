@@ -873,6 +873,177 @@ return static function (): array {
 
     $log[] = 'Pengumuman contoh (' . count($announcementIds) . '), pelacakan baca, dan notifikasi lonceng dibuat.';
 
+    /* ---------------- Penilaian kinerja (Batch 13) ---------------- */
+    $indicatorSeed = [
+        ['HASIL-01', 'Kualitas Hasil Kerja', 'Ketepatan mutu keluaran dibanding standar kerja.', 'HASIL', 20, 10],
+        ['HASIL-02', 'Penyelesaian Target', 'Capaian target dan tenggat yang disepakati.', 'HASIL', 15, 20],
+        ['KOMP-01', 'Pengetahuan Teknis', 'Penguasaan keahlian inti pada posisi saat ini.', 'KOMPETENSI', 15, 30],
+        ['KOMP-02', 'Pemecahan Masalah', 'Kemampuan menganalisis dan menyelesaikan kendala kerja.', 'KOMPETENSI', 10, 40],
+        ['PERILAKU-01', 'Kerja Sama Tim', 'Kontribusi dan komunikasi di dalam tim maupun lintas unit.', 'PERILAKU', 15, 50],
+        ['PERILAKU-02', 'Inisiatif & Perbaikan', 'Prakarsa memperbaiki proses dan cara kerja.', 'PERILAKU', 10, 60],
+        ['PERILAKU-03', 'Kedisiplinan', 'Kepatuhan presensi, aturan, dan tenggat administrasi.', 'PERILAKU', 10, 70],
+        ['PERILAKU-04', 'Komunikasi', 'Kejelasan penyampaian informasi tertulis dan lisan.', 'PERILAKU', 5, 80],
+    ];
+    $indicatorRows = [];
+    foreach ($indicatorSeed as [$code, $name, $description, $category, $weight, $sort]) {
+        $indicatorRows[] = [
+            'id'          => Database::insert('review_indicators', [
+                'code'        => $code,
+                'name'        => $name,
+                'description' => $description,
+                'category'    => $category,
+                'weight'      => $weight,
+                'is_active'   => 1,
+                'sort_order'  => $sort,
+                'created_at'  => date('Y-m-d H:i:s'),
+                'updated_at'  => date('Y-m-d H:i:s'),
+            ]),
+            'weight' => $weight,
+        ];
+    }
+
+    mt_srand(1313);
+    $hrReviewer = (int) Database::value("SELECT id FROM employees WHERE role = 'HR' AND flag = 'ACTIVE' ORDER BY id LIMIT 1");
+    $reviewEmployees = Database::all(
+        "SELECT id, direct_manager_id, business_unit_id, department_id, position_id
+           FROM employees WHERE flag = 'ACTIVE' ORDER BY id"
+    );
+
+    $makePeriod = static function (array $meta) use ($hrReviewer): int {
+        return Database::insert('review_periods', $meta + [
+            'created_by' => $hrReviewer,
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+    };
+
+    $closedPeriod = $makePeriod([
+        'name'             => 'Penilaian Kinerja Tahunan ' . (date('Y') - 1),
+        'type'             => 'TAHUNAN',
+        'start_date'       => (date('Y') - 1) . '-01-01',
+        'end_date'         => (date('Y') - 1) . '-12-31',
+        'self_due'         => (date('Y') - 1) . '-11-30',
+        'manager_due'      => (date('Y') - 1) . '-12-15',
+        'business_unit_id' => null,
+        'self_weight'      => 30,
+        'status'           => 'CLOSED',
+        'note'             => 'Penilaian tahun buku ' . (date('Y') - 1) . ' (arsip).',
+    ]);
+
+    $activePeriod = $makePeriod([
+        'name'             => 'Penilaian Kinerja Semester II ' . date('Y'),
+        'type'             => 'SEMESTERAN',
+        'start_date'       => date('Y') . '-07-01',
+        'end_date'         => date('Y') . '-12-31',
+        'self_due'         => date('Y-m-d', strtotime('+10 days')),
+        'manager_due'      => date('Y-m-d', strtotime('+20 days')),
+        'business_unit_id' => null,
+        'self_weight'      => 30,
+        'status'           => 'MANAGER',
+        'note'             => 'Siklus penilaian semester kedua, sedang berjalan.',
+    ]);
+
+    $ratingFor = static function (float $score): string {
+        return $score >= 4.5 ? 'A' : ($score >= 3.5 ? 'B' : ($score >= 2.5 ? 'C' : ($score >= 1.5 ? 'D' : 'E')));
+    };
+
+    $buildReview = static function (int $periodId, array $employee, string $stage, array $indicatorRows, callable $ratingFor) use ($hrReviewer): array {
+        $hasManager = !empty($employee['direct_manager_id']);
+        $now = date('Y-m-d H:i:s');
+
+        $status = match ($stage) {
+            'FINAL'        => 'FINAL',
+            'MANAGER_DONE' => 'MANAGER_DONE',
+            'SELF_DONE'    => 'SELF_DONE',
+            default        => 'PENDING',
+        };
+
+        $reviewId = Database::insert('performance_reviews', [
+            'period_id'        => $periodId,
+            'employee_id'      => (int) $employee['id'],
+            'manager_id'       => $hasManager ? (int) $employee['direct_manager_id'] : null,
+            'business_unit_id' => $employee['business_unit_id'] !== null ? (int) $employee['business_unit_id'] : null,
+            'department_id'    => $employee['department_id'] !== null ? (int) $employee['department_id'] : null,
+            'position_id'      => $employee['position_id'] !== null ? (int) $employee['position_id'] : null,
+            'status'           => $status,
+            'self_note'        => $stage === 'PENDING' ? null : 'Pencapaian periode ini berjalan sesuai target; fokus pada percepatan koordinasi lintas unit.',
+            'manager_note'     => in_array($stage, ['MANAGER_DONE', 'FINAL'], true) ? 'Kinerja solid. Pertahankan kualitas dan tingkatkan inisiatif perbaikan proses.' : null,
+            'self_submitted_at'    => $stage === 'PENDING' ? null : date('Y-m-d H:i:s', strtotime('-' . mt_rand(6, 20) . ' days')),
+            'manager_submitted_at' => in_array($stage, ['MANAGER_DONE', 'FINAL'], true) ? date('Y-m-d H:i:s', strtotime('-' . mt_rand(1, 5) . ' days')) : null,
+            'created_at'       => $now,
+            'updated_at'       => $now,
+        ]);
+
+        $selfWeighted = 0.0;
+        $managerWeighted = 0.0;
+        $weightSum = 0.0;
+
+        // Nilai per karyawan berpusat pada satu kecenderungan, lalu bervariasi
+        // per indikator — supaya sebaran mutu terlihat wajar.
+        $selfBase = mt_rand(3, 5);
+        $managerShift = [-1, 0, 0, 0, 1][mt_rand(0, 4)];
+        $managerBase = max(1, min(5, $selfBase + $managerShift));
+
+        foreach ($indicatorRows as $indicator) {
+            $selfValue = max(1, min(5, $selfBase + mt_rand(-1, 1)));
+            $managerValue = max(1, min(5, $managerBase + mt_rand(-1, 1)));
+            $self = $stage === 'PENDING' ? null : $selfValue;
+            $manager = in_array($stage, ['MANAGER_DONE', 'FINAL'], true) ? $managerValue : null;
+            Database::insert('performance_scores', [
+                'review_id'     => $reviewId,
+                'indicator_id'  => $indicator['id'],
+                'weight'        => $indicator['weight'],
+                'self_score'    => $self,
+                'manager_score' => $manager,
+            ]);
+            $weightSum += (float) $indicator['weight'];
+            if ($self !== null) {
+                $selfWeighted += $self * (float) $indicator['weight'];
+            }
+            if ($manager !== null) {
+                $managerWeighted += $manager * (float) $indicator['weight'];
+            }
+        }
+
+        $selfScore = $stage === 'PENDING' ? null : round($selfWeighted / max(0.01, $weightSum), 2);
+        $managerScore = in_array($stage, ['MANAGER_DONE', 'FINAL'], true) ? round($managerWeighted / max(0.01, $weightSum), 2) : null;
+
+        $final = null;
+        if ($status === 'FINAL' && $selfScore !== null && $managerScore !== null) {
+            $final = round(($selfScore * 30 + $managerScore * 70) / 100, 2);
+        }
+
+        Database::update('performance_reviews', [
+            'self_score'    => $selfScore,
+            'manager_score' => $managerScore,
+            'final_score'   => $final,
+            'rating'        => $final !== null ? $ratingFor($final) : null,
+            'calibration_note' => $status === 'FINAL' ? 'Hasil disepakati pada rapat kalibrasi HR.' : null,
+            'calibrated_by' => $status === 'FINAL' ? $hrReviewer : null,
+            'calibrated_at' => $status === 'FINAL' ? date('Y-m-d H:i:s', strtotime('-3 days')) : null,
+            'acknowledged_at' => $status === 'FINAL' && mt_rand(1, 100) <= 70 ? date('Y-m-d H:i:s', strtotime('-2 days')) : null,
+            'updated_at'    => $now,
+        ], 'id = ?', [$reviewId]);
+
+        return ['id' => $reviewId, 'self' => $selfScore, 'manager' => $managerScore, 'final' => $final];
+    };
+
+    $closedCount = 0;
+    foreach (array_slice($reviewEmployees, 0, 36) as $employee) {
+        $buildReview($closedPeriod, $employee, 'FINAL', $indicatorRows, $ratingFor);
+        $closedCount++;
+    }
+
+    $activeCount = 0;
+    $stagePlan = ['FINAL', 'FINAL', 'MANAGER_DONE', 'SELF_DONE', 'PENDING'];
+    foreach ($reviewEmployees as $index => $employee) {
+        $stage = $stagePlan[$index % count($stagePlan)];
+        $buildReview($activePeriod, $employee, $stage, $indicatorRows, $ratingFor);
+        $activeCount++;
+    }
+
+    $log[] = 'Penilaian kinerja: ' . count($indicatorRows) . ' indikator, periode arsip (' . $closedCount . ' karyawan), dan periode berjalan (' . $activeCount . ' karyawan) dibuat.';
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

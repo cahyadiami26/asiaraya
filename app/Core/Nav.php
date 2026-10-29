@@ -65,6 +65,17 @@ final class Nav
                 ],
             ],
             [
+                'label' => 'Kinerja & Pengembangan',
+                'roles' => ['HR', 'FIN', 'KARYAWAN'],
+                'items' => [
+                    ['route' => 'performance.index', 'label' => 'Penilaian Kinerja', 'icon' => 'award', 'roles' => ['HR'], 'badge_key' => 'performance'],
+                    ['route' => 'performance.periods', 'label' => 'Periode Penilaian', 'icon' => 'calendar-check', 'roles' => ['HR']],
+                    ['route' => 'performance.indicators', 'label' => 'Indikator Penilaian', 'icon' => 'layers', 'roles' => ['HR']],
+                    ['route' => 'performance.team', 'label' => 'Penilaian Tim', 'icon' => 'users', 'roles' => ['HR', 'FIN', 'KARYAWAN'], 'badge_key' => 'performance_team'],
+                    ['route' => 'me.performance', 'label' => 'Penilaian Saya', 'icon' => 'award', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                ],
+            ],
+            [
                 'label' => 'Komunikasi & Informasi',
                 'roles' => ['HR', 'FIN', 'KARYAWAN'],
                 'items' => [
