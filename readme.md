@@ -20,7 +20,7 @@ multi-unit dengan slip gaji ber-QR.
 | **2** | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan otomatis, direktori & CRUD karyawan (kontrak, foto, resign) | ✅ selesai |
 | **3** | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan (matriks harian), pengajuan & approval perubahan jadwal 2 tahap | ✅ selesai |
 | **4** | Presensi PWA (GPS geofence + selfie ber-cap waktu), live monitoring, presensi harian, rekap bulanan + export CSV, pengaturan toleransi/denda/alpha | ✅ selesai |
-| 5 | Lembur: pengajuan, approval, setting kompensasi & batas maksimum, lembur terjadwal | ⏳ |
+| **5** | Lembur: pengajuan mandiri, approval dua tahap, lembur terjadwal massal, jam aktual, rekap & export CSV | ✅ selesai |
 | 6 | Cuti: jenis & jatah, pengajuan, approval, saldo | ⏳ |
 | 7 | Komponen gaji (CRUD & assign), PPh, BPJS | ⏳ |
 | 8 | Payroll: periode per unit, kalkulasi, rekap per unit/departemen, slip gaji PDF ber-QR, alur HR → FIN → PAID | ⏳ |
@@ -205,6 +205,53 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 
 ---
 
+## 2.7 Modul Batch 5 — Lembur
+
+### Manajemen Lembur (`/overtime`) — HR
+* KPI: menunggu atasan, menunggu HR, jam lembur disetujui, dan kompensasi bulan berjalan.
+* Grafik sebaran jam lembur harian (akhir pekan/hari besar ditandai) + navigasi bulan.
+* Tabel pengajuan dengan tab status (`Perlu Tindakan`, `Menunggu Atasan`, `Menunggu HR`,
+  `Disetujui`, `Ditolak`), filter unit/departemen/jenis/pencarian, dan **export CSV**
+  (siap dibuka di Excel; pemisah `;` + BOM).
+* Aksi per baris: setujui/tolak (tahap HR), isi **jam aktual**, tombol *isi dari presensi*
+  (menghitung selisih check-out dengan jam selesai lembur), dan pembatalan.
+* **Keputusan massal**: centang beberapa pengajuan → setujui/tolak sekaligus dengan catatan.
+* Panel kanan: kebijakan lembur, simulasi tarif, jam per unit, dan 5 karyawan dengan jam terbanyak.
+
+### Lembur Terjadwal (`/overtime/schedules`) — HR
+* Form penugasan massal: cakupan **seluruh unit**, **departemen**, atau **karyawan terpilih**
+  (multi-select), rentang tanggal (maks 31 hari), jam mulai–selesai, preset cepat 1–4 jam.
+* Opsi **lewati Sabtu/Minggu**, **lewati hari besar**, dan **langsung disetujui**.
+* Validasi otomatis per karyawan: bentrok jam, duplikat tanggal, durasi < batas minimum,
+  dan batas maksimum jam/hari — entri yang gagal dilewati dan dilaporkan.
+* Daftar entri terjadwal dengan jam aktual, kompensasi, kalender jam bulanan, dan rekap per unit.
+* Karyawan menerima notifikasi in-app untuk setiap penugasan terjadwal.
+
+### Lembur Saya (`/me/overtime`) — semua peran
+* Ringkasan bulan: jam disetujui, pengajuan berjalan, kompensasi, dan batas harian.
+* Formulir pengajuan (tanggal, jam, uraian) dengan **estimasi durasi & kompensasi real-time**
+  mengikuti tarif pribadi karyawan.
+* Riwayat lengkap (pengajuan + penugasan HR) dengan indikator progres atasan → HR,
+  serta pembatalan mandiri selama masih `PENDING`.
+
+### Aturan perhitungan
+| Komponen | Nilai |
+| --- | --- |
+| Upah per jam | gaji pokok ÷ `overtime_divisor` (default 173) |
+| Jam pertama | ×`overtime_first_hour_multiplier` (1,5) |
+| Jam berikutnya | ×`overtime_next_hour_multiplier` (2) |
+| Hari libur (Sabtu/Minggu & `holidays`) | dikali `overtime_holiday_multiplier` (2) |
+| Batas per pengajuan | `overtime_max_hours` (4 jam) dan `overtime_max_compensation` (Rp3.500.000) |
+| Durasi minimum | `overtime_min_minutes` (30 menit) |
+
+Status: `PENDING` → `MANAGER_APPROVED` → `APPROVED` (final), dengan `REJECTED` /
+`CANCELLED` sebagai akhir alternatif. Kompensasi baru dihitung saat status menjadi
+`APPROVED` dan dihitung ulang ketika jam aktual diubah — nilai inilah yang dipakai payroll.
+Rumus kompensasi dipusatkan di `OvertimeModel::compensation()` sehingga approval engine,
+halaman lembur, dan payroll selalu konsisten.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -213,8 +260,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)

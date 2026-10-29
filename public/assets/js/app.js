@@ -61,6 +61,21 @@
     }
   });
 
+  /* ---------- open form panels from buttons ---------- */
+  document.addEventListener('click', function (e) {
+    var trigger = e.target.closest('[data-open-form]');
+    if (!trigger) return;
+    var target = trigger.getAttribute('href');
+    if (!target || target.charAt(0) !== '#') return;
+    var panel = document.querySelector(target);
+    if (!panel || panel.tagName !== 'DETAILS') return;
+    e.preventDefault();
+    panel.open = true;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    var field = panel.querySelector('input:not([type=hidden]), select, textarea');
+    if (field) { setTimeout(function () { field.focus({ preventScroll: true }); }, 260); }
+  });
+
   /* ---------- password reveal ---------- */
   document.addEventListener('click', function (e) {
     var btn = e.target.closest('[data-toggle-password]');

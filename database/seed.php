@@ -432,7 +432,7 @@ return static function (): array {
     $overtimeSeed = [
         [3, date('Y-m-d'), '17:30', '20:30', 3, 'Migrasi Core Banking - cut over window', 'PENDING', 2],
         [4, date('Y-m-d', strtotime('-1 day')), '18:00', '20:00', 2, 'Closing laporan keuangan bulanan', 'MANAGER_APPROVED', 1],
-        [5, date('Y-m-d', strtotime('-2 days')), '16:00', '19:00', 3, 'Stock opname gudang', 'HR_APPROVED', null],
+        [5, date('Y-m-d', strtotime('-2 days')), '16:00', '19:00', 3, 'Stock opname gudang', 'APPROVED', null],
         [8, date('Y-m-d'), '21:00', '23:00', 2, 'Perawatan mesin lini 2', 'PENDING', 5],
         [12, date('Y-m-d', strtotime('-3 days')), '17:00', '19:00', 2, 'Rilis aplikasi internal', 'APPROVED', 2],
         [22, date('Y-m-d'), '18:00', '20:00', 2, 'Audit stok cabang', 'PENDING', 7],

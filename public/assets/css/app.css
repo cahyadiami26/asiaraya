@@ -981,7 +981,35 @@ a:hover > .thumb { border-color: var(--teal-400); }
 .trend-chart + .flex { margin-top: 22px; }
 .trend-chart .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-right: 5px; }
 
+/* --- Batch 5: lembur ------------------------------------------------------- */
+.ot-policy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.ot-policy > div { border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; background: #fcfdff; }
+.ot-policy .k { display: block; font-size: 9.6px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+.ot-policy .v { display: block; font-size: 12.2px; font-weight: 650; color: var(--navy-900); margin-top: 2px; }
+
+.rank-no {
+  width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center;
+  font-size: 10.6px; font-weight: 750; color: var(--navy-800); background: #eef2f7; flex: none;
+}
+
+.ot-steps { display: flex; gap: 3px; margin-top: 4px; }
+.ot-steps span { width: 16px; height: 3px; border-radius: 2px; background: #e2e8f0; }
+.ot-steps span.on { background: var(--teal-500); }
+
+.ot-estimate {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  margin-top: 14px; padding: 11px 14px; border-radius: 10px;
+  border: 1px dashed var(--teal-300, #5eead4); background: #f6fffd;
+}
+.ot-estimate .k { display: block; font-size: 9.6px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700; }
+.ot-estimate .v { display: block; font-size: 14.5px; font-weight: 700; color: var(--teal-800, #115e59); margin-top: 1px; }
+
+.preset-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.multi-select { height: auto; min-height: 132px; padding: 6px 8px; }
+.multi-select option { padding: 4px 6px; border-radius: 5px; }
+
 @media (max-width: 1024px) {
+  .ot-policy { grid-template-columns: 1fr; }
   .punch-grid { grid-template-columns: 1fr; }
   .trend-chart { gap: 3px; height: 110px; }
   .trend-bar__label { font-size: 7.2px; }

@@ -16,6 +16,7 @@ use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
 use App\Controllers\MediaController;
+use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ScheduleController;
@@ -94,6 +95,20 @@ $router->get('/attendance/rekap', [AttendanceController::class, 'rekap'], ['role
 $router->get('/attendance/settings', [AttendanceController::class, 'settings'], ['roles' => ['HR'], 'name' => 'attendance.settings']);
 $router->post('/attendance/settings', [AttendanceController::class, 'saveSettings'], ['roles' => ['HR'], 'name' => 'attendance.settings.save']);
 
+/* ------------------------------------------------- Batch 5: lembur & terjadwal */
+$router->get('/overtime', [OvertimeController::class, 'index'], ['roles' => ['HR'], 'name' => 'overtime.index']);
+$router->post('/overtime', [OvertimeController::class, 'store'], ['roles' => ['HR'], 'name' => 'overtime.store']);
+$router->get('/overtime/schedules', [OvertimeController::class, 'schedules'], ['roles' => ['HR'], 'name' => 'overtime.schedules']);
+$router->post('/overtime/schedules', [OvertimeController::class, 'storeScheduled'], ['roles' => ['HR'], 'name' => 'overtime.schedules.store']);
+$router->get('/overtime/export', [OvertimeController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'overtime.export']);
+$router->post('/overtime/bulk-decide', [OvertimeController::class, 'bulkDecide'], ['roles' => ['HR'], 'name' => 'overtime.bulk-decide']);
+$router->post('/overtime/{id}/actual', [OvertimeController::class, 'actual'], ['roles' => ['HR'], 'name' => 'overtime.actual']);
+$router->post('/overtime/{id}/cancel', [OvertimeController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'overtime.cancel']);
+$router->add('POST|PUT', '/overtime/{id}', [OvertimeController::class, 'update'], ['roles' => ['HR'], 'name' => 'overtime.update']);
+$router->get('/me/overtime', [OvertimeController::class, 'mine'], ['name' => 'me.overtime']);
+$router->post('/me/overtime', [OvertimeController::class, 'request'], ['name' => 'me.overtime.request']);
+$router->post('/me/overtime/{id}/cancel', [OvertimeController::class, 'myCancel'], ['name' => 'me.overtime.cancel']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -104,9 +119,6 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/overtime'       => ['Manajemen Lembur', 'Batch 5'],
-    '/overtime/schedules' => ['Lembur Terjadwal', 'Batch 5'],
-    '/me/overtime'    => ['Lembur Saya', 'Batch 5'],
     '/leave'          => ['Manajemen Cuti', 'Batch 6'],
     '/me/leave'       => ['Cuti Saya', 'Batch 6'],
     '/payroll'        => ['Payroll', 'Batch 8'],

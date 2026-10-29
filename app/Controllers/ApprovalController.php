@@ -141,7 +141,7 @@ final class ApprovalController extends Controller
 
         if ($table === 'overtime_requests' && $status === 'APPROVED') {
             $hours = (float) ($request['actual_hours'] ?: $request['planned_hours']);
-            $compensation = $this->overtimeCompensation((int) $request['employee_id'], $hours);
+            $compensation = $this->overtimeCompensation((int) $request['employee_id'], $hours, (string) ($request['work_date'] ?? null));
             Database::update('overtime_requests', ['compensation_amount' => $compensation], 'id = ?', [(int) $request['id']]);
         }
 
@@ -157,26 +157,13 @@ final class ApprovalController extends Controller
         back($fallback);
     }
 
-    /** Overtime pay: first hour multiplier, then next-hour multiplier, capped. */
-    private function overtimeCompensation(int $employeeId, float $hours): float
+    /**
+     * Kompensasi lembur — didelegasikan ke OvertimeModel agar rumus (multiplier,
+     * tarif hari libur, batas maksimum) konsisten dengan halaman lembur.
+     */
+    private function overtimeCompensation(int $employeeId, float $hours, ?string $date = null): float
     {
-        $salary = (float) Database::value('SELECT basic_salary FROM employees WHERE id = ?', [$employeeId]);
-        $divisor = (float) (\App\Core\Settings::get('overtime_divisor') ?: 173);
-        $first = (float) (\App\Core\Settings::get('overtime_first_hour_multiplier') ?: 1.5);
-        $next = (float) (\App\Core\Settings::get('overtime_next_hour_multiplier') ?: 2);
-        $maxHours = (float) (\App\Core\Settings::get('overtime_max_hours') ?: 4);
-        $cap = (float) (\App\Core\Settings::get('overtime_max_compensation') ?: 0);
-
-        $hours = min($hours, $maxHours);
-        $hourly = $divisor > 0 ? $salary / $divisor : 0;
-        $firstHours = min(1, $hours);
-        $restHours = max(0, $hours - 1);
-        $amount = ($firstHours * $first * $hourly) + ($restHours * $next * $hourly);
-
-        if ($cap > 0 && $amount > $cap) {
-            $amount = $cap;
-        }
-        return round($amount, 2);
+        return (new \App\Models\OvertimeModel())->compensation($employeeId, $hours, $date)['amount'];
     }
 
     private function notify(int $employeeId, string $status, string $table, int $id): void
