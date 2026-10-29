@@ -566,6 +566,7 @@ final class DashboardModel
             ),
             'training' => (new \App\Models\TrainingModel())->pendingNominationCount(),
             'recruitment' => (new \App\Models\RecruitmentModel())->freshCount(),
+            'offboarding' => (new \App\Models\OffboardingModel())->pendingCount(),
             'contracts' => (int) Database::value(
                 "SELECT COUNT(*) FROM employees
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",

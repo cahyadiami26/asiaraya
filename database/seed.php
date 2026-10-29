@@ -1470,6 +1470,230 @@ return static function (): array {
     $log[] = 'Rekrutmen: ' . count($jobIds) . ' lowongan, ' . count($candidateIds)
         . ' pelamar pada pipeline, dan ' . $interviewNotified . ' notifikasi wawancara dibuat.';
 
+    /* ---------------- Offboarding & exit (Batch 16) ---------------- */
+    // >>> offboarding-seed
+    if (\App\Core\Database::tableExists('offboarding_requests')
+        && (int) Database::value('SELECT COUNT(*) FROM offboarding_requests', [], 0) === 0) {
+        $hrId = (int) Database::value("SELECT id FROM employees WHERE email = 'hr@asiaraya.co.id'", [], 0);
+        $financeId = (int) Database::value("SELECT id FROM employees WHERE email = 'finance@asiaraya.co.id'", [], 0);
+
+        $findEmployee = static function (string $code): ?array {
+            return Database::one('SELECT * FROM employees WHERE employee_code = ?', [$code]);
+        };
+
+        $clearanceTemplate = [
+            ['Serah terima pekerjaan & dokumen proyek', 'HANDOVER', 'MANAGER'],
+            ['Pengembalian laptop & perangkat kerja', 'ASSET', 'IT'],
+            ['Pengembalian kartu identitas & akses kantor', 'ASSET', 'HR'],
+            ['Penonaktifan akun email & akses sistem', 'ACCESS', 'IT'],
+            ['Penyelesaian kasbon, klaim & pinjaman', 'FINANCE', 'FINANCE'],
+            ['Penyerahan surat pengalaman kerja & dokumen kepegawaian', 'DOCUMENT', 'HR'],
+        ];
+
+        $cases = [
+            [
+                'code'      => 'ARG-SBY-0206',
+                'type'      => 'RESIGN',
+                'reason'    => 'CAREER',
+                'submit'    => '-48 days',
+                'last'      => '-18 days',
+                'status'    => 'COMPLETED',
+                'note'      => 'Karyawan melanjutkan studi dan pindah domisili ke Yogyakarta.',
+                'done'      => 6,
+                'interview' => '-24 days 14:00:00',
+                'recommend' => 'YES',
+                'feedback'  => 'Lingkungan kerja suportif, proses produksi sudah rapi. Saran: tambah program pengembangan teknis untuk operator.',
+                'exit_note' => 'Karyawan kooperatif, seluruh aset telah dikembalikan. Bersedia direkomendasikan.',
+                'settlement'=> 18500000,
+            ],
+            [
+                'code'      => 'ARG-BDG-0320',
+                'type'      => 'RESIGN',
+                'reason'    => 'SALARY',
+                'submit'    => '-21 days',
+                'last'      => '+12 days',
+                'status'    => 'IN_PROGRESS',
+                'note'      => 'Mendapat tawaran dengan kompensasi lebih tinggi; bersedia menyelesaikan serah terima.',
+                'done'      => 4,
+                'interview' => '+3 days 10:00:00',
+                'recommend' => 'MAYBE',
+                'feedback'  => null,
+                'exit_note' => null,
+                'settlement'=> 0,
+            ],
+            [
+                'code'      => 'ARG-JKT-0502',
+                'type'      => 'RESIGN',
+                'reason'    => 'RELOCATION',
+                'submit'    => '-3 days',
+                'last'      => '+27 days',
+                'status'    => 'SUBMITTED',
+                'note'      => 'Pindah domisili mengikuti keluarga ke Surabaya.',
+                'done'      => 0,
+                'interview' => null,
+                'recommend' => null,
+                'feedback'  => null,
+                'exit_note' => null,
+                'settlement'=> 0,
+            ],
+            [
+                'code'      => 'ARG-MDN-0106',
+                'type'      => 'CONTRACT_END',
+                'reason'    => 'CONTRACT',
+                'submit'    => '-10 days',
+                'last'      => '+20 days',
+                'status'    => 'MANAGER_APPROVED',
+                'note'      => 'Kontrak PKWT berakhir; kebutuhan operasional dialihkan ke tim shift.',
+                'done'      => 0,
+                'interview' => null,
+                'recommend' => null,
+                'feedback'  => null,
+                'exit_note' => null,
+                'settlement'=> 0,
+            ],
+            [
+                'code'      => 'ARG-JKT-0431',
+                'type'      => 'TERMINATION',
+                'reason'    => 'PERFORMANCE',
+                'submit'    => '-40 days',
+                'last'      => '-10 days',
+                'status'    => 'REJECTED',
+                'note'      => 'Pengajuan PHK dibatalkan karena karyawan menempuh pembinaan tertulis.',
+                'done'      => 0,
+                'interview' => null,
+                'recommend' => null,
+                'feedback'  => null,
+                'exit_note' => null,
+                'settlement'=> 0,
+                'reject'    => 'Masih dalam program pembinaan; evaluasi ulang akhir kuartal.',
+            ],
+        ];
+
+        $sequence = 0;
+        $created = 0;
+        foreach ($cases as $case) {
+            $emp = $findEmployee($case['code']);
+            if (!$emp) {
+                continue;
+            }
+            $sequence++;
+            $submitDate = date('Y-m-d', strtotime($case['submit']));
+            $lastDate = date('Y-m-d', strtotime($case['last']));
+            $status = $case['status'];
+            $managerId = (int) ($emp['direct_manager_id'] ?? 0) ?: null;
+
+            $requestId = Database::insert('offboarding_requests', [
+                'request_number'     => 'EXIT-' . date('Y') . '-' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
+                'employee_id'        => (int) $emp['id'],
+                'type'               => $case['type'],
+                'reason_category'    => $case['reason'],
+                'reason'             => $case['note'],
+                'submit_date'        => $submitDate,
+                'last_working_date'  => $lastDate,
+                'notice_days'        => (int) round((strtotime($lastDate) - strtotime($submitDate)) / 86400),
+                'handover_to'        => null,
+                'status'             => $status,
+                'manager_id'         => $managerId,
+                'manager_approved_by'=> in_array($status, ['MANAGER_APPROVED', 'IN_PROGRESS', 'COMPLETED'], true) ? ($managerId ?: $hrId) : null,
+                'manager_approved_at'=> in_array($status, ['MANAGER_APPROVED', 'IN_PROGRESS', 'COMPLETED'], true)
+                    ? date('Y-m-d H:i:s', strtotime($submitDate . ' +2 days'))
+                    : null,
+                'hr_approved_by'     => in_array($status, ['IN_PROGRESS', 'COMPLETED'], true) ? $hrId : null,
+                'hr_approved_at'     => in_array($status, ['IN_PROGRESS', 'COMPLETED'], true)
+                    ? date('Y-m-d H:i:s', strtotime($submitDate . ' +4 days'))
+                    : null,
+                'reject_reason'      => $case['reject'] ?? null,
+                'exit_interview_at'  => $case['interview'] ? date('Y-m-d H:i:s', strtotime($case['interview'])) : null,
+                'exit_interviewer_id'=> $case['interview'] ? $hrId : null,
+                'exit_feedback'      => $case['feedback'],
+                'exit_would_recommend' => $case['recommend'],
+                'exit_note'          => $case['exit_note'],
+                'settlement_amount'  => $case['settlement'],
+                'settlement_note'    => $case['settlement'] > 0
+                    ? 'Gaji prorata, sisa cuti 4 hari, dan penggantian biaya perjalanan dinas.'
+                    : null,
+                'completed_by'       => $status === 'COMPLETED' ? $hrId : null,
+                'completed_at'       => $status === 'COMPLETED' ? date('Y-m-d H:i:s', strtotime($lastDate . ' 17:00:00')) : null,
+                'created_by'         => $case['type'] === 'RESIGN' ? (int) $emp['id'] : $hrId,
+                'created_at'         => date('Y-m-d H:i:s', strtotime($submitDate . ' 09:15:00')),
+                'updated_at'         => date('Y-m-d H:i:s'),
+            ]);
+            $created++;
+
+            // riwayat tahapan
+            $history = [['Pengajuan ' . strtolower(\App\Models\OffboardingModel::TYPES[$case['type']]) . ' diajukan.', $status === 'SUBMITTED' ? $status : 'SUBMITTED']];
+            if (in_array($status, ['MANAGER_APPROVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'], true)) {
+                $history[] = ['Disetujui atasan langsung.', $status === 'MANAGER_APPROVED' ? $status : 'MANAGER_APPROVED'];
+            }
+            if (in_array($status, ['IN_PROGRESS', 'COMPLETED'], true)) {
+                $history[] = ['Disetujui HR, checklist serah terima dibuka.', 'IN_PROGRESS'];
+            }
+            if ($status === 'COMPLETED') {
+                $history[] = ['Seluruh serah terima selesai, karyawan dinonaktifkan.', 'COMPLETED'];
+            }
+            if ($status === 'REJECTED') {
+                $history[] = [$case['reject'], 'REJECTED'];
+            }
+
+            $from = null;
+            foreach ($history as $i => [$note, $to]) {
+                Database::insert('offboarding_stages', [
+                    'request_id'  => $requestId,
+                    'from_status' => $from,
+                    'to_status'   => $to,
+                    'note'        => $note,
+                    'actor_id'    => $i === 0 ? (int) $emp['id'] : ($i === 1 && $managerId ? $managerId : $hrId),
+                    'created_at'  => date('Y-m-d H:i:s', strtotime($submitDate . ' +' . ($i * 2) . ' days')),
+                ]);
+                $from = $to;
+            }
+
+            // checklist serah terima
+            $clearanceExists = in_array($status, ['IN_PROGRESS', 'COMPLETED'], true);
+            if ($clearanceExists) {
+                foreach ($clearanceTemplate as $i => [$item, $category, $owner]) {
+                    $isDone = $i < $case['done'];
+                    Database::insert('offboarding_clearance', [
+                        'request_id' => $requestId,
+                        'item'       => $item,
+                        'category'   => $category,
+                        'owner_role' => $owner,
+                        'status'     => $isDone ? 'DONE' : 'PENDING',
+                        'note'       => $isDone ? 'Terverifikasi.' : null,
+                        'done_by'    => $isDone ? ($owner === 'FINANCE' ? ($financeId ?: $hrId) : $hrId) : null,
+                        'done_at'    => $isDone ? date('Y-m-d H:i:s', strtotime($lastDate . ' -' . (3 + $i) . ' days')) : null,
+                        'created_at' => date('Y-m-d H:i:s', strtotime($submitDate . ' +4 days')),
+                    ]);
+                }
+            }
+
+            // karyawan keluar
+            if ($status === 'COMPLETED') {
+                Database::update('employees', [
+                    'flag'        => 'RESIGN',
+                    'resign_date' => $lastDate,
+                    'updated_at'  => date('Y-m-d H:i:s'),
+                ], 'id = ?', [(int) $emp['id']]);
+            }
+
+            // notifikasi antrean HR
+            if (in_array($status, ['SUBMITTED', 'MANAGER_APPROVED'], true) && $hrId > 0) {
+                Database::insert('notifications', [
+                    'employee_id' => $hrId,
+                    'title'       => $status === 'SUBMITTED' ? 'Pengajuan offboarding baru' : 'Offboarding menunggu persetujuan HR',
+                    'message'     => $emp['full_name'] . ' — ' . \App\Models\OffboardingModel::TYPES[$case['type']]
+                        . ' per ' . date('d M Y', strtotime($lastDate)) . '.',
+                    'link'        => '/offboarding/' . $requestId,
+                    'type'        => 'warning',
+                    'created_at'  => date('Y-m-d H:i:s'),
+                ]);
+            }
+        }
+
+        $log[] = 'Offboarding: ' . $created . ' pengajuan exit (resign, akhir kontrak, PHK) beserta checklist serah terima dan exit interview dibuat.';
+    }
+    // <<< offboarding-seed
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

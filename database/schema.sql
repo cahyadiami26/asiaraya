@@ -704,3 +704,67 @@ CREATE TABLE IF NOT EXISTS candidate_stages (
     created_at DATETIME NULL,
     KEY idx_candidate_stage (candidate_id, created_at)
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 16 — Offboarding & exit management
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS offboarding_requests (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_number VARCHAR(40) NOT NULL,
+    employee_id INT UNSIGNED NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'RESIGN',
+    reason_category VARCHAR(30) NULL,
+    reason VARCHAR(1000) NULL,
+    submit_date DATE NULL,
+    last_working_date DATE NOT NULL,
+    notice_days INT NOT NULL DEFAULT 0,
+    handover_to INT UNSIGNED NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'SUBMITTED',
+    manager_id INT UNSIGNED NULL,
+    manager_approved_by INT UNSIGNED NULL,
+    manager_approved_at DATETIME NULL,
+    hr_approved_by INT UNSIGNED NULL,
+    hr_approved_at DATETIME NULL,
+    reject_reason VARCHAR(255) NULL,
+    exit_interview_at DATETIME NULL,
+    exit_interviewer_id INT UNSIGNED NULL,
+    exit_feedback VARCHAR(1500) NULL,
+    exit_would_recommend VARCHAR(10) NULL,
+    exit_note VARCHAR(500) NULL,
+    settlement_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+    settlement_note VARCHAR(500) NULL,
+    completed_by INT UNSIGNED NULL,
+    completed_at DATETIME NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_offboarding_number (request_number),
+    KEY idx_offboarding_employee (employee_id, status),
+    KEY idx_offboarding_status (status, last_working_date)
+);
+
+CREATE TABLE IF NOT EXISTS offboarding_clearance (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_id INT UNSIGNED NOT NULL,
+    item VARCHAR(150) NOT NULL,
+    category VARCHAR(20) NOT NULL DEFAULT 'OTHER',
+    owner_role VARCHAR(20) NOT NULL DEFAULT 'HR',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    note VARCHAR(255) NULL,
+    done_by INT UNSIGNED NULL,
+    done_at DATETIME NULL,
+    created_at DATETIME NULL,
+    KEY idx_clearance_request (request_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS offboarding_stages (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_id INT UNSIGNED NOT NULL,
+    from_status VARCHAR(20) NULL,
+    to_status VARCHAR(20) NOT NULL,
+    note VARCHAR(255) NULL,
+    actor_id INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    KEY idx_offboarding_stage (request_id, created_at)
+);

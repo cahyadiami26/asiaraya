@@ -52,6 +52,7 @@ abstract class Controller
                 $training = new \App\Models\TrainingModel();
                 $badges['training'] = $training->pendingNominationCount();
                 $badges['recruitment'] = (new \App\Models\RecruitmentModel())->freshCount();
+                $badges['offboarding'] = (new \App\Models\OffboardingModel())->pendingCount();
                 $badges['performance'] = (int) \App\Core\Database::value(
                     "SELECT COUNT(*) FROM performance_reviews r
                        JOIN review_periods p ON p.id = r.period_id

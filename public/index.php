@@ -23,6 +23,7 @@ use App\Controllers\NotificationController;
 use App\Controllers\LeaveController;
 use App\Controllers\LogController;
 use App\Controllers\OvertimeController;
+use App\Controllers\OffboardingController;
 use App\Controllers\OrgController;
 use App\Controllers\PayrollController;
 use App\Controllers\PerformanceController;
@@ -301,6 +302,30 @@ $router->post('/recruitment/jobs/{id}/close', [RecruitmentController::class, 'cl
 $router->add('POST|DELETE', '/recruitment/jobs/{id}/delete', [RecruitmentController::class, 'destroyJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.delete']);
 $router->add('POST|PUT', '/recruitment/jobs/{id}', [RecruitmentController::class, 'updateJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.update']);
 $router->get('/recruitment/jobs/{id}', [RecruitmentController::class, 'job'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.show']);
+
+/* ------------------------------------------------ Offboarding & exit */
+$router->get('/offboarding', [OffboardingController::class, 'index'], ['roles' => ['HR'], 'name' => 'offboarding.index']);
+$router->post('/offboarding', [OffboardingController::class, 'store'], ['roles' => ['HR'], 'name' => 'offboarding.store']);
+$router->get('/offboarding/export', [OffboardingController::class, 'export'], ['roles' => ['HR'], 'name' => 'offboarding.export', 'csrf' => false]);
+
+$router->post('/offboarding/{id}/manager-approve', [OffboardingController::class, 'approveManager'], ['name' => 'offboarding.approve_manager']);
+$router->post('/offboarding/{id}/approve', [OffboardingController::class, 'approveHr'], ['roles' => ['HR'], 'name' => 'offboarding.approve_hr']);
+$router->post('/offboarding/{id}/reject', [OffboardingController::class, 'reject'], ['name' => 'offboarding.reject']);
+$router->post('/offboarding/{id}/cancel', [OffboardingController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'offboarding.cancel']);
+$router->post('/offboarding/{id}/complete', [OffboardingController::class, 'complete'], ['roles' => ['HR'], 'name' => 'offboarding.complete']);
+$router->post('/offboarding/{id}/interview', [OffboardingController::class, 'interview'], ['roles' => ['HR'], 'name' => 'offboarding.interview']);
+$router->post('/offboarding/{id}/clearance', [OffboardingController::class, 'addClearance'], ['roles' => ['HR'], 'name' => 'offboarding.clearance.store']);
+$router->post('/offboarding/{id}/clearance-all', [OffboardingController::class, 'completeClearance'], ['roles' => ['HR'], 'name' => 'offboarding.clearance.all']);
+$router->post('/offboarding/{id}/clearance/{itemId}', [OffboardingController::class, 'updateClearance'], ['name' => 'offboarding.clearance.update']);
+$router->add('POST|DELETE', '/offboarding/{id}/clearance/{itemId}/delete', [OffboardingController::class, 'removeClearance'], ['roles' => ['HR'], 'name' => 'offboarding.clearance.delete']);
+$router->add('POST|PUT', '/offboarding/{id}', [OffboardingController::class, 'update'], ['roles' => ['HR'], 'name' => 'offboarding.update']);
+$router->add('POST|DELETE', '/offboarding/{id}/delete', [OffboardingController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'offboarding.delete']);
+$router->get('/offboarding/{id}', [OffboardingController::class, 'show'], ['name' => 'offboarding.show']);
+
+$router->get('/me/offboarding', [OffboardingController::class, 'mine'], ['name' => 'me.offboarding']);
+$router->post('/me/offboarding', [OffboardingController::class, 'submitMine'], ['name' => 'me.offboarding.store']);
+$router->post('/me/offboarding/{id}/withdraw', [OffboardingController::class, 'withdrawMine'], ['name' => 'me.offboarding.withdraw']);
+$router->post('/me/offboarding/{id}/feedback', [OffboardingController::class, 'feedbackMine'], ['name' => 'me.offboarding.feedback']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

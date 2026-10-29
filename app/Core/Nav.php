@@ -87,6 +87,14 @@ final class Nav
                 ],
             ],
             [
+                'label' => 'Offboarding & Exit',
+                'roles' => ['HR', 'FIN', 'KARYAWAN'],
+                'items' => [
+                    ['route' => 'offboarding.index', 'label' => 'Offboarding & Exit', 'icon' => 'logout', 'roles' => ['HR'], 'badge_key' => 'offboarding'],
+                    ['route' => 'me.offboarding', 'label' => 'Pengunduran Diri Saya', 'icon' => 'file', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                ],
+            ],
+            [
                 'label' => 'Komunikasi & Informasi',
                 'roles' => ['HR', 'FIN', 'KARYAWAN'],
                 'items' => [

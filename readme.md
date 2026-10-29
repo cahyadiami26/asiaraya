@@ -32,8 +32,9 @@ dengan slip gaji ber-QR.
 | **13** | Penilaian kinerja: periode penilaian (self → atasan → kalibrasi HR → tutup), master indikator berbobot, self assessment karyawan, penilaian atasan, kalibrasi/nilai final + rating A–E, riwayat & konfirmasi hasil, export CSV/PDF | ✅ selesai |
 | **14** | Pelatihan & sertifikasi: katalog program (kategori, durasi, biaya), jadwal sesi dengan kuota & pendaftaran daring, nominasi peserta oleh HR, presensi, nilai, sertifikat PDF, riwayat & sertifikat karyawan, export CSV | ✅ selesai |
 | **15** | Rekrutmen & onboarding (ATS): lowongan multi-unit dengan kuota & status, pipeline pelamar APPLIED → SCREENING → INTERVIEW → OFFER, jadwal & pewawancara, rating, CV, konversi otomatis pelamar diterima menjadi karyawan (NIK, akun, notifikasi), export CSV | ✅ selesai |
+| **16** | Offboarding & exit: pengunduran diri mandiri, PHK/akhir kontrak/pensiun oleh HR, persetujuan atasan → HR, checklist serah terima (aset, dokumen, akses, keuangan), exit interview + penyelesaian akhir, penonaktifan karyawan otomatis, export CSV | ✅ selesai |
 
-Seluruh lima belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh enam belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -865,6 +866,75 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.18 Modul Batch 16 — Offboarding & Exit Management
+
+### Antrean HR (`/offboarding`) — HR
+* Statistik: pengajuan menunggu atasan, menunggu HR, serah terima berjalan,
+  selesai bulan ini, jumlah karyawan keluar dalam 30 hari, dan rata-rata masa
+  pemberitahuan (dibandingkan standar `resign_notice_days`).
+* Tabel pengajuan dengan filter status/jenis/unit/departemen/pencarian: nomor
+  pengajuan, karyawan, jenis, hari terakhir kerja + hitungan hari tersisa,
+  notice, progres checklist, dan status. Baris dengan sisa ≤ 7 hari disorot.
+* Panel **Kontrak Berakhir ≤ 90 Hari** menampilkan karyawan aktif yang kontraknya
+  segera habis beserta tombol **Proses** (form terisi otomatis) atau tautan ke
+  pengajuan yang sudah berjalan.
+* **Mulai offboarding**: karyawan, jenis (**Mengundurkan Diri**, **PHK**,
+  **Akhir Kontrak**, **Pensiun**, **Mangkir**), kategori alasan, tanggal
+  pengajuan, hari terakhir kerja, penerima serah terima, dan catatan. Pengajuan
+  buatan HR langsung masuk tahap *Menunggu HR* (tanpa approval atasan).
+* Ekspor CSV seluruh pengajuan terfilter (`/offboarding/export`).
+
+### Portal karyawan (`/me/offboarding`) — semua peran
+* Kartu ringkasan status pengajuan aktif, hari terakhir kerja, progres serah
+  terima, dan standar masa pemberitahuan.
+* **Ajukan pengunduran diri**: hari terakhir kerja (minimal hari ini), alasan
+  utama, penerima serah terima, dan catatan; pengajuan otomatis diteruskan ke
+  atasan langsung (atau HR bila tidak ada atasan).
+* **Batalkan pengajuan** selama proses belum ditutup.
+* **Umpan balik keluar** (exit feedback + rekomendasi) yang dapat diisi kapan
+  saja sebelum proses selesai.
+* **Persetujuan tim**: atasan langsung melihat dan meninjau pengajuan anggota
+  timnya langsung dari portal ini.
+* Riwayat seluruh pengajuan atas nama karyawan.
+
+### Detail pengajuan (`/offboarding/{id}`)
+* Stepper status: Pengajuan → Persetujuan Atasan → Serah Terima → Selesai
+  (plus penanda merah untuk status Ditolak/Dibatalkan).
+* Ringkasan: profil karyawan, unit/departemen/posisi, masa kerja, jenis, alasan,
+  notice, penerima serah terima, status kepegawaian & akhir kontrak, waktu
+  persetujuan atasan dan HR, serta kronologi.
+* **Checklist serah terima**: progress bar + item per kategori (**Serah Terima
+  Pekerjaan**, **Aset & Perangkat**, **Dokumen**, **Keuangan**, **Akses
+  Sistem**, **Lainnya**) dengan PIC (HR/atasan/Finance/IT) dan status
+  *Belum Selesai / Selesai / Dikecualikan*. HR dapat menambah item, menandai
+  semua selesai, atau menghapus item.
+* **Exit interview & penyelesaian akhir**: jadwal wawancara, pewawancara,
+  rekomendasi (ya/mungkin/tidak), catatan wawancara, nominal + rincian
+  penyelesaian (gaji prorata, sisa cuti, potongan).
+* **Aksi**: setujui sebagai atasan, setujui HR (membuat checklist otomatis),
+  tutup offboarding (wajib checklist 100%), tolak dengan alasan, batalkan
+  (karyawan/HR), dan hapus pengajuan draf/ditolak/dibatalkan.
+* **Timeline** seluruh perpindahan status beserta aktor dan catatan.
+
+### Catatan teknis
+* Tabel baru: `offboarding_requests`, `offboarding_clearance`, dan
+  `offboarding_stages`, dengan index unik `offboarding_requests.request_number`.
+* Menutup offboarding (`complete`) berjalan dalam satu transaksi: status
+  pengajuan menjadi **COMPLETED** dan karyawan di-set `flag = 'RESIGN'` dengan
+  `resign_date` = hari terakhir kerja.
+* Satu karyawan hanya boleh memiliki satu pengajuan aktif (DRAFT/SUBMITTED/
+  MANAGER_APPROVED/IN_PROGRESS) — pengajuan kedua ditolak dengan pesan jelas.
+* Badge navigasi `offboarding` menampilkan jumlah pengajuan yang menunggu
+  keputusan (atasan/HR).
+* Notifikasi: karyawan (persetujuan/penolakan/penutupan), atasan (pengajuan baru,
+  serah terima dimulai), HR (pengajuan baru & selesai), dan Finance (penyelesaian
+  keuangan).
+* Ekspor CSV memakai argumen *escape* eksplisit agar bebas peringatan PHP 8.4.
+* Upgrade skema otomatis (versi 16) saat basis data lama dibuka — idempoten dan
+  tidak menyentuh data operasional.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -873,8 +943,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -911,6 +981,7 @@ storage/                 # logs, cache, uploads, database preview
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
 | Rekrutmen & onboarding | ✅ lowongan, pipeline, pelamar, konversi karyawan | – | – |
+| Offboarding & exit | ✅ pengajuan, persetujuan, checklist serah terima, exit interview | – | ajukan pengunduran diri, umpan balik, setujui tim |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
