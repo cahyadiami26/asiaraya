@@ -17,7 +17,7 @@ multi-unit dengan slip gaji ber-QR.
 | Batch | Cakupan | Status |
 |-------|---------|--------|
 | **1** | Fondasi: autentikasi (username/password + Google), RBAC (HR/FIN/Karyawan), layout & design system, dashboard HR / Finance / Karyawan, profil, pencarian, notifikasi, mesin approval 2 tahap, installer | ✅ selesai |
-| 2 | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan, CRUD data karyawan | ⏳ menunggu konfirmasi |
+| **2** | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan otomatis, direktori & CRUD karyawan (kontrak, foto, resign) | ✅ selesai |
 | 3 | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan, request & approval perubahan jadwal | ⏳ |
 | 4 | Presensi PWA (GPS geofence, selfie compress), log & rekap, pengaturan denda keterlambatan & potongan cuti | ⏳ |
 | 5 | Lembur: pengajuan, approval, setting kompensasi & batas maksimum, lembur terjadwal | ⏳ |
@@ -93,6 +93,36 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 
 ---
 
+## 2.4 Modul Batch 2
+
+### Unit Organisasi (`/organisation`)
+* Tab **Business Unit** — kode unik (dipakai token `{BU}`), tipe, kota, alamat,
+  koordinat + radius geofence, cut-off & tanggal pembayaran payroll per unit, logo.
+* Tab **Departemen** — kode (token `{DEPT}`), kepala departemen, filter per unit.
+* Tab **Posisi & Level** — standar gaji pokok yang otomatis mengisi form karyawan.
+* Penghapusan dijaga: unit/departemen/posisi yang masih dipakai akan menolak
+  dihapus dengan pesan dependensi; gunakan status nonaktif sebagai alternatif.
+
+### Format ID Karyawan
+* Pola default `ARG-{BU}-{SEQ:4}` → `ARG-JKT-0124`.
+* Token tersedia: `{COMPANY}` `{BU}` `{DEPT}` `{YEAR}` `{YY}` `{MONTH}` `{SEQ:n}`.
+* Nomor urut disimpan di tabel `id_sequences`; cakupan `BU` (per unit) atau
+  `GLOBAL`. Counter di-seed otomatis dari data karyawan yang sudah ada, sehingga
+  aman diterapkan pada database lama. Menyimpan format baru mereset counter.
+
+### Data Karyawan (`/employees`)
+* Direktori dengan pencarian, filter unit/departemen/status/flag, pengurutan, dan
+  paginasi 15 baris.
+* Kartu ringkas: karyawan aktif, kontrak ≤ 45 hari, habis kontrak, resign.
+* Form tambah/ubah dibagi per bagian: identitas, penempatan & atasan langsung,
+  kontrak & remunerasi (`PKWT`/`Magang`/`Outsourcing` wajib tanggal akhir),
+  bank/BPJS/NPWP, role & kata sandi, serta foto (GD resize ≤ 640 px).
+* Halaman detail: masa kerja, status kontrak, presensi bulan ini, saldo cuti,
+  slip gaji terakhir, log aktivitas, dan aksi **tandai resign** (soft, data tetap).
+* Flag kontrak diperbarui otomatis saat direktori dibuka.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -101,8 +131,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Placeholder
-  Models/                # query/aggregation layer
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Placeholder
+  Models/                # Dashboard, Org, Employee (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -124,8 +154,8 @@ storage/                 # logs, cache, uploads, database preview
 
 | Modul | HR | FIN | Karyawan |
 |-------|----|-----|----------|
-| Data karyawan (CRUD) | ✅ | baca | baca (diri sendiri) |
-| Unit organisasi, format ID, pengaturan perusahaan | ✅ | – | – |
+| Data karyawan (CRUD, kontrak, foto, resign) | ✅ | – | baca (diri sendiri) |
+| Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal + approval perubahan | ✅ | – | pengajuan |
 | Presensi (live, harian, rekap, setting) | ✅ | baca | presensi diri |
 | Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
@@ -164,5 +194,7 @@ diperlukan pada server produksi dan aman untuk dihapus.
 * Cookie sesi `HttpOnly`, `SameSite=Lax`, `Secure` otomatis pada HTTPS.
 * Audit trail: login, login gagal, approval, perubahan data.
 * Upload disimpan di `storage/uploads` (di luar document root) dan disajikan
-  melalui pemetaan `/media/*` di web server.
+  melalui rute aplikasi `/media/{folder}/{file}` yang memvalidasi sesi, ekstensi,
+  dan memastikan path tetap berada di dalam folder upload. Pada produksi rute ini
+  boleh dipetakan langsung oleh web server untuk performa.
 * Matikan `demo_mode` dan hapus data contoh sebelum go-live.

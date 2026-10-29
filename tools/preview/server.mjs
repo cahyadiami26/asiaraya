@@ -140,6 +140,18 @@ foreach (explode(';', (string) ($headers['cookie'] ?? '')) as $pair) {
 
 $_POST = is_array($ctx['post'] ?? null) ? $ctx['post'] : [];
 $_FILES = [];
+foreach ((array) ($ctx['files'] ?? []) as $field => $f) {
+    if (!is_array($f) || !isset($f['tmp_name'])) { continue; }
+    $_FILES[$field] = [
+        'name'     => (string) ($f['name'] ?? ''),
+        'type'     => (string) ($f['type'] ?? ''),
+        'tmp_name' => (string) $f['tmp_name'],
+        'error'    => (int) ($f['error'] ?? 0),
+        'size'     => (int) ($f['size'] ?? 0),
+    ];
+    // move_uploaded_file() rejects bridge-provided files: mark them as moved
+    // candidates by copying into a normal temp path the app can handle.
+}
 
 // ---- session hosted by the bridge (JSON file per session id) --------------
 $sessDir = '/www/storage/cache/sessions';
@@ -224,6 +236,64 @@ async function readBody(req) {
   return Buffer.concat(chunks);
 }
 
+
+/**
+ * Minimal multipart/form-data parser (the wasm SAPI cannot populate $_FILES).
+ * Files are written to storage/cache/tmp and exposed to PHP through the
+ * request context; the request router rebuilds $_FILES from it.
+ */
+function parseMultipart(buffer, boundary) {
+  const result = { fields: {}, files: {} };
+  const delimiter = Buffer.from('--' + boundary);
+  const parts = [];
+  let start = buffer.indexOf(delimiter);
+  if (start === -1) return result;
+  start += delimiter.length;
+  while (start < buffer.length) {
+    // after boundary: either '--' (end) or CRLF then part
+    if (buffer.slice(start, start + 2).toString() === '--') break;
+    if (buffer.slice(start, start + 2).toString() === '\r\n') start += 2;
+    const end = buffer.indexOf(delimiter, start);
+    if (end === -1) break;
+    parts.push(buffer.slice(start, end - 2)); // strip trailing CRLF
+    start = end + delimiter.length;
+  }
+
+  const tmpDir = path.join(ROOT, 'storage', 'cache', 'tmp');
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  for (const part of parts) {
+    const split = part.indexOf('\r\n\r\n');
+    if (split === -1) continue;
+    const rawHeaders = part.slice(0, split).toString('utf8');
+    const content = part.slice(split + 4);
+    const disp = /content-disposition:([^\r\n]+)/i.exec(rawHeaders);
+    if (!disp) continue;
+    const nameMatch = /name="([^"]*)"/i.exec(disp[1]);
+    if (!nameMatch) continue;
+    const field = nameMatch[1];
+    const fileMatch = /filename="([^"]*)"/i.exec(disp[1]);
+    const typeMatch = /content-type:\s*([^\r\n]+)/i.exec(rawHeaders);
+
+    if (!fileMatch || fileMatch[1] === '') {
+      result.fields[field] = content.toString('utf8');
+      continue;
+    }
+
+    const tmpName = 'upload-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    const tmpPath = path.join(tmpDir, tmpName);
+    fs.writeFileSync(tmpPath, content);
+    result.files[field] = {
+      name: fileMatch[1],
+      type: typeMatch ? typeMatch[1].trim() : 'application/octet-stream',
+      tmp_name: '/www/storage/cache/tmp/' + tmpName,
+      size: content.length,
+      error: 0,
+    };
+  }
+  return result;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const urlPath = url.pathname;
@@ -243,9 +313,17 @@ const server = http.createServer(async (req, res) => {
 
     // Parse the body in node: the wasm SAPI cannot parse it per request.
     const post = {};
+    const files = {};
     const contentType = (headers['content-type'] || '').toLowerCase();
     if (bodyBuffer.length > 0) {
-      if (contentType.includes('application/x-www-form-urlencoded') || contentType === '') {
+      if (contentType.includes('multipart/form-data')) {
+        const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
+        if (boundaryMatch) {
+          const parsed = parseMultipart(bodyBuffer, (boundaryMatch[1] || boundaryMatch[2] || '').trim());
+          Object.assign(post, parsed.fields);
+          Object.assign(files, parsed.files);
+        }
+      } else if (contentType.includes('application/x-www-form-urlencoded') || contentType === '') {
         for (const [key, value] of new URLSearchParams(bodyBuffer.toString('utf8'))) post[key] = value;
       } else if (contentType.includes('application/json')) {
         try {
@@ -260,6 +338,7 @@ const server = http.createServer(async (req, res) => {
       uri: req.url,
       headers,
       post,
+      files,
       ip: req.socket.remoteAddress || '127.0.0.1',
     };
     php.writeFile('/www/storage/cache/request.json', JSON.stringify(context));

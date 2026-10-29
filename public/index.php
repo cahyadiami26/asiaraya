@@ -13,6 +13,9 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\ApprovalController;
 use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
+use App\Controllers\EmployeeController;
+use App\Controllers\MediaController;
+use App\Controllers\OrgController;
 use App\Controllers\PlaceholderController;
 use App\Core\Router;
 
@@ -38,6 +41,36 @@ $router->post('/notifications/read', [DashboardController::class, 'markNotificat
 $router->get('/me/profile', [DashboardController::class, 'profile'], ['name' => 'me.profile']);
 $router->post('/me/profile', [DashboardController::class, 'updateProfile'], ['name' => 'me.profile.update']);
 
+/* ---------------------------------------------------------- Batch 2: organisasi */
+$router->get('/organisation', [OrgController::class, 'index'], ['roles' => ['HR'], 'name' => 'org.index']);
+$router->post('/organisation/units', [OrgController::class, 'storeBusinessUnit'], ['roles' => ['HR'], 'name' => 'org.units.store']);
+$router->add('POST|PUT', '/organisation/units/{id}', [OrgController::class, 'updateBusinessUnit'], ['roles' => ['HR'], 'name' => 'org.units.update']);
+$router->add('POST|DELETE', '/organisation/units/{id}/delete', [OrgController::class, 'destroyBusinessUnit'], ['roles' => ['HR'], 'name' => 'org.units.delete']);
+$router->post('/organisation/departments', [OrgController::class, 'storeDepartment'], ['roles' => ['HR'], 'name' => 'org.departments.store']);
+$router->add('POST|PUT', '/organisation/departments/{id}', [OrgController::class, 'updateDepartment'], ['roles' => ['HR'], 'name' => 'org.departments.update']);
+$router->add('POST|DELETE', '/organisation/departments/{id}/delete', [OrgController::class, 'destroyDepartment'], ['roles' => ['HR'], 'name' => 'org.departments.delete']);
+$router->post('/organisation/positions', [OrgController::class, 'storePosition'], ['roles' => ['HR'], 'name' => 'org.positions.store']);
+$router->add('POST|PUT', '/organisation/positions/{id}', [OrgController::class, 'updatePosition'], ['roles' => ['HR'], 'name' => 'org.positions.update']);
+$router->add('POST|DELETE', '/organisation/positions/{id}/delete', [OrgController::class, 'destroyPosition'], ['roles' => ['HR'], 'name' => 'org.positions.delete']);
+$router->post('/organisation/id-format', [OrgController::class, 'saveIdFormat'], ['roles' => ['HR'], 'name' => 'org.idformat.save']);
+
+/* --------------------------------------------------------- Batch 2: perusahaan */
+$router->get('/company', [OrgController::class, 'company'], ['roles' => ['HR'], 'name' => 'company.edit']);
+$router->post('/company', [OrgController::class, 'saveCompany'], ['roles' => ['HR'], 'name' => 'company.update']);
+
+/* ---------------------------------------------------------- Batch 2: karyawan */
+$router->get('/employees', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.index']);
+$router->get('/employees/contracts', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.contracts', 'params' => ['contract' => 'expiring', 'flag' => 'ACTIVE', 'sort' => 'contract']]);
+$router->get('/employees/create', [EmployeeController::class, 'create'], ['roles' => ['HR'], 'name' => 'employees.create']);
+$router->post('/employees', [EmployeeController::class, 'store'], ['roles' => ['HR'], 'name' => 'employees.store']);
+$router->get('/employees/{id}', [EmployeeController::class, 'show'], ['roles' => ['HR'], 'name' => 'employees.show']);
+$router->get('/employees/{id}/edit', [EmployeeController::class, 'edit'], ['roles' => ['HR'], 'name' => 'employees.edit']);
+$router->add('POST|PUT', '/employees/{id}', [EmployeeController::class, 'update'], ['roles' => ['HR'], 'name' => 'employees.update']);
+$router->post('/employees/{id}/resign', [EmployeeController::class, 'resign'], ['roles' => ['HR'], 'name' => 'employees.resign']);
+
+/* --------------------------------------------------------------- Media files */
+$router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
+
 /* --------------------------------------------------- Approval engine */
 $router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOvertime'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'overtime.decide']);
 $router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.decide']);
@@ -45,10 +78,6 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/organisation'   => ['Unit Organisasi & Format ID', 'Batch 2'],
-    '/company'        => ['Pengaturan Perusahaan', 'Batch 2'],
-    '/employees/create' => ['Tambah Karyawan', 'Batch 2'],
-    '/employees'      => ['Data Karyawan', 'Batch 2'],
     '/shifts'         => ['Jadwal Kerja & Shift', 'Batch 3'],
     '/schedules'      => ['Penjadwalan Karyawan', 'Batch 3'],
     '/schedules/requests' => ['Persetujuan Perubahan Jadwal', 'Batch 3'],

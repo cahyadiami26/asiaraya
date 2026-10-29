@@ -34,7 +34,7 @@ final class Nav
                 'roles' => ['HR'],
                 'items' => [
                     ['route' => 'employees.index', 'label' => 'Data Karyawan', 'icon' => 'users', 'roles' => ['HR']],
-                    ['route' => 'employees.index', 'label' => 'Kontrak & Status', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'contracts'],
+                    ['route' => 'employees.contracts', 'label' => 'Kontrak & Status', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'contracts'],
                 ],
             ],
             [
