@@ -23,7 +23,7 @@ multi-unit dengan slip gaji ber-QR.
 | **5** | Lembur: pengajuan mandiri, approval dua tahap, lembur terjadwal massal, jam aktual, rekap & export CSV | ✅ selesai |
 | **6** | Cuti: jenis & jatah, saldo tahunan (carry over), pengajuan + lampiran, approval dua tahap, integrasi presensi | ✅ selesai |
 | **7** | Komponen gaji: master tunjangan/potongan, penugasan per karyawan/unit/departemen, simulasi take-home (PPh 21 TER/flat/progresif + BPJS), pengaturan payroll & BPJS | ✅ selesai |
-| 8 | Payroll: periode per unit, kalkulasi, rekap per unit/departemen, slip gaji PDF ber-QR, alur HR → FIN → PAID | ⏳ |
+| **8** | Payroll: periode per unit, kalkulasi slip dari presensi/lembur/komponen, rekap per departemen, slip gaji PDF ber-QR + verifikasi publik, alur HR → FIN → PAID | ✅ selesai |
 | 9 | Laporan & cetak (PDF Excel-ready), log aktivitas, pengaturan lanjutan | ⏳ |
 
 Modul yang belum aktif tetap dapat diklik dan menampilkan halaman "modul
@@ -35,36 +35,32 @@ dipasang sejak batch 1 sehingga batch berikutnya tidak memerlukan migrasi besar.
 ## 2. Instalasi produksi (Apache/Nginx + PHP-FPM + MySQL)
 
 ### 2.1 Kebutuhan server
-* PHP **8.0+** dengan ekstensi: `pdo_mysql`, `mbstring`, `gd`, `fileinfo`, `json`, `zip`
-  (opsional: `curl` untuk Google SSO, `dom` untuk dompdf)
+* PHP **8.0+** dengan ekstensi: `pdo_mysql`, `mbstring`, `gd`, `fileinfo`, `json`, `zip`, `dom`
+  (opsional: `curl` untuk Google SSO dan QR online)
 * MySQL 8 / MariaDB 10.4+
 * Web server Apache (mod_rewrite) atau Nginx
 
 ### 2.2 Langkah
 1. Upload seluruh repository ke server, arahkan **document root** ke folder `public/`.
-2. Pasang dompdf secara manual (tanpa Composer):
+2. **Pustaka pihak ketiga sudah disertakan** di `vendor/` (dipasang manual, bukan Composer):
 
-```bash
-cd vendor
-curl -L -o dompdf.zip https://github.com/dompdf/dompdf/releases/download/v3.1.6/dompdf-3.1.6.zip
-unzip dompdf.zip && mv dompdf-3.1.6 dompdf && rm dompdf.zip
-# dependensi wajib dompdf (juga manual):
-#   vendor/php-font-lib        -> dompdf/php-font-lib (tag 1.0.2)
-#   vendor/php-svg-lib         -> dompdf/php-svg-lib
-#   vendor/php-css-parser      -> sabberworm/php-css-parser
-#   vendor/html5               -> Masterminds/html5-php
+```
+vendor/autoload.php    # autoloader manual (PSR-4 + classmap dompdf)
+vendor/dompdf/         # dompdf 3.1.6 (LGPL-2.1) + font DejaVu Sans/Serif
+vendor/php-font-lib/   # dompdf/php-font-lib 1.0.2
+vendor/php-svg-lib/    # dompdf/php-svg-lib 1.0.2
+vendor/html5-php/      # masterminds/html5 2.12.0
+vendor/phpqrcode/      # fallback QR lokal
 ```
 
-   Autoloader di `app/bootstrap.php` sudah memetakan namespace
-   `Dompdf\`, `FontLib\`, `Svg\`, `Sabberworm\CSS\`, dan `Masterminds\` ke folder
-   tersebut sehingga dompdf langsung dapat dipakai tanpa Composer.
+   Tidak ada langkah `composer install`. Autoloader `app/bootstrap.php` memetakan
+   namespace `Dompdf`, `FontLib`, `Svg`, dan `Masterminds` ke folder di atas, termasuk
+   `vendor/dompdf/lib/Cpdf.php`. Bila ingin memperbarui dompdf, ganti isi `vendor/dompdf`
+   (tag `v3.1.6`) beserta ketiga dependensinya.
 
-3. QR code lokal (opsional, bila tidak ingin memakai API online):
-
-```bash
-cd vendor && curl -L -o qr.zip https://github.com/t0k4rt/phpqrcode/archive/refs/heads/master.zip
-unzip qr.zip && mv phpqrcode-master phpqrcode && rm qr.zip
-```
+3. QR code slip gaji memakai **API online** `api.qrserver.com` (default) dan otomatis
+   beralih ke `vendor/phpqrcode` bila server tidak dapat mengakses internet. Hasil QR
+   di-cache di `storage/uploads/qr/`.
 
 4. Beri izin tulis pada `storage/`:
 
@@ -384,6 +380,73 @@ iuran, dan plafon upah 0–100 jt. Semua perubahan langsung dipakai simulasi ber
 
 ---
 
+## 2.10 Modul Batch 8 — Payroll & Slip Gaji
+
+### Periode Payroll (`/payroll`) — HR & Finance
+* Satu periode = **satu business unit + satu bulan**; duplikat unit/bulan ditolak.
+  Tanggal mulai/akhir, `cutoff_date`, dan `pay_date` otomatis mengikuti
+  `payroll_cutoff_day` & `payroll_pay_day` (dipotong ke jumlah hari bulan tersebut).
+* Daftar periode: filter unit/tahun/status/pencarian, KPI (periode aktif, menunggu
+  finance, net & BPJS perusahaan tahun berjalan), tren net 6 periode, dan paginasi.
+* HR membuat/menghapus periode; HR dan Finance sama-sama dapat membuka detail.
+
+### Kalkulasi slip
+`POST /payroll/{id}/calculate` menghitung ulang seluruh karyawan aktif pada unit itu:
+
+| Komponen | Sumber |
+| --- | --- |
+| Gaji pokok | `employees.basic_salary` |
+| Tunjangan/potongan | komponen aktif karyawan (`SalaryModel::preview`) |
+| Bruto | gaji pokok + tunjangan + **lembur disetujui** (`overtime_requests.status = APPROVED`) |
+| Kehadiran | `attendance`: hadir, absen, hari & menit terlambat, cuti |
+| Denda keterlambatan | `late_minutes × attendance_late_deduction_value` (PER_MINUTE/PER_DAY/FIXED) |
+| Potongan absen | opsional, aktif bila `attendance_absent_deduct_salary = 1` (upah harian = pokok/22) |
+| Cuti tanpa upah | `leave_requests` APPROVED dengan jenis `is_paid = 0` atau `deduct_salary = 1` × upah harian |
+| BPJS karyawan | Kesehatan + JHT + JP (plafon upah diterapkan) |
+| PPh 21 | dihitung ulang atas dasar pengenaan **+ lembur**, metode TER/FLAT/PROGRESIF |
+| Net | bruto − BPJS karyawan − PPh 21 − potongan komponen − denda/absen/cuti |
+
+Setiap slip menyimpan nomor `SLIP/{KODE-UNIT}/{YYYYMM}/{urut}`, data presensi,
+rincian komponen (`payroll_item_components`: `COMPONENT`/`OVERTIME`/`BPJS`/`TAX`/
+`ATTENDANCE`), dan total periode (karyawan, bruto, potongan, net, BPJS perusahaan).
+
+### Alur status
+| Status | Aksi | Pelaku |
+| --- | --- | --- |
+| `DRAFT` | periode dibuat | HR |
+| `CALCULATED` | **Hitung / Hitung Ulang** (boleh berkali-kali selama belum dikirim) | HR |
+| `SENT_TO_FINANCE` | tanda tangan HR + notifikasi ke seluruh user Finance | HR |
+| `FINANCE_APPROVED` | tanda tangan Finance; slip sudah dapat diunduh karyawan | FIN |
+| `PAID` | semua item `payment_status = PAID` + notifikasi "slip tersedia" | FIN |
+
+HR dapat **menarik kembali** periode `SENT_TO_FINANCE`/`FINANCE_APPROVED`
+(tanda tangan dihapus, status kembali `CALCULATED`). Periode `PAID` tidak dapat diubah
+dan periode yang sudah dikirim tidak dapat dihapus.
+
+### Rekap & export
+* Rekap per **departemen** (orang, bruto, potongan, net, PPh, BPJS) + komposisi
+  potongan (PPh, BPJS karyawan, denda, absen/cuti).
+* **Export CSV** `GET /payroll/{id}/export` — 16 kolom siap Excel (UTF-8 BOM): no. slip,
+  NIK, nama, departemen, gaji pokok, hadir, absen, menit terlambat, jam lembur,
+  tunjangan, bruto, BPJS karyawan, PPh 21, potongan, net, status.
+
+### Slip gaji PDF ber-QR
+* `GET /payroll/items/{id}/pdf` merender `app/Views/payroll/slip_pdf.php` dengan
+  **dompdf** (A4, satu halaman): kop perusahaan + NPWP, data karyawan & rekening,
+  kolom tunjangan/potongan berdampingan, blok take-home pay, ringkasan presensi,
+  tanda tangan HR & Finance, dan QR verifikasi. `?download=1` memaksa unduhan.
+* QR berisi URL **absolut** `GET /verify/slip/{id}/{token}`; token =
+  `HMAC-SHA256("payslip:{id}", app_key)` sehingga tidak memerlukan tabel tambahan.
+* Halaman verifikasi **publik** menampilkan "Dokumen Sah" dengan nama disamarkan,
+  periode, unit, dan gaji bersih; token salah menampilkan "Dokumen tidak valid".
+* Hak akses PDF: HR, Finance, atau karyawan pemilik slip — selain itu `404`.
+
+### Slip Gaji Saya (`/me/payslip`) — semua peran
+* Kartu ringkas (jumlah slip, total net, slip terakhir) + riwayat slip berstatus
+  `FINANCE_APPROVED`/`PAID` dengan tautan detail dan unduh PDF.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -392,8 +455,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -404,7 +467,7 @@ public/
   assets/{css,js,img}    # design system, progressive enhancement, aset visual
   manifest.webmanifest   # PWA
   sw.js                  # service worker (offline shell aset)
-vendor/                  # dompdf & phpqrcode (manual, tidak via Composer)
+vendor/                  # dompdf 3.1.6 + font/svg/html5 libs & phpqrcode (manual, tanpa Composer)
 tools/preview/           # runtime pratinjau sandbox (bukan untuk produksi)
 storage/                 # logs, cache, uploads, database preview
 ```

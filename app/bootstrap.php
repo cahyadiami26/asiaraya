@@ -36,8 +36,7 @@ spl_autoload_register(static function (string $class): void {
         'Dompdf\\'     => VENDOR_PATH . '/dompdf/src/',
         'FontLib\\'    => VENDOR_PATH . '/php-font-lib/src/FontLib/',
         'Svg\\'        => VENDOR_PATH . '/php-svg-lib/src/Svg/',
-        'Sabberworm\\CSS\\' => VENDOR_PATH . '/php-css-parser/src/',
-        'Masterminds\\' => VENDOR_PATH . '/html5/src/',
+        'Masterminds\\' => VENDOR_PATH . '/html5-php/src/',
     ];
     foreach ($prefixes as $prefix => $dir) {
         if (str_starts_with($class, $prefix)) {
@@ -50,10 +49,16 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-// Legacy (non namespaced) QR library - phpqrcode
+// Legacy (non namespaced) QR library - phpqrcode (dipasang manual)
 $qr = VENDOR_PATH . '/phpqrcode/qrlib.php';
 if (is_file($qr)) {
     require_once $qr;
+}
+
+// dompdf menyimpan sebagian class di lib/ (bukan PSR-4)
+$cpdf = VENDOR_PATH . '/dompdf/lib/Cpdf.php';
+if (is_file($cpdf) && !class_exists('Dompdf\Cpdf')) {
+    require_once $cpdf;
 }
 
 require APP_PATH . '/Core/helpers.php';

@@ -20,6 +20,7 @@ use App\Controllers\MediaController;
 use App\Controllers\LeaveController;
 use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
+use App\Controllers\PayrollController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ScheduleController;
 use App\Controllers\SettingsController;
@@ -143,6 +144,23 @@ $router->get('/settings', [SettingsController::class, 'index'], ['roles' => ['HR
 $router->post('/settings/integration', [SettingsController::class, 'saveIntegration'], ['roles' => ['HR'], 'name' => 'settings.integration.save']);
 $router->post('/settings/payroll', [SettingsController::class, 'savePayroll'], ['roles' => ['HR'], 'name' => 'settings.payroll.save']);
 
+/* ------------------------------------------------------- Batch 8: payroll */
+$router->get('/payroll', [PayrollController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'payroll.index']);
+$router->post('/payroll', [PayrollController::class, 'store'], ['roles' => ['HR'], 'name' => 'payroll.store']);
+$router->get('/payroll/items/{id}', [PayrollController::class, 'item'], ['name' => 'payroll.item']);
+$router->get('/payroll/items/{id}/pdf', [PayrollController::class, 'slipPdf'], ['name' => 'payroll.item.pdf']);
+$router->get('/payroll/{id}', [PayrollController::class, 'show'], ['roles' => ['HR', 'FIN'], 'name' => 'payroll.show']);
+$router->get('/payroll/{id}/export', [PayrollController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'payroll.export']);
+$router->post('/payroll/{id}/calculate', [PayrollController::class, 'calculate'], ['roles' => ['HR'], 'name' => 'payroll.calculate']);
+$router->post('/payroll/{id}/submit', [PayrollController::class, 'submit'], ['roles' => ['HR'], 'name' => 'payroll.submit']);
+$router->post('/payroll/{id}/approve', [PayrollController::class, 'approve'], ['roles' => ['FIN'], 'name' => 'payroll.approve']);
+$router->post('/payroll/{id}/pay', [PayrollController::class, 'pay'], ['roles' => ['FIN'], 'name' => 'payroll.pay']);
+$router->post('/payroll/{id}/reopen', [PayrollController::class, 'reopen'], ['roles' => ['HR'], 'name' => 'payroll.reopen']);
+$router->post('/payroll/{id}/delete', [PayrollController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'payroll.delete']);
+
+$router->get('/me/payslip', [PayrollController::class, 'mine'], ['name' => 'me.payslip']);
+$router->get('/verify/slip/{id}/{token}', [PayrollController::class, 'verify'], ['auth' => false, 'csrf' => false, 'name' => 'payroll.verify']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -153,10 +171,8 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/payroll'        => ['Payroll', 'Batch 8'],
     '/reports'        => ['Laporan', 'Batch 9'],
     '/reports/payroll'=> ['Laporan Payroll', 'Batch 9'],
-    '/me/payslip'     => ['Slip Gaji Saya', 'Batch 8'],
     '/logs'           => ['Log Aktivitas', 'Batch 9'],
 ];
 foreach ($pending as $path => [$label, $batch]) {
