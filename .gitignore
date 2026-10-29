@@ -32,3 +32,6 @@ Thumbs.db
 public/_install.php
 public/_router.php
 public/_status.php
+
+# phpqrcode runtime cache (folder mask_* dibuat saat generator QR dipakai)
+vendor/phpqrcode/cache/

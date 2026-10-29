@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 20;
+    public const VERSION = 21;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -58,6 +58,8 @@ final class Schema
         'CREATE INDEX IF NOT EXISTS idx_employee_doc_type ON employee_documents (doc_type)',
         'CREATE INDEX IF NOT EXISTS idx_job_history_employee ON employee_job_history (employee_id, effective_date)',
         'CREATE INDEX IF NOT EXISTS idx_job_history_type ON employee_job_history (change_type, effective_date)',
+        'CREATE INDEX IF NOT EXISTS idx_tax_slips_year ON tax_slips (tax_year)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_tax_slip_employee_year ON tax_slips (employee_id, tax_year)',
         'CREATE INDEX IF NOT EXISTS idx_ann_target_ann ON announcement_targets (announcement_id)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_announcement_target ON announcement_targets (announcement_id, target_type, target_value)',
         'CREATE INDEX IF NOT EXISTS idx_ann_target_type ON announcement_targets (target_type, target_value)',

@@ -42,6 +42,8 @@ const settingValue = (key, fallback = '') => {
 const DEMO_BASE = process.env.DEMO_BASE_URL || 'https://hris.asiaraya.co.id';
 const HOST_PATTERNS = ['http://127.0.0.1:8080', 'http://localhost:8080', 'http://localhost'];
 const demoLink = (text) => HOST_PATTERNS.reduce((acc, pattern) => acc.split(pattern).join(DEMO_BASE), String(text));
+// Alamat IP sandbox pada activity_logs diganti IP kantor contoh.
+const demoIp = (value) => (value === '127.0.0.1' || value === '::1' ? '10.30.10.15' : value);
 
 const schemaVersion = settingValue('schema_version', '?');
 const appVersion = settingValue('app_version', '');
@@ -113,7 +115,10 @@ for (const table of tables) {
         const values = columns
             .map((column) => {
                 const value = row[column];
-                return quote(typeof value === 'string' ? demoLink(value) : value);
+                if (typeof value === 'string') {
+                    return quote(demoIp(demoLink(value)));
+                }
+                return quote(value);
             })
             .join(', ');
         lines.push('INSERT INTO `' + table + '` (' + columnList + ') VALUES (' + values + ');');

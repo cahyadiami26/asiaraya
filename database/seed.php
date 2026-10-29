@@ -1853,6 +1853,11 @@ return static function (): array {
     $log = array_merge($log, $seedDocuments());
     // >>> documents-seed
 
+    /* ---------------- Batch 20: payroll, PPh 21 & BPJS ---------------- */
+    $seedPayroll = require BASE_PATH . '/database/seed_payroll.php';
+    $log = array_merge($log, $seedPayroll());
+    // >>> payroll-seed
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

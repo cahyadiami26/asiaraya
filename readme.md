@@ -37,8 +37,9 @@ dengan slip gaji ber-QR.
 | **17.1** | Penyempurnaan: **target pengumuman berlapis** (unit bisnis, departemen, jabatan, peran, dan karyawan tertentu — bisa dikombinasikan) serta **denda keterlambatan progresif** berbasis tier 0–1 jam, 1–2 jam, 2–3 jam, dan >3 jam dengan batas & nominal yang dapat diatur | ✅ selesai |
 | **18** | Email & penjadwal: konfigurasi SMTP (SSL/STARTTLS) + email uji, antrean email keluar dengan template ber-kop perusahaan (pengingat kontrak, sisa cuti, pengumuman, reset sandi), kirim ulang/batal, serta **cron job** (antrean email, pengingat kontrak H-N, pengingat sisa cuti, notifikasi pengumuman terjadwal) lengkap dengan riwayat eksekusi, mode otomatis, dan endpoint cron bertoken | ✅ selesai |
 | **19** | Dokumen karyawan & riwayat jabatan: arsip digital berjenis (KTP, NPWP, KK, ijazah, sertifikat, kontrak, SK, BPJS, SIM, paspor) dengan nomor, masa berlaku, penanda rahasia, verifikasi HR + alasan penolakan, pencarian/filter/pagination, unggah mandiri karyawan, serta **riwayat jabatan** (pengangkatan, promosi, mutasi, demosi, kontrak, gaji, status) bertanggal efektif dengan snapshot organisasi dan penyelarasan data karyawan otomatis, plus job pengingat dokumen kedaluwarsa | ✅ selesai |
+| **20** | Pajak & jaminan sosial: rekap PPh 21 setahun (biaya jabatan, PTKP, PKP, lapisan UU HPP), **bukti potong 1721-A1 PDF ber-QR** dengan verifikasi publik, penerbitan massal + penarikan, **export CSV siap olah e-SPT (1721-I)**, serta **rekap BPJS** Kesehatan & Ketenagakerjaan per program (KES, JHT, JP, JKK, JKM — porsi karyawan vs perusahaan), tren bulanan, kelengkapan nomor peserta, dan cetak PDF/CSV | ✅ selesai |
 
-Seluruh sembilan belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -98,9 +99,9 @@ mysql -u user -p asiaraya_hris < database/schema.sql
   (`HRIS_DB_HOST`, `HRIS_DB_DATABASE`, `HRIS_DB_USERNAME`, `HRIS_DB_PASSWORD`,
   `HRIS_GOOGLE_CLIENT_SECRET`, dst.). Daftar kunci lengkap ada di
   `app/config/env.example.php`.
-* `database/demo-data.sql` — **dump data demo** (6.949 baris pada 43 tabel
-  berisi — dari 49 tabel skema, `INSERT` saja) untuk MySQL/MariaDB, dibuat dari
-  database pratinjau:
+* `database/demo-data.sql` — **dump data demo** (39.953 baris pada 45 tabel
+  berisi — dari 50 tabel skema, `INSERT` saja, ±20 MB) untuk MySQL/MariaDB,
+  dibuat dari database pratinjau:
 
 ```bash
 mysql -u user -p asiaraya_hris < database/schema.sql
@@ -120,10 +121,11 @@ cp database/demo-preview.sqlite storage/database.sqlite
   `node tools/preview/gen-dump.mjs` (membaca `storage/database.sqlite`).
 
 * Isi data demo sepenuhnya fiktif (118 karyawan contoh, 5 pengajuan offboarding,
-  presensi 26 hari kerja, pelatihan, rekrutmen, BAST, 135 dokumen kepegawaian
-  dengan berkas PDF contoh, 24 catatan riwayat jabatan, 135 email pada antrean
-  keluar beserta riwayat cron). Untuk memulai dari nol, login sebagai HR
-  lalu buka **Reset Sistem** (`/system/reset`).
+  presensi ±20.900 baris untuk 9 bulan, pelatihan, rekrutmen, BAST,
+  135 dokumen kepegawaian dengan berkas PDF contoh, 24 catatan riwayat jabatan,
+  **36 periode payroll (999 slip, Feb–Okt 2026) beserta 75 bukti potong
+  1721-A1**, 135 email pada antrean keluar beserta riwayat cron). Untuk memulai
+  dari nol, login sebagai HR lalu buka **Reset Sistem** (`/system/reset`).
 * Driver email pada profil demo adalah **Log berkas** — email otomatis tetap
   terlihat di `/mail` (status *Terkirim*) tetapi hanya dicatat ke
   `storage/logs/mail.log`, tidak dikirim ke alamat asli. Isi kredensial SMTP
@@ -1299,6 +1301,93 @@ Lima job bawaan, semuanya dapat dijalankan manual dari UI:
 
 ---
 
+## 2.23 Batch 20 — Pajak (PPh 21, 1721-A1, e-SPT) & Rekap BPJS
+
+Semua angka berasal dari **komponen payroll periode final**
+(`payroll_items` + `payroll_item_components` berstatus *Finance Approved* atau
+*Paid*), jadi rekap pajak/BPJS selalu sama dengan slip gaji yang dibagikan —
+tidak ada tabel angka bayangan.
+
+### Rekap PPh 21 (`/tax`) — HR & Finance
+* Satu baris per karyawan setahun: bruto, biaya jabatan 5 % (maks Rp 6 juta),
+  iuran pensiun/JHT karyawan, neto, PTKP, PKP, PPh terutang, PPh sudah
+  dipotong, dan selisihnya.
+* Kartu ringkasan (karyawan, bruto, neto, PKP, PPh terutang, sudah dipotong,
+  selisih), **setoran per masa** (bar progres tiap bulan), **sebaran PTKP**,
+  dan panel selisih kurang/lebih potong.
+* Filter tahun pajak, unit bisnis, dan pencarian nama/NIK/NPWP. Aksi
+  **Terbitkan Semua** menghormati filter yang aktif.
+* Rumus sama persis dengan mesin payroll (`SalaryModel::biayaJabatan()` dan
+  `SalaryModel::progressiveTax()`): PKP dibulatkan ke bawah ribuan, lapisan
+  UU HPP 5 / 15 / 25 / 30 / 35 %.
+* Selama tahun pajak belum 12 masa, selisih ditandai **“selisih berjalan”**
+  (bukan kurang/lebih potong final) karena PPh bulanan masih memakai proyeksi
+  setahun dan baru dinolkan pada masa Desember.
+
+### Bukti potong 1721-A1 (`/tax/{id}`)
+* Halaman rincian: identitas, urutan perhitungan setahun, komposisi penghasilan
+  bruto (gaji pokok, tunjangan, lembur, THR, lain-lain), daftar slip bulanan
+  yang dipakai, dan panel bukti potong.
+* **PDF 1721-A1** resmi (dompdf, kop perusahaan + NPWP pemotong) memuat nomor
+  bukti potong, identitas penerima, rincian bruto/pengurang/neto/PKP/lapisan
+  tarif, PPh terutang vs dipotong, kolom tanda tangan HR & Finance, serta
+  **QR verifikasi publik** (`/tax/verify/{id}/{tahun}`).
+* Cetak pertama oleh HR/Finance **menerbitkan nomor otomatis** (`1.1-{tahun}-{urut}`)
+  dan menyimpan **snapshot angka** ke `tax_slips.detail_snapshot`, sehingga
+  revisi payroll berikutnya tidak mengubah dokumen yang sudah diserahkan.
+* Bukti potong dapat **diterbitkan ulang** (memperbarui snapshot) atau
+  **ditarik kembali** dari halaman rincian; keduanya tercatat di log aktivitas.
+
+### Export e-SPT (`/tax/export`)
+* CSV UTF-8 (BOM, delimiter koma, format angka polos) berisi satu baris per
+  karyawan dengan kolom 1721-I: NIK, NPWP, nama, status PTKP, masa, bruto,
+  biaya jabatan, iuran pensiun, neto, PTKP, PKP, PPh terutang, PPh dipotong,
+  selisih — ditutup baris `TOTAL`. Siap diolah/diimpor ke aplikasi e-SPT DJP
+  atau dijadikan lampiran SPT.
+
+### Rekap BPJS (`/bpjs`) — HR & Finance
+* Ringkasan per program **KES, JHT, JP, JKK, JKM** dengan porsi perusahaan vs
+  karyawan, jumlah peserta, dan total setoran; filter tahun, bulan
+  (termasuk **Semua bulan**), dan unit bisnis.
+* Rincian per peserta: nomor BPJS Kesehatan & Ketenagakerjaan, upah, iuran tiap
+  program, total perusahaan/karyawan.
+* **Tren 12 bulan** (kolom setoran per masa), serta indikator **kelengkapan
+  nomor peserta** (berapa karyawan aktif yang nomornya belum diisi).
+* Export **CSV** dan **PDF landscape** siap dilampirkan ke laporan Finance.
+
+### Portal karyawan (`/me/tax`)
+* Karyawan melihat daftar bukti potong 1721-A1 miliknya per tahun pajak,
+  ringkasan PPh terakhir & akumulasi, lalu mengunduh PDF-nya. Nomor bukti
+  potong, bruto, PPh, dan tanggal terbit ditampilkan apa adanya dari arsip HR.
+* Karyawan tidak dapat membuka bukti potong rekan lain (`403`) maupun halaman
+  rekap HR.
+
+### Catatan teknis
+* Versi skema naik ke **21**; tabel baru `tax_slips` (unik per
+  `employee_id + tax_year`, indeks tahun) menyimpan snapshot bukti potong.
+* `PayrollModel::calculate()` kini juga menyimpan **komponen BPJS sisi
+  perusahaan** (`type = 'EMPLOYER'`, `kind = 'BPJS'`) agar rekap per program
+  dapat dirinci tanpa menghitung ulang persentase.
+* `SalaryModel` mendapat `biayaJabatan()` dan `progressiveTax()` — dipakai
+  bersama oleh kalkulasi payroll dan rekap 1721-A1 sehingga angkanya identik.
+* Model: `TaxModel` (filter, rekap tahunan/bulanan, sebaran PTKP, rincian
+  karyawan, penerbitan/penarikan bukti potong, snapshot) dan `BpjsModel`
+  (program, rincian peserta, ringkasan, tren bulanan, kelengkapan nomor).
+* Controller: `TaxController` (`index/show/issue/issueAll/revoke/pdf/verify/`
+  `export/mine`) dan `BpjsController` (`index/csv/pdf`).
+* Rute baru: `/tax*`, `/bpjs*` (HR & Finance), `/tax/{id}/pdf` (HR/FIN atau
+  pemilik), `/me/tax` (semua peran), `/tax/verify/{id}/{tahun}` (publik,
+  tanpa login — dipakai QR bukti potong).
+* Menu baru **Pajak & Jaminan Sosial** (HR/FIN) dan **Bukti Potong Pajak** di
+  portal karyawan.
+* Data demo: `database/seed_payroll.php` melengkapi presensi 9 bulan, membuat
+  36 periode payroll per unit lewat **mesin payroll asli** (bukan angka
+  hardcode), memindahkan status ke `FINANCE_APPROVED`/`PAID` beserta tanda
+  tangan, lalu menerbitkan 75 dari 111 bukti potong — sisanya dibiarkan agar
+  aksi “Terbitkan Semua” dapat diuji.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1308,12 +1397,16 @@ app/
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, Mailer,
                          # Scheduler, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Log, Mail, Scheduler, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Mail, Scheduler (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Log, Mail, Scheduler, Document, Career, Tax, Bpjs, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Mail, Scheduler, Document, Career, Tax, Bpjs (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors, mail/ (template email)
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
-  seed.php               # data contoh PT Asia Raya Group
+  seed.php               # data contoh PT Asia Raya Group (orkestrator)
+  seed_documents.php     # 135 dokumen kepegawaian + PDF contoh, 24 riwayat jabatan
+  seed_payroll.php       # 36 periode payroll (Feb–Okt 2026) + 75 bukti potong 1721-A1
+  demo-data.sql          # dump INSERT data demo untuk MySQL/MariaDB
+  demo-preview.sqlite    # salinan SQLite siap pakai untuk pratinjau
 public/
   index.php              # front controller (semua route terdaftar di sini)
   cron.php               # entry penjadwal untuk crontab server (CLI/HTTP bertoken)
@@ -1355,6 +1448,8 @@ storage/                 # logs, cache, uploads, database preview
 | Email & penjadwal (SMTP, antrean email, cron job) | ✅ | – | – |
 | Dokumen karyawan (arsip KTP/NPWP/ijazah/kontrak/sertifikat, verifikasi, unduh) | ✅ semua dokumen | – | unggah & unduh dokumen sendiri (non-rahasia) |
 | Riwayat jabatan & mutasi | ✅ catat, ubah data karyawan otomatis | – | lihat linimasa sendiri |
+| PPh 21 & bukti potong 1721-A1 | ✅ rekap, terbitkan/tarik, cetak, export e-SPT | ✅ rekap, cetak, export | unduh bukti potong sendiri |
+| Rekap BPJS (Kesehatan & Ketenagakerjaan) | ✅ semua program, cetak PDF/CSV | ✅ semua program, cetak PDF/CSV | – |
 
 Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
 payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani

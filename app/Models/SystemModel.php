@@ -55,6 +55,7 @@ final class SystemModel
         'announcement_targets',
         'employee_documents',
         'employee_job_history',
+        'tax_slips',
         'notifications',
         'email_queue',
         'cron_runs',

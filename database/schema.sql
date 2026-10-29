@@ -858,6 +858,39 @@ CREATE TABLE IF NOT EXISTS employee_job_history (
 );
 
 -- ---------------------------------------------------------------------------
+-- Batch 20 — Bukti potong PPh 21 tahunan (form 1721-A1)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS tax_slips (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    tax_year INT NOT NULL,
+    slip_number VARCHAR(60) NOT NULL,
+    months_count INT NOT NULL DEFAULT 0,
+    gross DECIMAL(15,2) NOT NULL DEFAULT 0,
+    biaya_jabatan DECIMAL(15,2) NOT NULL DEFAULT 0,
+    iuran_pensiun DECIMAL(15,2) NOT NULL DEFAULT 0,
+    netto DECIMAL(15,2) NOT NULL DEFAULT 0,
+    ptkp DECIMAL(15,2) NOT NULL DEFAULT 0,
+    pkp DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_due DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_withheld DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_diff DECIMAL(15,2) NOT NULL DEFAULT 0,
+    tax_status VARCHAR(10) NULL,
+    npwp VARCHAR(40) NULL,
+    employee_name VARCHAR(150) NULL,
+    position_name VARCHAR(150) NULL,
+    unit_name VARCHAR(120) NULL,
+    detail_snapshot TEXT NULL,
+    note VARCHAR(255) NULL,
+    issued_by INT UNSIGNED NULL,
+    issued_at DATETIME NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    KEY idx_tax_slips_year (tax_year),
+    UNIQUE KEY uq_tax_slip_employee_year (employee_id, tax_year)
+);
+
+-- ---------------------------------------------------------------------------
 -- Batch 17.1 — Target pengumuman berlapis (unit, departemen, jabatan, peran,
 -- karyawan tertentu, atau kombinasi beberapa sekaligus)
 -- ---------------------------------------------------------------------------

@@ -84,6 +84,47 @@ final class SalaryModel
         ];
     }
 
+    /** Biaya jabatan setahun: 5% dari bruto, maksimal Rp 6.000.000. */
+    public function biayaJabatan(float $annualGross): float
+    {
+        return round(min(max(0, $annualGross) * 5 / 100, 6000000), 2);
+    }
+
+    /**
+     * PPh 21 setahun atas Penghasilan Kena Pajak memakai lapisan progresif
+     * UU HPP. Dipakai kalkulasi payroll (metode PROGRESSIVE) dan bukti potong
+     * 1721-A1 sehingga keduanya selalu konsisten.
+     *
+     * @return array{tax:float,layers:array<int,array<string,mixed>>}
+     */
+    public function progressiveTax(float $pkp): array
+    {
+        $remaining = max(0, $pkp);
+        $previousLimit = 0.0;
+        $tax = 0.0;
+        $layers = [];
+
+        foreach ($this->brackets() as $bracket) {
+            if ($remaining <= 0) {
+                break;
+            }
+            $layerSize = $bracket['limit'] - $previousLimit;
+            $layer = min($remaining, $layerSize);
+            $amount = $layer * $bracket['rate'] / 100;
+            $layers[] = [
+                'range' => rupiah($previousLimit) . ' – ' . ($bracket['limit'] >= PHP_INT_MAX ? 'dst' : rupiah($bracket['limit'])),
+                'rate'  => $bracket['rate'],
+                'base'  => round($layer, 2),
+                'tax'   => round($amount, 2),
+            ];
+            $tax += $amount;
+            $remaining -= $layer;
+            $previousLimit = $bracket['limit'];
+        }
+
+        return ['tax' => round($tax, 2), 'layers' => $layers];
+    }
+
     /* ============================================================== components */
 
     public function components(bool $activeOnly = false): array
@@ -590,28 +631,11 @@ final class SalaryModel
 
         // PROGRESSIVE
         $annualGross = $taxableBase * 12;
-        $jabatan = min($annualGross * 5 / 100, 6000000);
+        $jabatan = $this->biayaJabatan($annualGross);
         $pkp = max(0, $annualGross - $jabatan - $ptkp);
-        $remaining = $pkp;
-        $previousLimit = 0.0;
-
-        foreach ($this->brackets() as $bracket) {
-            if ($remaining <= 0) {
-                break;
-            }
-            $layerSize = $bracket['limit'] - $previousLimit;
-            $layer = min($remaining, $layerSize);
-            $amount = $layer * $bracket['rate'] / 100;
-            $bracketsUsed[] = [
-                'range'  => rupiah($previousLimit) . ' – ' . ($bracket['limit'] === PHP_INT_MAX ? 'dst' : rupiah($bracket['limit'])),
-                'rate'   => $bracket['rate'],
-                'base'   => round($layer, 2),
-                'tax'    => round($amount, 2),
-            ];
-            $annual += $amount;
-            $remaining -= $layer;
-            $previousLimit = $bracket['limit'];
-        }
+        $progressive = $this->progressiveTax($pkp);
+        $bracketsUsed = $progressive['layers'];
+        $annual = (float) $progressive['tax'];
 
         $monthly = $pkp > 0 ? round(($annual / 12) / $round) * $round : 0.0;
 

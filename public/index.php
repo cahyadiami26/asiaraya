@@ -13,6 +13,7 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\AnnouncementController;
 use App\Controllers\ApprovalController;
 use App\Controllers\AttendanceController;
+use App\Controllers\BpjsController;
 use App\Controllers\CareerController;
 use App\Controllers\AuthController;
 use App\Controllers\ComponentController;
@@ -39,6 +40,7 @@ use App\Controllers\SchedulerController;
 use App\Controllers\SettingsController;
 use App\Controllers\ShiftController;
 use App\Controllers\SystemController;
+use App\Controllers\TaxController;
 use App\Core\Router;
 
 $router = Router::instance();
@@ -378,6 +380,22 @@ $router->post('/careers', [CareerController::class, 'store'], ['roles' => ['HR']
 $router->add('POST|DELETE', '/careers/{id}/delete', [CareerController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'careers.delete']);
 
 $router->get('/me/career', [CareerController::class, 'mine'], ['name' => 'me.career']);
+
+/* ---------------------------------------- Pajak & BPJS: 1721-A1, e-SPT (Batch 20) */
+$router->get('/tax', [TaxController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.index']);
+$router->get('/tax/export', [TaxController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.export', 'csrf' => false]);
+$router->post('/tax/issue-all', [TaxController::class, 'issueAll'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.issueAll']);
+$router->get('/tax/{id}', [TaxController::class, 'show'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.show']);
+$router->post('/tax/{id}/issue', [TaxController::class, 'issue'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.issue']);
+$router->post('/tax/{id}/revoke', [TaxController::class, 'revoke'], ['roles' => ['HR', 'FIN'], 'name' => 'tax.revoke']);
+$router->get('/tax/{id}/pdf', [TaxController::class, 'pdf'], ['name' => 'tax.pdf', 'csrf' => false]);
+$router->get('/tax/verify/{id}/{year}', [TaxController::class, 'verify'], ['auth' => false, 'csrf' => false, 'name' => 'tax.verify']);
+
+$router->get('/bpjs', [BpjsController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'bpjs.index']);
+$router->get('/bpjs/csv', [BpjsController::class, 'csv'], ['roles' => ['HR', 'FIN'], 'name' => 'bpjs.csv', 'csrf' => false]);
+$router->get('/bpjs/pdf', [BpjsController::class, 'pdf'], ['roles' => ['HR', 'FIN'], 'name' => 'bpjs.pdf', 'csrf' => false]);
+
+$router->get('/me/tax', [TaxController::class, 'mine'], ['name' => 'me.tax']);
 
 /* --------------------------------------------------- Reset sistem (Batch 17) */
 $router->get('/system/reset', [SystemController::class, 'reset'], ['roles' => ['HR'], 'name' => 'system.reset']);

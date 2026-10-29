@@ -37,8 +37,6 @@ final class Nav
                     ['route' => 'employees.contracts', 'label' => 'Kontrak & Status', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'contracts'],
                     ['route' => 'documents.index', 'label' => 'Dokumen Karyawan', 'icon' => 'layers', 'roles' => ['HR'], 'badge_key' => 'documents'],
                     ['route' => 'careers.index', 'label' => 'Riwayat Jabatan', 'icon' => 'trending', 'roles' => ['HR']],
-                    ['route' => 'documents.index', 'label' => 'Dokumen Karyawan', 'icon' => 'layers', 'roles' => ['HR'], 'badge_key' => 'documents'],
-                    ['route' => 'careers.index', 'label' => 'Riwayat Jabatan', 'icon' => 'trending', 'roles' => ['HR']],
                 ],
             ],
             [
@@ -66,6 +64,14 @@ final class Nav
                     ['route' => 'components.index', 'label' => 'Komponen Gaji', 'icon' => 'layers', 'roles' => ['HR']],
                     ['route' => 'claims.index', 'label' => 'Klaim & Reimbursement', 'icon' => 'wallet', 'roles' => ['HR', 'FIN'], 'badge_key' => 'claims'],
                     ['route' => 'reports.index', 'label' => 'Laporan', 'icon' => 'receipt', 'roles' => ['HR', 'FIN']],
+                ],
+            ],
+            [
+                'label' => 'Pajak & Jaminan Sosial',
+                'roles' => ['HR', 'FIN'],
+                'items' => [
+                    ['route' => 'tax.index', 'label' => 'PPh 21 & 1721-A1', 'icon' => 'percent', 'roles' => ['HR', 'FIN']],
+                    ['route' => 'bpjs.index', 'label' => 'Rekap BPJS', 'icon' => 'shield', 'roles' => ['HR', 'FIN']],
                 ],
             ],
             [
@@ -121,8 +127,7 @@ final class Nav
                     ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.tax', 'label' => 'Bukti Potong Pajak', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
                 ],
             ],
             [

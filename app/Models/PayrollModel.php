@@ -403,6 +403,22 @@ final class PayrollModel
                         'sort_order' => ++$sort,
                     ]);
                 }
+                // Iuran sisi perusahaan disimpan terpisah agar rekap BPJS dapat
+                // menampilkan rincian per program (KES, JHT, JP, JKK, JKM).
+                foreach (($preview['bpjs']['items'] ?? []) as $bpjsItem) {
+                    if (($bpjsItem['side'] ?? '') !== 'COMPANY' || (float) $bpjsItem['amount'] <= 0) {
+                        continue;
+                    }
+                    Database::insert('payroll_item_components', [
+                        'item_id'    => $itemId,
+                        'code'       => (string) $bpjsItem['code'],
+                        'name'       => (string) $bpjsItem['label'],
+                        'type'       => 'EMPLOYER',
+                        'kind'       => 'BPJS',
+                        'amount'     => round((float) $bpjsItem['amount'], 2),
+                        'sort_order' => ++$sort,
+                    ]);
+                }
                 if ($pphAmount > 0) {
                     Database::insert('payroll_item_components', [
                         'item_id'    => $itemId,
