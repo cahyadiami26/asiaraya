@@ -629,3 +629,78 @@ CREATE TABLE IF NOT EXISTS training_participants (
     KEY idx_training_participant_employee (employee_id, status),
     KEY idx_training_participant_status (session_id, status)
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 15 — Rekrutmen & Onboarding
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_vacancies (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(30) NOT NULL,
+    title VARCHAR(150) NOT NULL,
+    business_unit_id INT UNSIGNED NULL,
+    department_id INT UNSIGNED NULL,
+    position_id INT UNSIGNED NULL,
+    employment_type VARCHAR(30) NOT NULL DEFAULT 'PKWT',
+    work_mode VARCHAR(20) NOT NULL DEFAULT 'ONSITE',
+    location VARCHAR(150) NULL,
+    headcount INT NOT NULL DEFAULT 1,
+    description VARCHAR(1000) NULL,
+    requirements VARCHAR(1000) NULL,
+    salary_min DECIMAL(14,2) NOT NULL DEFAULT 0,
+    salary_max DECIMAL(14,2) NOT NULL DEFAULT 0,
+    open_date DATE NULL,
+    close_date DATE NULL,
+    hiring_manager_id INT UNSIGNED NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    note VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_job_code (code),
+    KEY idx_job_status (status, close_date),
+    KEY idx_job_unit (business_unit_id)
+);
+
+CREATE TABLE IF NOT EXISTS candidates (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    job_id INT UNSIGNED NOT NULL,
+    full_name VARCHAR(150) NOT NULL,
+    email VARCHAR(150) NOT NULL,
+    phone VARCHAR(30) NULL,
+    birth_date DATE NULL,
+    gender VARCHAR(15) NULL,
+    education VARCHAR(20) NULL,
+    experience_years DECIMAL(4,1) NOT NULL DEFAULT 0,
+    current_company VARCHAR(150) NULL,
+    current_position VARCHAR(120) NULL,
+    expected_salary DECIMAL(14,2) NOT NULL DEFAULT 0,
+    source VARCHAR(20) NOT NULL DEFAULT 'WEBSITE',
+    cv VARCHAR(255) NULL,
+    cover_note VARCHAR(500) NULL,
+    rating TINYINT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'APPLIED',
+    interview_at DATETIME NULL,
+    interviewer_id INT UNSIGNED NULL,
+    interview_mode VARCHAR(20) NULL,
+    note VARCHAR(500) NULL,
+    reject_reason VARCHAR(255) NULL,
+    employee_id INT UNSIGNED NULL,
+    hired_at DATETIME NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    KEY idx_candidate_job (job_id, status),
+    KEY idx_candidate_status (status),
+    KEY idx_candidate_email (email)
+);
+
+CREATE TABLE IF NOT EXISTS candidate_stages (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    candidate_id INT UNSIGNED NOT NULL,
+    from_status VARCHAR(20) NULL,
+    to_status VARCHAR(20) NOT NULL,
+    note VARCHAR(255) NULL,
+    actor_id INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    KEY idx_candidate_stage (candidate_id, created_at)
+);

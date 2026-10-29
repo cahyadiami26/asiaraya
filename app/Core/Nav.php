@@ -65,6 +65,14 @@ final class Nav
                 ],
             ],
             [
+                'label' => 'Rekrutmen & Onboarding',
+                'roles' => ['HR'],
+                'items' => [
+                    ['route' => 'recruitment.index', 'label' => 'Lowongan & Pipeline', 'icon' => 'briefcase', 'roles' => ['HR'], 'badge_key' => 'recruitment'],
+                    ['route' => 'recruitment.candidates', 'label' => 'Data Pelamar', 'icon' => 'users', 'roles' => ['HR']],
+                ],
+            ],
+            [
                 'label' => 'Kinerja & Pengembangan',
                 'roles' => ['HR', 'FIN', 'KARYAWAN'],
                 'items' => [

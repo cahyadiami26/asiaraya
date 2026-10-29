@@ -1288,6 +1288,188 @@ return static function (): array {
     $log[] = 'Pelatihan: ' . count($programIds) . ' program, ' . count($sessionIds) . ' sesi, '
         . $participantCount . ' peserta, dan ' . $certificateCount . ' sertifikat PDF dibuat.';
 
+    /* ---------------- Rekrutmen & onboarding ---------------- */
+    $jobSeed = [
+        'acc' => [
+            'code' => 'JOB-2026-001', 'title' => 'Staff Accounting', 'bu' => 'JKT', 'dept' => 'JKT-FIN',
+            'position' => 'Finance Analyst', 'type' => 'PKWTT', 'mode' => 'ONSITE', 'location' => 'Jakarta HQ',
+            'headcount' => 2, 'salary_min' => 6500000, 'salary_max' => 8500000,
+            'open' => '-16 days', 'close' => '+10 days', 'status' => 'OPEN', 'manager' => $finId,
+            'description' => 'Menyusun laporan keuangan bulanan, rekonsiliasi bank, dan mendukung audit internal.',
+            'requirements' => 'S1 Akuntansi, menguasai Excel lanjutan, teliti, dan mampu bekerja dengan tenggat bulanan.',
+            'note' => 'Prioritas kandidat dengan pengalaman audit eksternal.',
+        ],
+        'prod' => [
+            'code' => 'JOB-2026-002', 'title' => 'Operator Produksi', 'bu' => 'SBY', 'dept' => 'SBY-PRD',
+            'position' => 'Operator Produksi', 'type' => 'PKWT', 'mode' => 'ONSITE', 'location' => 'Surabaya Plant',
+            'headcount' => 5, 'salary_min' => 4500000, 'salary_max' => 5500000,
+            'open' => '-9 days', 'close' => '+21 days', 'status' => 'OPEN', 'manager' => $hrId,
+            'description' => 'Menjalankan mesin produksi sesuai SOP, menjaga kualitas hasil, dan melaporkan hambatan lini.',
+            'requirements' => 'SMA/SMK teknik, siap kerja shift, memahami dasar K3.',
+            'note' => 'Rekrutmen massal untuk lini produksi baru.',
+        ],
+        'sales' => [
+            'code' => 'JOB-2026-003', 'title' => 'Sales Executive', 'bu' => 'BDG', 'dept' => 'BDG-SLS',
+            'position' => 'Sales Representative', 'type' => 'PKWTT', 'mode' => 'HYBRID', 'location' => 'Bandung Branch',
+            'headcount' => 3, 'salary_min' => 7000000, 'salary_max' => 10000000,
+            'open' => '-30 days', 'close' => '+25 days', 'status' => 'ON_HOLD', 'manager' => $hrId,
+            'description' => 'Mengelola pipeline penjualan area Bandung, membina distributor, dan mencapai target kuartalan.',
+            'requirements' => 'Minimal D3, pengalaman sales B2B 2 tahun, memiliki SIM A.',
+            'note' => 'Ditahan sementara menunggu persetujuan anggaran kuartal berikutnya.',
+        ],
+        'intern' => [
+            'code' => 'JOB-2026-004', 'title' => 'HR Intern', 'bu' => 'JKT', 'dept' => 'JKT-HRGA',
+            'position' => 'Staff Operasional', 'type' => 'Magang', 'mode' => 'ONSITE', 'location' => 'Jakarta HQ',
+            'headcount' => 2, 'salary_min' => 2500000, 'salary_max' => 3000000,
+            'open' => '+3 days', 'close' => '+40 days', 'status' => 'DRAFT', 'manager' => $hrId,
+            'description' => 'Mendukung administrasi rekrutmen, pendataan pelatihan, dan pengelolaan berkas karyawan.',
+            'requirements' => 'Mahasiswa tingkat akhir semester 6–8, komunikatif, teliti.',
+            'note' => 'Program magang batch Februari.',
+        ],
+    ];
+
+    $jobIds = [];
+    foreach ($jobSeed as $key => $meta) {
+        $jobIds[$key] = Database::insert('job_vacancies', [
+            'code'              => $meta['code'],
+            'title'             => $meta['title'],
+            'business_unit_id'  => $buIds[$meta['bu']] ?? null,
+            'department_id'     => $deptIds[$meta['dept']] ?? null,
+            'position_id'       => $positionIds[$meta['position']] ?? null,
+            'employment_type'   => $meta['type'],
+            'work_mode'         => $meta['mode'],
+            'location'          => $meta['location'],
+            'headcount'         => $meta['headcount'],
+            'description'       => $meta['description'],
+            'requirements'      => $meta['requirements'],
+            'salary_min'        => $meta['salary_min'],
+            'salary_max'        => $meta['salary_max'],
+            'open_date'         => date('Y-m-d', strtotime($meta['open'])),
+            'close_date'        => date('Y-m-d', strtotime($meta['close'])),
+            'hiring_manager_id' => $meta['manager'] ?: null,
+            'status'            => $meta['status'],
+            'note'              => $meta['note'],
+            'created_by'        => $hrReviewer,
+            'created_at'        => date('Y-m-d H:i:s'),
+            'updated_at'        => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    $candidateSeed = [
+        // job, nama, email, telepon, pendidikan, pengalaman, perusahaan, posisi, ekspektasi, sumber, rating, jalur tahapan
+        ['acc', 'Rani Puspita', 'rani.puspita@mail.com', '081234500011', 'S1', 3, 'PT Sinar Akuntan', 'Junior Auditor', 7800000, 'LINKEDIN', 4,
+            [['APPLIED', '-14 days', 'Melamar melalui LinkedIn.'], ['SCREENING', '-11 days', 'Berkas lengkap, pengalaman audit 3 tahun.'], ['INTERVIEW', '-5 days', 'Wawancara teknis dengan Finance Manager.']]],
+        ['acc', 'Bagus Setiawan', 'bagus.setiawan@mail.com', '081234500012', 'S1', 2, 'KAP Wijaya', 'Asisten Audit', 7200000, 'JOB_PORTAL', 3,
+            [['APPLIED', '-12 days', 'Melamar via portal lowongan.'], ['SCREENING', '-8 days', 'Lolos screening berkas.']]],
+        ['acc', 'Nadia Rahmawati', 'nadia.rahmawati@mail.com', '081234500013', 'D3', 5, 'PT Karya Niaga', 'Staf Akuntansi', 8000000, 'REFERRAL', null,
+            [['APPLIED', '-4 days', 'Direferensikan karyawan Finance & Accounting.']]],
+        ['acc', 'Yusuf Maulana', 'yusuf.maulana@mail.com', '081234500014', 'S1', 4, 'PT Mitra Lestari', 'Akuntan', 8200000, 'WEBSITE', 5,
+            [['APPLIED', '-15 days', 'Melamar melalui website karier.'], ['SCREENING', '-12 days', 'Portofolio rekonsiliasi sangat baik.'], ['INTERVIEW', '-7 days', 'Wawancara user & HR, komunikasi jelas.'], ['OFFER', '-4 days', 'Penawaran disetujui kandidat.'], ['HIRED', '-3 days', 'Bergabung pada periode payroll berikutnya.']]],
+        ['acc', 'Kartika Sari', 'kartika.sari@mail.com', '081234500015', 'S1', 1, 'PT Anugerah Jaya', 'Staf Admin', 6500000, 'WALK_IN', 2,
+            [['APPLIED', '-10 days', 'Datang langsung ke kantor.'], ['REJECTED', '-9 days', 'Pengalaman belum sesuai kebutuhan posisi.']]],
+        ['prod', 'Andi Prasetyo', 'andi.prasetyo@mail.com', '081234500016', 'SMA/SMK', 2, 'PT Baja Nusantara', 'Operator', 5000000, 'WALK_IN', null,
+            [['APPLIED', '-6 days', 'Melamar langsung di pos keamanan pabrik.']]],
+        ['prod', 'Slamet Riyadi', 'slamet.riyadi@mail.com', '081234500017', 'SMA/SMK', 4, 'CV Sumber Makmur', 'Operator Mesin', 5200000, 'REFERRAL', 3,
+            [['APPLIED', '-8 days', 'Direferensikan supervisor produksi.'], ['SCREENING', '-6 days', 'Sertifikat K3 masih berlaku.']]],
+        ['prod', 'Dwi Lestari', 'dwi.lestari@mail.com', '081234500018', 'SMA/SMK', 1, 'PT Plastik Sejahtera', 'Operator Packing', 4700000, 'JOB_PORTAL', 4,
+            [['APPLIED', '-7 days', 'Melamar via portal.'], ['SCREENING', '-5 days', 'Lolos screening, siap shift malam.'], ['INTERVIEW', '-2 days', 'Wawancara di Surabaya Plant.']]],
+        ['prod', 'Hendra Gunawan', 'hendra.gunawan@mail.com', '081234500019', 'SMA/SMK', 6, 'PT Logam Perkasa', 'Teknisi', 6000000, 'JOB_PORTAL', 2,
+            [['APPLIED', '-9 days', 'Melamar via portal.'], ['REJECTED', '-7 days', 'Ekspektasi gaji di atas plafon lowongan.']]],
+        ['prod', 'Agus Salim', 'agus.salim@mail.com', '081234500020', 'SMA/SMK', 3, 'UD Karya Mandiri', 'Operator', 4900000, 'WEBSITE', null,
+            [['APPLIED', '-3 days', 'Melamar melalui website karier.']]],
+        ['sales', 'Fajar Nugroho', 'fajar.nugroho@mail.com', '081234500021', 'S1', 5, 'PT Distribusi Prima', 'Account Executive', 9500000, 'LINKEDIN', null,
+            [['APPLIED', '-20 days', 'Melamar melalui LinkedIn.']]],
+        ['sales', 'Mega Wulandari', 'mega.wulandari@mail.com', '081234500022', 'S1', 3, 'PT Retail Cemerlang', 'Sales Supervisor', 8800000, 'REFERRAL', 4,
+            [['APPLIED', '-18 days', 'Direferensikan Branch Manager Bandung.'], ['SCREENING', '-14 days', 'Rekam jejak penjualan kuat.']]],
+        ['sales', 'Rizal Fadillah', 'rizal.fadillah@mail.com', '081234500023', 'D3', 2, 'CV Mitra Bandung', 'Sales Counter', 7500000, 'JOB_PORTAL', 3,
+            [['APPLIED', '-17 days', 'Melamar via portal.'], ['SCREENING', '-13 days', 'Lolos screening.'], ['INTERVIEW', '-6 days', 'Wawancara area manager.']]],
+        ['sales', 'Sri Ayu Lestari', 'sri.ayu@mail.com', '081234500024', 'S1', 4, 'PT Global Niaga', 'Key Account', 9000000, 'WEBSITE', null,
+            [['APPLIED', '-19 days', 'Melamar melalui website.'], ['WITHDRAWN', '-10 days', 'Menerima tawaran dari perusahaan lain.']]],
+        ['intern', 'Tiara Anindya', 'tiara.anindya@mail.com', '081234500025', 'S1', 0, 'Universitas Padjadjaran', 'Mahasiswa', 2800000, 'WEBSITE', null,
+            [['APPLIED', '-2 days', 'Melamar program magang HR.']]],
+        ['intern', 'Bimo Saputra', 'bimo.saputra@mail.com', '081234500026', 'S1', 0.5, 'Universitas Indonesia', 'Mahasiswa', 3000000, 'REFERRAL', null,
+            [['APPLIED', '-1 days', 'Direferensikan staf HRGA.']]],
+    ];
+
+    $candidateIds = [];
+    foreach ($candidateSeed as [$jobKey, $name, $email, $phone, $education, $experience, $company, $currentPosition, $expected, $source, $rating, $path]) {
+        if (!isset($jobIds[$jobKey])) {
+            continue;
+        }
+        $createdAt = date('Y-m-d H:i:s', strtotime($path[0][1] ?? '-5 days'));
+        $status = end($path)[0];
+        $interviewAt = null;
+        foreach ($path as [$stage, $when]) {
+            if ($stage === 'INTERVIEW') {
+                $interviewAt = date('Y-m-d H:i:s', strtotime($when . ' +2 days'));
+            }
+        }
+
+        $candidateId = Database::insert('candidates', [
+            'job_id'           => $jobIds[$jobKey],
+            'full_name'        => $name,
+            'email'            => $email,
+            'phone'            => $phone,
+            'birth_date'       => date('Y-m-d', strtotime('-' . mt_rand(23, 34) . ' years')),
+            'gender'           => in_array($source, ['REFERRAL', 'WEBSITE'], true) && mt_rand(0, 1) === 1 ? 'P' : 'L',
+            'education'        => $education,
+            'experience_years' => $experience,
+            'current_company'  => $company,
+            'current_position' => $currentPosition,
+            'expected_salary'  => $expected,
+            'source'           => $source,
+            'cv'               => null,
+            'cover_note'       => 'Melamar untuk posisi ' . $jobSeed[$jobKey]['title'] . '.',
+            'rating'           => $rating,
+            'status'           => $status,
+            'interview_at'     => $interviewAt,
+            'interviewer_id'   => $interviewAt !== null ? $hrReviewer : null,
+            'interview_mode'   => $interviewAt !== null ? 'ONSITE' : null,
+            'note'             => $status === 'REJECTED' ? 'Kandidat dihubungi melalui email.' : null,
+            'reject_reason'    => $status === 'REJECTED' ? end($path)[2] ?? null : null,
+            'employee_id'      => null,
+            'hired_at'         => $status === 'HIRED' ? date('Y-m-d H:i:s', strtotime('-3 days')) : null,
+            'created_by'       => $hrReviewer,
+            'created_at'       => $createdAt,
+            'updated_at'       => date('Y-m-d H:i:s'),
+        ]);
+        $candidateIds[] = $candidateId;
+
+        $previous = null;
+        foreach ($path as [$stage, $when, $note]) {
+            Database::insert('candidate_stages', [
+                'candidate_id' => $candidateId,
+                'from_status'  => $previous,
+                'to_status'    => $stage,
+                'note'         => $note,
+                'actor_id'     => $hrReviewer,
+                'created_at'   => date('Y-m-d H:i:s', strtotime($when)),
+            ]);
+            $previous = $stage;
+        }
+    }
+
+    $interviewNotified = 0;
+    foreach (Database::all("SELECT id, full_name, job_id FROM candidates WHERE status = 'INTERVIEW' LIMIT 2") as $row) {
+        $job = Database::one('SELECT hiring_manager_id FROM job_vacancies WHERE id = ?', [(int) $row['job_id']]);
+        $managerId = (int) ($job['hiring_manager_id'] ?? 0);
+        if ($managerId <= 0) {
+            continue;
+        }
+        Database::insert('notifications', [
+            'employee_id' => $managerId,
+            'title'       => 'Pelamar masuk tahap wawancara',
+            'message'     => $row['full_name'] . ' menunggu jadwal wawancara.',
+            'link'        => '/recruitment/candidates/' . (int) $row['id'],
+            'type'        => 'info',
+            'created_at'  => date('Y-m-d H:i:s'),
+        ]);
+        $interviewNotified++;
+    }
+
+    $log[] = 'Rekrutmen: ' . count($jobIds) . ' lowongan, ' . count($candidateIds)
+        . ' pelamar pada pipeline, dan ' . $interviewNotified . ' notifikasi wawancara dibuat.';
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

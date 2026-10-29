@@ -31,8 +31,9 @@ dengan slip gaji ber-QR.
 | **12** | Pengumuman & notifikasi in-app: papan pengumuman dengan audiens (semua/unit/departemen/jabatan/peran), jadwal terbit, pin, pelacakan dibaca, pusat notifikasi + lonceng | ✅ selesai |
 | **13** | Penilaian kinerja: periode penilaian (self → atasan → kalibrasi HR → tutup), master indikator berbobot, self assessment karyawan, penilaian atasan, kalibrasi/nilai final + rating A–E, riwayat & konfirmasi hasil, export CSV/PDF | ✅ selesai |
 | **14** | Pelatihan & sertifikasi: katalog program (kategori, durasi, biaya), jadwal sesi dengan kuota & pendaftaran daring, nominasi peserta oleh HR, presensi, nilai, sertifikat PDF, riwayat & sertifikat karyawan, export CSV | ✅ selesai |
+| **15** | Rekrutmen & onboarding (ATS): lowongan multi-unit dengan kuota & status, pipeline pelamar APPLIED → SCREENING → INTERVIEW → OFFER, jadwal & pewawancara, rating, CV, konversi otomatis pelamar diterima menjadi karyawan (NIK, akun, notifikasi), export CSV | ✅ selesai |
 
-Seluruh empat belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh lima belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -796,6 +797,74 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.17 Modul Batch 15 — Rekrutmen & Onboarding (ATS)
+
+### Lowongan & pipeline (`/recruitment`) — HR
+* Statistik rekrutmen: lowongan dibuka, pelamar aktif, pelamar baru (belum
+  disaring), wawancara mendatang, dan pelamar diterima.
+* Daftar lowongan dengan filter status/pencarian: kode lowongan, posisi, unit &
+  departemen, jenis kepegawaian, mode kerja (onsite/hybrid/remote), kuota,
+  keterisian, hiring manager, periode buka–tutup, dan status.
+* Formulir lowongan: kode unik, judul, unit/departemen/posisi, jenis
+  kepegawaian (**PKWTT**, **PKWTT (Probation)**, **PKWT**, **Magang**,
+  **Outsourcing**), mode kerja, lokasi, kuota, rentang gaji, tanggal buka/tutup,
+  hiring manager, deskripsi & kualifikasi.
+* Alur status: **DRAF** → **Dibuka** → **Ditahan** → **Ditutup**. Perpindahan
+  status tercatat di audit trail dan dinotifikasi ke hiring manager.
+
+### Detail lowongan (`/recruitment/jobs/{id}`) — HR
+* **Papan pipeline** empat kolom (Applied, Screening, Interview, Offer) dengan
+  kartu pelamar: nama, sumber, pendidikan, pengalaman, rating bintang, dan jadwal
+  wawancara. Klik kartu untuk membuka detail pelamar.
+* **Corong seleksi** (funnel) berisi jumlah pelamar per tahap beserta konversi
+  persentase terhadap total pelamar lowongan.
+* Daftar pelamar terbaru, ringkasan kuota vs pelamar diterima, serta aksi cepat
+  buka/tahan/tutup lowongan.
+
+### Data pelamar (`/recruitment/candidates`) — HR
+* Kartu ringkasan status (baru, screening, wawancara, ditawarkan, diterima) dan
+  tabel pelamar dengan filter lowongan/tahap/sumber/pencarian serta paginasi.
+* **Tambah pelamar**: pilih lowongan, identitas (nama, email, telepon, tanggal
+  lahir, jenis kelamin), pendidikan, pengalaman, perusahaan/posisi saat ini,
+  ekspektasi gaji, sumber (**Website Karier**, **Referensi Karyawan**,
+  **LinkedIn**, **Portal Lowongan**, **Walk-in**, **Lainnya**), rating awal,
+  unggah CV, dan catatan pelamar.
+* Email pelamar unik antar pelamar untuk mencegah entri ganda.
+* Ekspor CSV seluruh pelamar terfilter (`/recruitment/export`).
+
+### Detail pelamar (`/recruitment/candidates/{id}`) — HR
+* Profil lengkap + tautan CV, rating bintang, riwayat tahapan (timeline audit:
+  tahap asal → tujuan, catatan, aktor, waktu), serta formulir edit data pelamar
+  (termasuk ganti CV dan rating 1–5).
+* **Pindahkan tahap**: Applied → Screening → Interview → Offer, dengan jadwal
+  wawancara (`datetime-local`), mode wawancara (tatap muka/daring/telepon),
+  pewawancara (dipilih dari karyawan aktif), dan catatan tahap. Perpindahan ke
+  tahap wawancara mewajibkan jadwal.
+* **Terima sebagai karyawan**: satu klik mengubah pelamar menjadi karyawan —
+  NIK dibuat otomatis lewat `EmployeeCode::next()` (format per unit/departemen),
+  username dari email, peran **KARYAWAN**, kata sandi awal `Password123!`, unit,
+  departemen, posisi, atasan langsung, status kepegawaian, gaji pokok, tanggal
+  bergabung, dan akhir kontrak (wajib untuk PKWT/Magang/Outsourcing).
+* **Tolak** dengan alasan wajib, atau **mengundurkan diri**; kedua status akhir
+  mengunci pipeline namun menyimpan riwayat untuk audit.
+
+### Catatan teknis
+* Tabel baru: `job_vacancies`, `candidates`, dan `candidate_stages` (satu baris
+  per perpindahan tahap), dengan index unik `job_vacancies.code` dan index pada
+  `candidates(job_id)`, `candidates(status)`, `candidates(email)`, serta
+  `candidate_stages(candidate_id)`.
+* CV disimpan di `storage/uploads/recruitment` (di luar document root) dan
+  disajikan lewat `/media/recruitment/{file}` untuk pengguna yang login.
+* Badge navigasi `recruitment` menampilkan jumlah pelamar baru yang belum
+  disaring pada lowongan yang masih dibuka.
+* Notifikasi: lowongan dibuka/ditahan/ditutup (hiring manager), pelamar masuk
+  tahap wawancara/penawaran, dan sambutan akun untuk karyawan baru hasil konversi.
+* Ekspor CSV memakai argumen *escape* eksplisit agar bebas peringatan PHP 8.4.
+* Upgrade skema otomatis (versi 15) saat basis data lama dibuka — idempoten dan
+  tidak menyentuh data operasional.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -804,8 +873,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -841,6 +910,7 @@ storage/                 # logs, cache, uploads, database preview
 | Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
+| Rekrutmen & onboarding | ✅ lowongan, pipeline, pelamar, konversi karyawan | – | – |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
@@ -875,8 +945,8 @@ diperlukan pada server produksi dan aman untuk dihapus.
 * Sesi: batas absolut 8 jam + idle 2 jam; "ingat perangkat" 30 hari dengan token
   yang dirotasi setiap pemakaian dan dicabut saat logout/ganti sandi.
 * Login dibatasi 5 kegagalan/15 menit per identifier + IP (brute-force).
-* Berkas sensitif — bukti klaim (`claims`), sertifikat pelatihan (`trainings`), dan
-  lampiran pengumuman (`announcements`) — disimpan di `storage/uploads` (di luar
+* Berkas sensitif — bukti klaim (`claims`), sertifikat pelatihan (`trainings`), CV pelamar
+  (`recruitment`), dan lampiran pengumuman (`announcements`) — disimpan di `storage/uploads` (di luar
   document root) dan hanya dapat diakses pengguna yang sudah login lewat rute
   `/media/{folder}/{file}`.
 * Semua query memakai prepared statement (PDO), tanpa konkatenasi input.

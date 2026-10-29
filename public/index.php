@@ -26,6 +26,7 @@ use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PayrollController;
 use App\Controllers\PerformanceController;
+use App\Controllers\RecruitmentController;
 use App\Controllers\TrainingController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ReportController;
@@ -279,6 +280,27 @@ $router->get('/trainings/{id}', [TrainingController::class, 'show'], ['roles' =>
 $router->get('/me/trainings', [TrainingController::class, 'mine'], ['name' => 'me.trainings']);
 $router->post('/me/trainings/{id}/enroll', [TrainingController::class, 'enroll'], ['name' => 'me.trainings.enroll']);
 $router->post('/me/trainings/{id}/cancel', [TrainingController::class, 'cancelEnrollment'], ['name' => 'me.trainings.cancel']);
+
+/* ------------------------------------------------ Rekrutmen & onboarding */
+$router->get('/recruitment', [RecruitmentController::class, 'index'], ['roles' => ['HR'], 'name' => 'recruitment.index']);
+$router->post('/recruitment', [RecruitmentController::class, 'storeJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.store']);
+$router->get('/recruitment/export', [RecruitmentController::class, 'export'], ['roles' => ['HR'], 'name' => 'recruitment.export', 'csrf' => false]);
+
+$router->get('/recruitment/candidates', [RecruitmentController::class, 'candidates'], ['roles' => ['HR'], 'name' => 'recruitment.candidates']);
+$router->post('/recruitment/candidates', [RecruitmentController::class, 'storeCandidate'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.store']);
+$router->post('/recruitment/candidates/{id}/stage', [RecruitmentController::class, 'moveStage'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.stage']);
+$router->post('/recruitment/candidates/{id}/reject', [RecruitmentController::class, 'reject'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.reject']);
+$router->post('/recruitment/candidates/{id}/withdraw', [RecruitmentController::class, 'withdraw'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.withdraw']);
+$router->post('/recruitment/candidates/{id}/hire', [RecruitmentController::class, 'hire'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.hire']);
+$router->add('POST|PUT', '/recruitment/candidates/{id}', [RecruitmentController::class, 'updateCandidate'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.update']);
+$router->get('/recruitment/candidates/{id}', [RecruitmentController::class, 'candidate'], ['roles' => ['HR'], 'name' => 'recruitment.candidates.show']);
+
+$router->post('/recruitment/jobs/{id}/open', [RecruitmentController::class, 'openJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.open']);
+$router->post('/recruitment/jobs/{id}/hold', [RecruitmentController::class, 'holdJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.hold']);
+$router->post('/recruitment/jobs/{id}/close', [RecruitmentController::class, 'closeJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.close']);
+$router->add('POST|DELETE', '/recruitment/jobs/{id}/delete', [RecruitmentController::class, 'destroyJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.delete']);
+$router->add('POST|PUT', '/recruitment/jobs/{id}', [RecruitmentController::class, 'updateJob'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.update']);
+$router->get('/recruitment/jobs/{id}', [RecruitmentController::class, 'job'], ['roles' => ['HR'], 'name' => 'recruitment.jobs.show']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);
