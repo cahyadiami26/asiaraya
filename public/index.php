@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
+use App\Controllers\AnnouncementController;
 use App\Controllers\ApprovalController;
 use App\Controllers\AttendanceController;
 use App\Controllers\AuthController;
@@ -18,6 +19,7 @@ use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
 use App\Controllers\ExpenseController;
 use App\Controllers\MediaController;
+use App\Controllers\NotificationController;
 use App\Controllers\LeaveController;
 use App\Controllers\LogController;
 use App\Controllers\OvertimeController;
@@ -47,8 +49,7 @@ $router->post('/logout', [AuthController::class, 'logout'], ['name' => 'logout']
 $router->get('/', [DashboardController::class, 'index'], ['name' => 'home']);
 $router->get('/dashboard', [DashboardController::class, 'index'], ['name' => 'dashboard']);
 $router->get('/search', [DashboardController::class, 'search'], ['name' => 'search']);
-$router->get('/notifications', [DashboardController::class, 'notifications'], ['name' => 'notifications']);
-$router->post('/notifications/read', [DashboardController::class, 'markNotificationsRead'], ['name' => 'notifications.read']);
+/* rute notifikasi & pengumuman didaftarkan pada blok Batch 12 di bawah */
 
 /* ------------------------------------------------------------- Self service */
 $router->get('/me/profile', [DashboardController::class, 'profile'], ['name' => 'me.profile']);
@@ -202,6 +203,25 @@ $router->post('/claims/{id}/pay', [ExpenseController::class, 'pay'], ['roles' =>
 $router->get('/me/claims', [ExpenseController::class, 'mine'], ['name' => 'me.claims']);
 $router->post('/me/claims', [ExpenseController::class, 'store'], ['name' => 'me.claims.store']);
 $router->post('/me/claims/{id}/cancel', [ExpenseController::class, 'cancel'], ['name' => 'me.claims.cancel']);
+
+/* ------------------------- Batch 12: pengumuman & notifikasi in-app */
+$router->get('/announcements/manage', [AnnouncementController::class, 'manage'], ['roles' => ['HR'], 'name' => 'announcements.manage']);
+$router->get('/announcements/create', [AnnouncementController::class, 'create'], ['roles' => ['HR'], 'name' => 'announcements.create']);
+$router->post('/announcements', [AnnouncementController::class, 'store'], ['roles' => ['HR'], 'name' => 'announcements.store']);
+$router->post('/announcements/read-all', [AnnouncementController::class, 'markAllRead'], ['name' => 'announcements.read.all']);
+$router->get('/announcements', [AnnouncementController::class, 'index'], ['name' => 'announcements.index']);
+$router->get('/announcements/{id}/edit', [AnnouncementController::class, 'edit'], ['roles' => ['HR'], 'name' => 'announcements.edit']);
+$router->add('POST|PUT', '/announcements/{id}', [AnnouncementController::class, 'update'], ['roles' => ['HR'], 'name' => 'announcements.update']);
+$router->post('/announcements/{id}/publish', [AnnouncementController::class, 'publish'], ['roles' => ['HR'], 'name' => 'announcements.publish']);
+$router->post('/announcements/{id}/archive', [AnnouncementController::class, 'archive'], ['roles' => ['HR'], 'name' => 'announcements.archive']);
+$router->add('POST|DELETE', '/announcements/{id}/delete', [AnnouncementController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'announcements.delete']);
+$router->post('/announcements/{id}/read', [AnnouncementController::class, 'markRead'], ['name' => 'announcements.read']);
+$router->get('/announcements/{id}', [AnnouncementController::class, 'show'], ['name' => 'announcements.show']);
+
+$router->get('/notifications/latest', [NotificationController::class, 'latest'], ['name' => 'notifications.latest', 'csrf' => false]);
+$router->post('/notifications/read', [NotificationController::class, 'readAll'], ['name' => 'notifications.read']);
+$router->post('/notifications/{id}/read', [NotificationController::class, 'read'], ['name' => 'notifications.item.read']);
+$router->get('/notifications', [NotificationController::class, 'index'], ['name' => 'notifications']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

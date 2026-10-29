@@ -65,6 +65,15 @@ final class Nav
                 ],
             ],
             [
+                'label' => 'Komunikasi & Informasi',
+                'roles' => ['HR', 'FIN', 'KARYAWAN'],
+                'items' => [
+                    ['route' => 'announcements.index', 'label' => 'Pengumuman', 'icon' => 'megaphone', 'roles' => ['HR', 'FIN', 'KARYAWAN'], 'badge_key' => 'announcements'],
+                    ['route' => 'notifications', 'label' => 'Notifikasi', 'icon' => 'bell', 'roles' => ['HR', 'FIN', 'KARYAWAN'], 'badge_key' => 'notifications'],
+                    ['route' => 'announcements.manage', 'label' => 'Kelola Pengumuman', 'icon' => 'edit', 'roles' => ['HR']],
+                ],
+            ],
+            [
                 'label' => 'Portal Karyawan',
                 'roles' => ['KARYAWAN'],
                 'items' => [

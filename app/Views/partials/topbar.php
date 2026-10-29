@@ -20,10 +20,44 @@ $unread = $unreadNotifications ?? 0;
             <?= icon('chevron-down', 'ico') ?>
         </button>
 
-        <button type="button" class="icon-btn hide-sm" aria-label="Notifikasi">
-            <?= icon('bell') ?>
-            <?php if ($unread): ?><span class="icon-btn__dot"></span><?php endif; ?>
-        </button>
+        <div class="dropdown hide-sm">
+            <button type="button" class="icon-btn" data-dropdown aria-haspopup="true" aria-label="Notifikasi" data-bell>
+                <?= icon('bell') ?>
+                <?php if ($unread): ?>
+                    <span class="icon-btn__count" data-bell-count><?= (int) $unread > 9 ? '9+' : (int) $unread ?></span>
+                <?php endif; ?>
+            </button>
+            <div class="dropdown__menu notif-menu">
+                <div class="menu-head notif-menu__head">
+                    <span>Notifikasi</span>
+                    <?php if ($unread): ?><span class="chip chip-dot"><?= (int) $unread ?> baru</span><?php endif; ?>
+                </div>
+                <div class="notif-menu__list" data-bell-list>
+                    <?php foreach (($recentNotifications ?? []) as $n): ?>
+                        <?php
+                        $meta = \App\Models\NotificationModel::meta((string) $n['type']);
+                        ?>
+                        <form method="post" action="<?= url('notifications/' . (int) $n['id'] . '/read') ?>">
+                            <?= csrf_field() ?>
+                            <button type="submit" class="notif-menu__item<?= $n['read_at'] ? '' : ' is-unread' ?>">
+                                <span class="notif-menu__icon <?= e($meta['tone']) ?>"><?= icon($meta['icon']) ?></span>
+                                <span class="notif-menu__text">
+                                    <b><?= e($n['title']) ?></b>
+                                    <i><?= e(waktu_lalu($n['created_at'])) ?></i>
+                                </span>
+                                <?php if (!$n['read_at']): ?><span class="notif-menu__dot"></span><?php endif; ?>
+                            </button>
+                        </form>
+                    <?php endforeach; ?>
+                    <?php if (empty($recentNotifications)): ?>
+                        <div class="notif-menu__empty"><?= icon('bell') ?><span>Belum ada notifikasi.</span></div>
+                    <?php endif; ?>
+                </div>
+                <div class="sep"></div>
+                <a href="<?= url('announcements') ?>"><?= icon('info') ?> Pengumuman perusahaan</a>
+                <a href="<?= url('notifications') ?>"><?= icon('list') ?> Lihat semua notifikasi</a>
+            </div>
+        </div>
 
         <div class="dropdown">
             <button type="button" class="user-chip" data-dropdown aria-haspopup="true">

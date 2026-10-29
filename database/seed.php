@@ -712,6 +712,167 @@ return static function (): array {
 
     $log[] = 'Data kategori & ' . $claimSequence . ' klaim biaya contoh dibuat.';
 
+    /* ---------------- Pengumuman & notifikasi (Batch 12) ---------------- */
+    $hrAuthor = (int) Database::value("SELECT id FROM employees WHERE role = 'HR' AND flag = 'ACTIVE' ORDER BY id LIMIT 1");
+    $surabayaId = (int) Database::value("SELECT id FROM business_units WHERE name LIKE '%Surabaya%' ORDER BY id LIMIT 1");
+    $now = time();
+
+    $announcementSeed = [
+        [
+            'title'    => 'Pembaruan Jam Kerja Selama Ramadan 1447 H',
+            'category' => 'KEBIJAKAN',
+            'audience' => 'ALL',
+            'value'    => null,
+            'pinned'   => 1,
+            'status'   => 'PUBLISHED',
+            'days'     => -6,
+            'body'     => "Sehubungan dengan bulan suci Ramadan, jam kerja kantor pusat dan cabang disesuaikan mulai pekan depan.\n\n"
+                . "- Senin–Kamis: 08.00 – 16.00 WIB\n"
+                . "- Jumat: 08.00 – 15.30 WIB\n"
+                . "- Istirahat siang diperpanjang menjadi 60 menit\n\n"
+                . "**Presensi tetap wajib** dilakukan melalui aplikasi pada saat masuk dan pulang. "
+                . "Karyawan yang bekerja pada shift malam mengikuti jadwal dari atasan langsung.\n\n"
+                . "Perubahan ini berlaku sampai akhir Ramadan dan akan dievaluasi oleh HR.",
+        ],
+        [
+            'title'    => 'Jadwal Payroll & Cut-off Klaim Bulan Ini',
+            'category' => 'PAYROLL',
+            'audience' => 'ALL',
+            'value'    => null,
+            'pinned'   => 0,
+            'status'   => 'PUBLISHED',
+            'days'     => -3,
+            'body'     => "Berikut jadwal penggajian bulan berjalan agar slip gaji dapat diterima tepat waktu.\n\n"
+                . "- Cut-off presensi dan lembur: tanggal 25 pukul 23.59\n"
+                . "- Cut-off pengajuan klaim reimbursement: tanggal 24 pukul 17.00\n"
+                . "- Slip gaji tersedia di portal karyawan bersamaan dengan transfer\n\n"
+                . "Klaim yang diajukan setelah cut-off akan masuk ke periode payroll berikutnya. "
+                . "Pastikan lampiran bukti transaksi sudah diunggah lengkap.",
+        ],
+        [
+            'title'    => 'Pelatihan K3 Wajib untuk Seluruh Karyawan Unit Produksi',
+            'category' => 'EVENT',
+            'audience' => 'UNIT',
+            'value'    => $surabayaId ?: null,
+            'pinned'   => 0,
+            'status'   => 'PUBLISHED',
+            'days'     => -2,
+            'body'     => "Dalam rangka memenuhi standar keselamatan kerja, seluruh karyawan unit produksi wajib mengikuti pelatihan K3.\n\n"
+                . "- Hari: Sabtu, pekan depan\n"
+                . "- Waktu: 08.00 – 12.00 WIB\n"
+                . "- Lokasi: Aula Plant Surabaya\n\n"
+                . "Kehadiran dicatat melalui presensi khusus yang dibuka panitia. Bagi yang berhalangan hadir wajib mengajukan izin ke atasan langsung.",
+        ],
+        [
+            'title'    => 'Kebijakan Baru Reimbursement Kesehatan',
+            'category' => 'KEBIJAKAN',
+            'audience' => 'ROLE',
+            'value'    => 'KARYAWAN',
+            'pinned'   => 1,
+            'status'   => 'PUBLISHED',
+            'days'     => -1,
+            'body'     => "Mulai bulan ini pengajuan reimbursement kesehatan menggunakan alur baru di menu **Klaim Saya**.\n\n"
+                . "- Unggah foto/PDF nota asli sebagai bukti\n"
+                . "- Plafon per klaim mengikuti master kategori HR\n"
+                . "- Persetujuan: atasan langsung, lalu HR/Finance\n"
+                . "- Pencairan otomatis melalui payroll atau transfer Finance\n\n"
+                . "Klaim tanpa lampiran bukti akan ditolak oleh sistem.",
+        ],
+        [
+            'title'    => 'Maintenance Sistem Presensi Akhir Pekan',
+            'category' => 'DARURAT',
+            'audience' => 'ALL',
+            'value'    => null,
+            'pinned'   => 0,
+            'status'   => 'DRAFT',
+            'days'     => -1,
+            'body'     => "Aplikasi presensi akan menjalani pemeliharaan pada akhir pekan ini pukul 22.00 – 02.00 WIB.\n\n"
+                . "Selama pemeliharaan, presensi manual dapat dicatat oleh atasan dan disinkronkan oleh HR pada hari kerja berikutnya.\n\n"
+                . "Draf ini belum diterbitkan agar jadwal final dapat dikonfirmasi tim IT.",
+        ],
+    ];
+
+    $audienceEmployees = Database::all(
+        "SELECT id, role, business_unit_id, department_id, position_id
+           FROM employees WHERE flag = 'ACTIVE' ORDER BY id"
+    );
+    $announcementIds = [];
+    foreach ($announcementSeed as $index => $row) {
+        $publishedAt = date('Y-m-d H:i:s', strtotime(($row['days'] >= 0 ? '+' : '') . $row['days'] . ' days', $now));
+        $id = Database::insert('announcements', [
+            'title'          => $row['title'],
+            'category'       => $row['category'],
+            'body'           => $row['body'],
+            'audience'       => $row['audience'],
+            'audience_value' => $row['value'] !== null ? (string) $row['value'] : null,
+            'is_pinned'      => $row['pinned'],
+            'status'         => $row['status'],
+            'notify'         => 1,
+            'publish_at'     => $row['status'] === 'PUBLISHED' ? $publishedAt : null,
+            'expires_at'     => null,
+            'attachment'     => null,
+            'created_by'     => $hrAuthor,
+            'updated_by'     => $hrAuthor,
+            'created_at'     => $publishedAt,
+            'updated_at'     => $publishedAt,
+        ]);
+        $announcementIds[$index] = $id;
+
+        if ($row['status'] !== 'PUBLISHED') {
+            continue;
+        }
+
+        // Hanya karyawan dalam audiens yang tercatat membaca.
+        $targets = match ($row['audience']) {
+            'UNIT'       => array_filter($audienceEmployees, static fn ($e) => (string) $e['business_unit_id'] === (string) $row['value']),
+            'DEPARTMENT' => array_filter($audienceEmployees, static fn ($e) => (string) $e['department_id'] === (string) $row['value']),
+            'POSITION'   => array_filter($audienceEmployees, static fn ($e) => (string) $e['position_id'] === (string) $row['value']),
+            'ROLE'       => array_filter($audienceEmployees, static fn ($e) => (string) $e['role'] === (string) $row['value']),
+            default      => $audienceEmployees,
+        };
+
+        // Rasio keterbacaan berbeda-beda agar statistik terasa nyata.
+        $ratio = [1 => 0.82, 2 => 0.55, 3 => 0.4, 4 => 0.7][$index + 1] ?? 0.5;
+        $limit = (int) floor(count($targets) * $ratio);
+        foreach (array_values($targets) as $offset => $employee) {
+            if ($offset >= $limit) {
+                continue;
+            }
+            Database::insert('announcement_reads', [
+                'announcement_id' => $id,
+                'employee_id'     => (int) $employee['id'],
+                'read_at'         => date('Y-m-d H:i:s', strtotime($publishedAt . ' +' . (2 + ($offset % 20)) . ' hours')),
+            ]);
+        }
+    }
+
+    // Notifikasi lonceng contoh untuk beberapa karyawan.
+    $notifSeed = [
+        ['success', 'Pengajuan cuti disetujui', 'Cuti tahunan Anda telah disetujui atasan langsung.', '/me/leave'],
+        ['warning', 'Presensi terlambat tercatat', 'Anda tercatat masuk pukul 08.42 — batas toleransi 08.30.', '/me/attendance'],
+        ['announcement', 'Pengumuman: Pembaruan Jam Kerja Selama Ramadan 1447 H', 'Jam kerja kantor pusat dan cabang disesuaikan mulai pekan depan.', '/announcements/' . ($announcementIds[0] ?? 1)],
+        ['payroll', 'Slip gaji tersedia', 'Slip gaji bulan ini sudah dapat diunduh di portal karyawan.', '/me/payslip'],
+        ['approval', 'Pengajuan lembur menunggu persetujuan Anda', 'Terdapat pengajuan lembur tim yang menunggu keputusan.', '/overtime'],
+    ];
+    foreach ($audienceEmployees as $offset => $employee) {
+        if ($offset % 3 !== 0) {
+            continue;
+        }
+        foreach ($notifSeed as $i => $n) {
+            Database::insert('notifications', [
+                'employee_id' => (int) $employee['id'],
+                'title'       => $n[1],
+                'message'     => $n[2],
+                'link'        => $n[3],
+                'type'        => $n[0],
+                'read_at'     => $i < 2 ? date('Y-m-d H:i:s', strtotime('-' . (1 + $i) . ' days')) : null,
+                'created_at'  => date('Y-m-d H:i:s', strtotime('-' . (1 + $i) . ' days')),
+            ]);
+        }
+    }
+
+    $log[] = 'Pengumuman contoh (' . count($announcementIds) . '), pelacakan baca, dan notifikasi lonceng dibuat.';
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

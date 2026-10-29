@@ -11,7 +11,54 @@ abstract class Controller
     {
         $data['currentUser'] = Auth::user();
         $data['pageTitle'] = $data['title'] ?? config('app_name');
+
+        // Lonceng notifikasi & badge pengumuman tersedia di semua halaman.
+        if (Auth::check()) {
+            $context = $this->notificationContext();
+            $data += [
+                'unreadNotifications' => $context['unreadNotifications'],
+                'recentNotifications' => $context['recentNotifications'],
+                'unreadAnnouncements' => $context['unreadAnnouncements'],
+            ];
+            $data['badges'] = ($data['badges'] ?? []) + $context['badges'];
+        }
+
         View::render($template, $data, $layout);
+    }
+
+    /**
+     * Ringkasan notifikasi untuk topbar (dipakai setiap render halaman).
+     * Dibungkus try/catch agar basis data lama tanpa tabel notifikasi tetap aman.
+     *
+     * @return array{unreadNotifications:int,recentNotifications:array,unreadAnnouncements:int,badges:array}
+     */
+    private function notificationContext(): array
+    {
+        try {
+            $employeeId = (int) Auth::id();
+            $notifications = new \App\Models\NotificationModel();
+            $announcements = new \App\Models\AnnouncementModel();
+
+            $unreadAnnouncements = $announcements->unreadCount(Auth::user());
+            $unreadNotifications = $notifications->unreadCount($employeeId);
+
+            return [
+                'unreadNotifications' => $unreadNotifications,
+                'recentNotifications' => $notifications->recent($employeeId, 5),
+                'unreadAnnouncements' => $unreadAnnouncements,
+                'badges'              => [
+                    'announcements' => $unreadAnnouncements,
+                    'notifications' => $unreadNotifications,
+                ],
+            ];
+        } catch (\Throwable) {
+            return [
+                'unreadNotifications' => 0,
+                'recentNotifications' => [],
+                'unreadAnnouncements' => 0,
+                'badges'              => [],
+            ];
+        }
     }
 
     protected function redirect(string $path): never

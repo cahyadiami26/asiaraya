@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 11;
+    public const VERSION = 12;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -47,6 +47,10 @@ final class Schema
         'CREATE INDEX IF NOT EXISTS idx_expense_claim_payroll ON expense_claims (payroll_item_id)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_claim_number ON expense_claims (claim_number)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_category_code ON expense_categories (code)',
+        'CREATE INDEX IF NOT EXISTS idx_announcement_status ON announcements (status, publish_at)',
+        'CREATE INDEX IF NOT EXISTS idx_announcement_audience ON announcements (audience, audience_value)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_announcement_read ON announcement_reads (announcement_id, employee_id)',
+        'CREATE INDEX IF NOT EXISTS idx_notification_employee ON notifications (employee_id, read_at)',
     ];
 
     public static function install(bool $withSeed = true, bool $fresh = false): array

@@ -32,8 +32,15 @@ $flashMessages = Session::flashes();
     <div class="sidebar-backdrop" data-nav-toggle></div>
 
     <div class="app-main">
-        <?= \App\Core\View::partial('partials.mobile-top', ['currentUser' => $currentUser]) ?>
-        <?= \App\Core\View::partial('partials.topbar', ['currentUser' => $currentUser]) ?>
+        <?= \App\Core\View::partial('partials.mobile-top', [
+            'currentUser'         => $currentUser,
+            'unreadNotifications' => $unreadNotifications ?? 0,
+        ]) ?>
+        <?= \App\Core\View::partial('partials.topbar', [
+            'currentUser'         => $currentUser,
+            'unreadNotifications' => $unreadNotifications ?? 0,
+            'recentNotifications' => $recentNotifications ?? [],
+        ]) ?>
 
         <main class="page">
             <?php if ($flashMessages): ?>

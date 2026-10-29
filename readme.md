@@ -2,7 +2,8 @@
 
 Sistem Informasi Sumber Daya Manusia terpadu: data kepegawaian, jadwal & shift,
 presensi geofence + selfie (PWA), lembur, cuti, komponen gaji, klaim &
-reimbursement, serta payroll multi-unit dengan slip gaji ber-QR.
+reimbursement, papan pengumuman + notifikasi in-app, serta payroll multi-unit
+dengan slip gaji ber-QR.
 
 * **Backend** — PHP 8 (native, tanpa framework), arsitektur MVC ringan buatan sendiri
 * **Database** — MySQL 8 / MariaDB 10.4+
@@ -27,8 +28,9 @@ reimbursement, serta payroll multi-unit dengan slip gaji ber-QR.
 | **9** | Laporan & cetak (PDF & CSV Excel-ready) untuk presensi/lembur/cuti/payroll, log aktivitas (audit trail) + retensi, pengaturan lanjutan (penandatangan laporan) | ✅ selesai |
 | **10** | Keamanan akun & sesi: reset kata sandi mandiri (tautan sekali pakai), ganti sandi dengan verifikasi sandi lama, "ingat perangkat" 30 hari, batas sesi 8 jam / idle 2 jam, proteksi brute-force | ✅ selesai |
 | **11** | Klaim & reimbursement: kategori dengan plafon, pengajuan + bukti, persetujuan atasan → HR/Finance, aksi massal, export CSV, integrasi otomatis ke slip payroll | ✅ selesai |
+| **12** | Pengumuman & notifikasi in-app: papan pengumuman dengan audiens (semua/unit/departemen/jabatan/peran), jadwal terbit, pin, pelacakan dibaca, pusat notifikasi + lonceng | ✅ selesai |
 
-Seluruh sebelas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan tanpa migrasi besar.
 
@@ -601,6 +603,57 @@ Halaman detail menampilkan rincian, lampiran (gambar dipratinjau, PDF dibuka di
 tab baru), dan **timeline persetujuan**: pengajuan → atasan → HR/Finance →
 pembayaran. Akses dibatasi untuk pemilik, atasan langsungnya, HR, dan Finance.
 
+## 2.14 Modul Batch 12 — Pengumuman & Notifikasi In-App
+
+### Papan pengumuman (`/announcements`) — semua peran
+* Feed kartu berisi pengumuman yang **sesuai audiens** karyawan: semua karyawan,
+  unit bisnis, departemen, jabatan, atau peran sistem. HR melihat seluruh
+  pengumuman yang sudah terbit.
+* Kategori: Informasi, Kebijakan, Acara & Kegiatan, Darurat, Payroll & Benefit —
+  masing-masing dengan warna dan ikon sendiri.
+* Pengumuman **penting (pin)** selalu tampil paling atas, penanda "Baru" muncul
+  untuk yang belum dibaca, dan banner ringkas menampilkan jumlah belum dibaca.
+* Filter: pencarian judul/isi, kategori, serta "hanya belum dibaca".
+* Detail `/announcements/{id}`: isi terformat (paragraf, daftar `- `, penekanan
+  `**teks**`), lampiran PDF/gambar, panel detail audiens, dan – untuk HR/Finance –
+  statistik keterbacaan (berapa penerima sudah membuka).
+* Tandai dibaca: otomatis saat detail dibuka, atau lewat tombol
+  **Tandai Semua Dibaca**.
+
+### Kelola pengumuman (`/announcements/manage`) — HR
+* Statistik: terbit, draf, terjadwal, diarsipkan, total dibaca, rata-rata dibaca.
+* Tabel pengumuman dengan filter status/kategori/pencarian, aksi cepat
+  terbitkan, ubah, dan hapus (menghapus juga lampiran + riwayat baca).
+* Formulir tulis/ubah: judul, kategori, **audiens tunggal**
+  (`ALL` / `UNIT:{id}` / `DEPARTMENT:{id}` / `POSITION:{id}` / `ROLE:{kode}`),
+  isi, lampiran (PDF/JPG/PNG maks 5 MB), penanda penting, dan pilihan publikasi:
+  **terbit sekarang**, **jadwalkan** (tanggal + jam), atau **simpan draf**.
+* Masa berlaku opsional (`expires_at`) — setelah tanggal tersebut pengumuman
+  hilang dari feed karyawan.
+* Saat terbit, notifikasi lonceng dikirim ke seluruh karyawan aktif pada audiens
+  tersebut (sekali saja; pengumuman terjadwal baru mengirim notifikasi ketika
+  waktunya tiba).
+
+### Notifikasi in-app (`/notifications`)
+* **Lonceng topbar** menampilkan jumlah belum dibaca + 5 notifikasi terbaru;
+  badge diperbarui ringan tiap 60 detik lewat `GET /notifications/latest`
+  (JSON, hanya untuk pengguna yang login, berhenti saat tab tidak aktif).
+* Pusat notifikasi: filter belum dibaca/tipe/pencarian, tombol "Buka" untuk
+  langsung menuju halaman terkait (sekaligus menandai dibaca), serta paginasi.
+* Tipe notifikasi: informasi, berhasil, perhatian, penting, payroll, pengumuman,
+  dan persetujuan — masing-masing dengan ikon/warna.
+* Notifikasi dibuat modul lain (jadwal, lembur, cuti, payroll, klaim,
+  pengumuman) dan bersifat best-effort: kegagalan menulis notifikasi tidak
+  pernah memutus proses bisnis.
+
+### Catatan teknis
+* Tabel baru: `announcements` + `announcement_reads` (satu baris baca per
+  karyawan per pengumuman) dan index `notifications (employee_id, read_at)`.
+* Lampiran pengumuman disimpan di `storage/uploads/announcements` (di luar
+  document root) dan diakses lewat `/media/announcements/{file}`.
+* Upgrade skema otomatis (versi 12) saat basis data lama dibuka — idempoten dan
+  tidak menyentuh data operasional.
+
 ---
 
 ## 3. Struktur proyek
@@ -611,8 +664,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -644,6 +697,8 @@ storage/                 # logs, cache, uploads, database preview
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
 | Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
+| Pengumuman | ✅ tulis, terbitkan, arsipkan | baca (sesuai audiens) | baca (sesuai audiens) |
+| Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 

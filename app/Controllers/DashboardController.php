@@ -232,32 +232,6 @@ final class DashboardController extends Controller
         ]);
     }
 
-    public function notifications(): void
-    {
-        $user = $this->employee();
-        $items = Database::all(
-            'SELECT * FROM notifications WHERE employee_id = ? ORDER BY id DESC LIMIT 50',
-            [(int) $user['id']]
-        );
-        $this->view('dashboard/notifications', [
-            'title' => 'Notifikasi',
-            'pageTitle' => 'Notifikasi',
-            'user' => $user,
-            'items' => $items,
-            'badges' => $this->model->badges($user),
-        ]);
-    }
-
-    public function markNotificationsRead(): void
-    {
-        $user = $this->employee();
-        Database::run(
-            'UPDATE notifications SET read_at = ? WHERE employee_id = ? AND read_at IS NULL',
-            [date('Y-m-d H:i:s'), (int) $user['id']]
-        );
-        redirect('/notifications');
-    }
-
     private function greeting(): string
     {
         $hour = (int) date('G');

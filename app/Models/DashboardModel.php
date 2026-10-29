@@ -530,11 +530,26 @@ final class DashboardModel
         } catch (\Throwable) {
             // tabel klaim belum ada pada basis data lama
         }
+        $announcements = 0;
+        $notifications = 0;
+        try {
+            $announcements = (new \App\Models\AnnouncementModel())->unreadCount($user);
+            $notifications = (int) Database::value(
+                'SELECT COUNT(*) FROM notifications WHERE employee_id = ? AND read_at IS NULL',
+                [(int) $user['id']],
+                0
+            );
+        } catch (\Throwable) {
+            // tabel pengumuman/notifikasi belum ada pada basis data lama
+        }
+
         return [
             'overtime'  => $counts['overtime'],
             'leave'     => $counts['leave'],
             'shift'     => $counts['shift'],
             'claims'    => $claims,
+            'announcements' => $announcements,
+            'notifications' => $notifications,
             'contracts' => (int) Database::value(
                 "SELECT COUNT(*) FROM employees
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",

@@ -227,6 +227,44 @@
     return { start: start, capture: capture, stop: stop };
   };
 
+  /* ---------- lonceng notifikasi (polling ringan 60 dtk) ---------- */
+  var bell = document.querySelector('[data-bell]');
+  if (bell && window.fetch) {
+    var bellCount = bell.querySelector('[data-bell-count]');
+
+    var paintBell = function (unread) {
+      if (unread > 0) {
+        if (!bellCount) {
+          bellCount = document.createElement('span');
+          bellCount.className = 'icon-btn__count';
+          bellCount.setAttribute('data-bell-count', '');
+          bell.appendChild(bellCount);
+        }
+        bellCount.textContent = unread > 9 ? '9+' : String(unread);
+      } else if (bellCount) {
+        bellCount.remove();
+        bellCount = null;
+      }
+    };
+
+    var pollBell = function () {
+      if (document.hidden) { return; }
+      fetch((window.HRIS_BASE || '') + '/notifications/latest', {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      }).then(function (r) {
+        return r.ok ? r.json() : null;
+      }).then(function (data) {
+        if (data && typeof data.unread === 'number') { paintBell(data.unread); }
+      }).catch(function () { /* offline: biarkan badge terakhir */ });
+    };
+
+    setInterval(pollBell, 60000);
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) { pollBell(); }
+    });
+  }
+
   /* ---------- service worker ---------- */
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {

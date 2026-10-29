@@ -395,6 +395,32 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at DATETIME NULL
 );
 
+CREATE TABLE IF NOT EXISTS announcements (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(180) NOT NULL,
+    category VARCHAR(30) NOT NULL DEFAULT 'INFO',
+    body TEXT NOT NULL,
+    audience VARCHAR(20) NOT NULL DEFAULT 'ALL',
+    audience_value VARCHAR(120) NULL,
+    is_pinned TINYINT(1) NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    notify TINYINT(1) NOT NULL DEFAULT 1,
+    publish_at DATETIME NULL,
+    expires_at DATETIME NULL,
+    attachment VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    updated_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL
+);
+
+CREATE TABLE IF NOT EXISTS announcement_reads (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    announcement_id INT UNSIGNED NOT NULL,
+    employee_id INT UNSIGNED NOT NULL,
+    read_at DATETIME NULL
+);
+
 CREATE TABLE IF NOT EXISTS activity_logs (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     employee_id INT UNSIGNED NULL,
