@@ -305,6 +305,11 @@ final class Mailer
             $template = 'generic';
         }
 
+        // Tautan aksi harus absolut di kedua bagian (HTML & teks biasa).
+        if (!empty($data['actionUrl'])) {
+            $data['actionUrl'] = self::absolute((string) $data['actionUrl']);
+        }
+
         $html = self::render($template, $data);
         $text = self::plainText($data);
 

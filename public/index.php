@@ -13,9 +13,11 @@ require dirname(__DIR__) . '/app/bootstrap.php';
 use App\Controllers\AnnouncementController;
 use App\Controllers\ApprovalController;
 use App\Controllers\AttendanceController;
+use App\Controllers\CareerController;
 use App\Controllers\AuthController;
 use App\Controllers\ComponentController;
 use App\Controllers\DashboardController;
+use App\Controllers\DocumentController;
 use App\Controllers\EmployeeController;
 use App\Controllers\ExpenseController;
 use App\Controllers\MediaController;
@@ -356,6 +358,26 @@ $router->post('/scheduler/prune', [SchedulerController::class, 'prune'], ['roles
 
 // Endpoint cron via HTTP (token, tanpa login) — untuk layanan cron eksternal.
 $router->get('/cron', [SchedulerController::class, 'http'], ['auth' => false, 'csrf' => false, 'name' => 'cron.http']);
+
+/* ------------------------------------------ Dokumen & riwayat jabatan (Batch 19) */
+$router->get('/documents', [DocumentController::class, 'index'], ['roles' => ['HR'], 'name' => 'documents.index']);
+$router->get('/documents/create', [DocumentController::class, 'create'], ['roles' => ['HR'], 'name' => 'documents.create']);
+$router->post('/documents', [DocumentController::class, 'store'], ['roles' => ['HR'], 'name' => 'documents.store']);
+$router->get('/documents/{id}/edit', [DocumentController::class, 'edit'], ['roles' => ['HR'], 'name' => 'documents.edit']);
+$router->add('POST|PUT', '/documents/{id}', [DocumentController::class, 'update'], ['roles' => ['HR'], 'name' => 'documents.update']);
+$router->post('/documents/{id}/verify', [DocumentController::class, 'verify'], ['roles' => ['HR'], 'name' => 'documents.verify']);
+$router->get('/documents/{id}/download', [DocumentController::class, 'download'], ['name' => 'documents.download', 'csrf' => false]);
+$router->add('POST|DELETE', '/documents/{id}/delete', [DocumentController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'documents.delete']);
+
+$router->get('/me/documents', [DocumentController::class, 'mine'], ['name' => 'me.documents']);
+$router->post('/me/documents', [DocumentController::class, 'storeMine'], ['name' => 'me.documents.store']);
+
+$router->get('/careers', [CareerController::class, 'index'], ['roles' => ['HR'], 'name' => 'careers.index']);
+$router->get('/careers/create', [CareerController::class, 'create'], ['roles' => ['HR'], 'name' => 'careers.create']);
+$router->post('/careers', [CareerController::class, 'store'], ['roles' => ['HR'], 'name' => 'careers.store']);
+$router->add('POST|DELETE', '/careers/{id}/delete', [CareerController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'careers.delete']);
+
+$router->get('/me/career', [CareerController::class, 'mine'], ['name' => 'me.career']);
 
 /* --------------------------------------------------- Reset sistem (Batch 17) */
 $router->get('/system/reset', [SystemController::class, 'reset'], ['roles' => ['HR'], 'name' => 'system.reset']);

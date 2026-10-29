@@ -36,8 +36,9 @@ dengan slip gaji ber-QR.
 | **17** | Register aset & BAST offboarding: daftar aset/inventaris yang dipegang karyawan (kode, qty, kondisi), status pengembalian per item, **BAST PDF** bertanda tangan, blokir penutupan offboarding bila aset belum kembali, serta halaman **Reset Sistem** (bersihkan data uji, akun admin dipertahankan) | ✅ selesai |
 | **17.1** | Penyempurnaan: **target pengumuman berlapis** (unit bisnis, departemen, jabatan, peran, dan karyawan tertentu — bisa dikombinasikan) serta **denda keterlambatan progresif** berbasis tier 0–1 jam, 1–2 jam, 2–3 jam, dan >3 jam dengan batas & nominal yang dapat diatur | ✅ selesai |
 | **18** | Email & penjadwal: konfigurasi SMTP (SSL/STARTTLS) + email uji, antrean email keluar dengan template ber-kop perusahaan (pengingat kontrak, sisa cuti, pengumuman, reset sandi), kirim ulang/batal, serta **cron job** (antrean email, pengingat kontrak H-N, pengingat sisa cuti, notifikasi pengumuman terjadwal) lengkap dengan riwayat eksekusi, mode otomatis, dan endpoint cron bertoken | ✅ selesai |
+| **19** | Dokumen karyawan & riwayat jabatan: arsip digital berjenis (KTP, NPWP, KK, ijazah, sertifikat, kontrak, SK, BPJS, SIM, paspor) dengan nomor, masa berlaku, penanda rahasia, verifikasi HR + alasan penolakan, pencarian/filter/pagination, unggah mandiri karyawan, serta **riwayat jabatan** (pengangkatan, promosi, mutasi, demosi, kontrak, gaji, status) bertanggal efektif dengan snapshot organisasi dan penyelarasan data karyawan otomatis, plus job pengingat dokumen kedaluwarsa | ✅ selesai |
 
-Seluruh delapan belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh sembilan belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -97,8 +98,9 @@ mysql -u user -p asiaraya_hris < database/schema.sql
   (`HRIS_DB_HOST`, `HRIS_DB_DATABASE`, `HRIS_DB_USERNAME`, `HRIS_DB_PASSWORD`,
   `HRIS_GOOGLE_CLIENT_SECRET`, dst.). Daftar kunci lengkap ada di
   `app/config/env.example.php`.
-* `database/demo-data.sql` — **dump data demo** (6.880 baris pada 42 tabel,
-  `INSERT` saja) untuk MySQL/MariaDB, dibuat dari database pratinjau:
+* `database/demo-data.sql` — **dump data demo** (6.949 baris pada 43 tabel
+  berisi — dari 49 tabel skema, `INSERT` saja) untuk MySQL/MariaDB, dibuat dari
+  database pratinjau:
 
 ```bash
 mysql -u user -p asiaraya_hris < database/schema.sql
@@ -114,9 +116,13 @@ mysql -u user -p asiaraya_hris < database/demo-data.sql
 cp database/demo-preview.sqlite storage/database.sqlite
 ```
 
+  Memperbarui kedua berkas di atas setelah mengubah data demo:
+  `node tools/preview/gen-dump.mjs` (membaca `storage/database.sqlite`).
+
 * Isi data demo sepenuhnya fiktif (118 karyawan contoh, 5 pengajuan offboarding,
-  presensi 26 hari kerja, payroll, pelatihan, rekrutmen, BAST, 118 email pada
-  antrean keluar beserta riwayat cron). Untuk memulai dari nol, login sebagai HR
+  presensi 26 hari kerja, pelatihan, rekrutmen, BAST, 135 dokumen kepegawaian
+  dengan berkas PDF contoh, 24 catatan riwayat jabatan, 135 email pada antrean
+  keluar beserta riwayat cron). Untuk memulai dari nol, login sebagai HR
   lalu buka **Reset Sistem** (`/system/reset`).
 * Driver email pada profil demo adalah **Log berkas** — email otomatis tetap
   terlihat di `/mail` (status *Terkirim*) tetapi hanya dicatat ke
@@ -1157,13 +1163,14 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
   aplikasi.
 
 ### Penjadwal tugas (`/scheduler`) — HR
-Empat job bawaan, semuanya dapat dijalankan manual dari UI:
+Lima job bawaan, semuanya dapat dijalankan manual dari UI:
 
 | Job | Isi | Interval otomatis |
 |-----|-----|-------------------|
 | `email_queue` | Mengirim email `PENDING` yang jatuh tempo (batch 1–200) | 5 menit |
 | `contract_expiry` | Pengingat kontrak berakhir H-N (default 30 hari): email + notifikasi lonceng | 12 jam |
 | `leave_expiry` | Pengingat sisa cuti menjelang 31 Desember (jendela H-N, default 70 hari) | 24 jam |
+| `document_expiry` | Pengingat dokumen karyawan (KTP, paspor, SIM, sertifikat, kontrak) yang mendekati kedaluwarsa; dokumen rahasia dilewati | 24 jam |
 | `announcement_publish` | Mengirim notifikasi (opsional email) untuk pengumuman terjadwal yang jadwal tayangnya tiba | 15 menit |
 
 * **Idempoten** — pengingat kontrak/cuti tidak dikirim dua kali untuk penerima
@@ -1213,6 +1220,82 @@ Empat job bawaan, semuanya dapat dijalankan manual dari UI:
   `from_email,from_name,reply_to,timeout}` dan
   `cron_{auto,job_*,contract_lead_days,leave_lead_days,email_batch,`
   `announcement_email,prune_days,secret}`.
+
+## 2.22 Batch 19 — Dokumen Karyawan & Riwayat Jabatan
+
+### Arsip dokumen (`/documents`) — HR
+* Satu tempat untuk **KTP, NPWP, KK, ijazah, sertifikat, kontrak kerja, SK,
+  BPJS Kesehatan, BPJS Ketenagakerjaan, SIM, paspor, foto, dan dokumen lain**.
+  Jenis beserta ikon, kebutuhan masa berlaku, dan labelnya didefinisikan di
+  `DocumentModel::TYPES`.
+* Unggah **PDF/JPG/PNG maksimal 5 MB** (validasi MIME asli, bukan sekadar
+  ekstensi) ke `storage/uploads/documents/{id_karyawan}/` — di luar web root,
+  sehingga tidak bisa diakses langsung tanpa login.
+* Metadata: judul, nomor dokumen, tanggal terbit, berlaku sampai, catatan,
+  serta penanda **rahasia** (hanya HR yang dapat membuka).
+* Status verifikasi **Belum diverifikasi → Terverifikasi / Ditolak**; penolakan
+  wajib menyertakan alasan dan otomatis mengirim notifikasi lonceng ke karyawan.
+  Unggahan HR dapat langsung ditandai terverifikasi.
+* Filter: pencarian (judul/nomor/nama/NIK), jenis, status, masa berlaku
+  (akan kedaluwarsa / sudah kedaluwarsa / tanpa masa berlaku), dan unit bisnis.
+  15 baris per halaman, ringkasan kartu (total, belum diverifikasi, akan
+  kedaluwarsa, cakupan arsip), komposisi per jenis, serta panel "perlu
+  perhatian" berisi dokumen terdekat kedaluwarsa.
+* Unduh lewat `GET /documents/{id}/download` — memeriksa peran, kepemilikan,
+  flag rahasia, dan **realpath containment** sebelum mengirim berkas; setiap
+  unduhan dicatat di log audit.
+
+### Portal karyawan (`/me/documents`) — semua peran
+* Karyawan melihat dokumennya sendiri (yang **tidak** rahasia) lengkap dengan
+  status verifikasi dan sisa masa berlaku.
+* Formulir unggah mandiri: berkas baru masuk sebagai **Belum diverifikasi** dan
+  HR menerima notifikasi lonceng.
+* HR juga dapat mengunggah dokumen untuk karyawan mana pun dari halaman detail
+  karyawan (`/employees/{id}#documents`).
+
+### Riwayat jabatan (`/careers`) — HR
+* Mencatat **pengangkatan awal, promosi, mutasi, demosi, perpanjangan kontrak,
+  penyesuaian gaji, dan perubahan status** dengan tanggal efektif (dan tanggal
+  berakhir untuk kontrak berjangka), nomor SK, serta catatan.
+* Setiap baris menyimpan **snapshot** nama unit/departemen/jabatan sehingga
+  riwayat tetap terbaca walau master organisasi berubah. Nilai gaji sebelumnya
+  disimpan untuk perbandingan.
+* Opsi **perbarui data karyawan** (default aktif) menyelaraskan
+  `employees.business_unit_id/department_id/position_id/employment_status/`
+  `basic_salary` dengan catatan baru, lalu mengirim notifikasi ke karyawan.
+* Halaman HR: kartu ringkasan (total catatan, promosi vs mutasi, tahun ini,
+  perubahan gaji), filter pencarian/jenis/tahun/unit, linimasa per baris,
+  daftar "paling dinamis", dan penghapusan catatan.
+* Linimasa juga tampil di detail karyawan (`/employees/{id}#career`) dan pada
+  portal karyawan (`/me/career`) berikut ringkasan posisi saat ini.
+
+### Integrasi & otomatisasi
+* Job `document_expiry` pada `/scheduler` mengirim email + notifikasi untuk
+  dokumen yang kedaluwarsa dalam jendela H-N (default **60 hari**, dapat diubah
+  di Preferensi Job). Dokumen bertanda rahasia **tidak** dikirimi email.
+* Badge sidebar "Dokumen Karyawan" menampilkan jumlah dokumen yang menunggu
+  verifikasi; badge diperbarui pada setiap halaman.
+* Reset Sistem (Batch 17) ikut membersihkan `employee_documents` dan
+  `employee_job_history`.
+
+### Catatan teknis
+* Versi skema naik ke **20**; tabel baru `employee_documents` (indeks
+  karyawan+status, kedaluwarsa, karyawan+jenis) dan `employee_job_history`
+  (indeks karyawan+tanggal, jenis+tanggal).
+* Model: `DocumentModel` (filter, pagination, statistik, verifikasi,
+  `expiryState()`, opsi karyawan) dan `CareerModel` (filter, riwayat per
+  karyawan, rekam jejak sebelumnya, statistik, `create()` dengan snapshot).
+* Controller: `DocumentController` (`index/create/store/mine/storeMine/verify/`
+  `edit/update/download/destroy`) dan `CareerController`
+  (`index/create/store/mine/destroy`).
+* Rute baru: `/documents*` (HR), `/me/documents` (semua peran), `/careers*`
+  (HR), `/me/career` (semua peran).
+* Data demo: `database/seed_documents.php` membuat 135 dokumen contoh beserta
+  berkas PDF satu halaman di `storage/uploads/documents/…`, plus 24 catatan
+  riwayat jabatan untuk 9 karyawan. Berkas tersebut **dibuat saat seeding**;
+  bila hanya mengimpor `database/demo-data.sql` ke MySQL, tautan unduh dokumen
+  contoh akan kosong — jalankan seeding ulang (`/system/reset` → instalasi baru)
+  atau unggah berkas sendiri.
 
 ---
 
@@ -1270,6 +1353,8 @@ storage/                 # logs, cache, uploads, database preview
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 | Email & penjadwal (SMTP, antrean email, cron job) | ✅ | – | – |
+| Dokumen karyawan (arsip KTP/NPWP/ijazah/kontrak/sertifikat, verifikasi, unduh) | ✅ semua dokumen | – | unggah & unduh dokumen sendiri (non-rahasia) |
+| Riwayat jabatan & mutasi | ✅ catat, ubah data karyawan otomatis | – | lihat linimasa sendiri |
 
 Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
 payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani

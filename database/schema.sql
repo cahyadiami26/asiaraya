@@ -807,6 +807,57 @@ CREATE TABLE IF NOT EXISTS cron_runs (
 );
 
 -- ---------------------------------------------------------------------------
+-- Batch 19 — Dokumen karyawan & riwayat jabatan/posisi
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS employee_documents (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    doc_type VARCHAR(30) NOT NULL DEFAULT 'LAINNYA',
+    title VARCHAR(160) NOT NULL,
+    document_number VARCHAR(80) NULL,
+    file_path VARCHAR(255) NOT NULL,
+    file_name VARCHAR(200) NULL,
+    file_size INT NOT NULL DEFAULT 0,
+    mime_type VARCHAR(80) NULL,
+    issued_at DATE NULL,
+    expires_at DATE NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'UNVERIFIED',
+    is_confidential TINYINT(1) NOT NULL DEFAULT 0,
+    note VARCHAR(255) NULL,
+    uploaded_by INT UNSIGNED NULL,
+    verified_by INT UNSIGNED NULL,
+    verified_at DATETIME NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    KEY idx_employee_doc_employee (employee_id, status),
+    KEY idx_employee_doc_expiry (expires_at),
+    KEY idx_employee_doc_type (doc_type)
+);
+
+CREATE TABLE IF NOT EXISTS employee_job_history (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    employee_id INT UNSIGNED NOT NULL,
+    change_type VARCHAR(20) NOT NULL DEFAULT 'MUTATION',
+    effective_date DATE NOT NULL,
+    end_date DATE NULL,
+    business_unit_id INT UNSIGNED NULL,
+    department_id INT UNSIGNED NULL,
+    position_id INT UNSIGNED NULL,
+    unit_name VARCHAR(120) NULL,
+    department_name VARCHAR(120) NULL,
+    position_name VARCHAR(120) NULL,
+    employment_status VARCHAR(30) NULL,
+    basic_salary DECIMAL(15,2) NULL,
+    previous_salary DECIMAL(15,2) NULL,
+    sk_number VARCHAR(80) NULL,
+    note VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    KEY idx_job_history_employee (employee_id, effective_date),
+    KEY idx_job_history_type (change_type, effective_date)
+);
+
+-- ---------------------------------------------------------------------------
 -- Batch 17.1 — Target pengumuman berlapis (unit, departemen, jabatan, peran,
 -- karyawan tertentu, atau kombinasi beberapa sekaligus)
 -- ---------------------------------------------------------------------------

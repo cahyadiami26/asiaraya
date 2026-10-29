@@ -191,6 +191,8 @@ final class EmployeeController extends Controller
         );
 
         $offboarding = new \App\Models\OffboardingModel();
+        $documentModel = new \App\Models\DocumentModel();
+        $careerModel = new \App\Models\CareerModel();
 
         $this->view('employees/show', [
             'title'         => $employee['full_name'],
@@ -202,6 +204,12 @@ final class EmployeeController extends Controller
             'leaveBalances' => $leaveBalances,
             'offboardingRequests' => $offboarding->employeeRequests((int) $id),
             'offboardingActive'   => $offboarding->activeForEmployee((int) $id),
+            'docList'       => $documentModel->forEmployee((int) $id, true, 60),
+            'docSummary'    => $documentModel->summaryFor((int) $id),
+            'docTypes'      => \App\Models\DocumentModel::TYPES,
+            'docStatuses'   => \App\Models\DocumentModel::STATUSES,
+            'careerHistory' => $careerModel->forEmployee((int) $id, 30),
+            'careerTypes'   => \App\Models\CareerModel::TYPES,
             'activity'      => $this->employees->recentActivity((int) $id),
             'contract'      => $this->contractStatus($employee),
             'badges'        => $this->dashboard->badges($this->employee() ?? []),

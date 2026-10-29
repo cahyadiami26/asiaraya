@@ -176,6 +176,10 @@ $lastOf = static function (array $job): string {
                             <input class="input" type="number" name="leave_lead" min="1" max="180" value="<?= (int) $settings['leave_lead'] ?>">
                         </div>
                         <div class="field">
+                            <label>Pengingat dokumen (H-)</label>
+                            <input class="input" type="number" name="document_lead" min="7" max="180" value="<?= (int) $settings['document_lead'] ?>">
+                        </div>
+                        <div class="field">
                             <label>Batch email per eksekusi</label>
                             <input class="input" type="number" name="email_batch" min="1" max="200" value="<?= (int) $settings['email_batch'] ?>">
                         </div>

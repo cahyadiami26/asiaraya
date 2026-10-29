@@ -572,6 +572,11 @@ final class DashboardModel
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",
                 [date('Y-m-d'), date('Y-m-d', strtotime('+45 days'))]
             ),
+            'documents' => (int) Database::value(
+                "SELECT COUNT(*) FROM employee_documents WHERE status = 'UNVERIFIED'",
+                [],
+                0
+            ),
         ];
     }
 }

@@ -32,6 +32,13 @@ final class Scheduler
             'toggle'   => 'cron_job_contract',
             'icon'     => 'file',
         ],
+        'document_expiry' => [
+            'label'    => 'Pengingat dokumen kedaluwarsa',
+            'desc'     => 'Mengingatkan karyawan (dan HR) saat KTP, paspor, SIM, sertifikat, atau kontrak mendekati masa berlaku.',
+            'interval' => 1440,
+            'toggle'   => 'cron_job_document',
+            'icon'     => 'file',
+        ],
         'leave_expiry' => [
             'label'    => 'Pengingat sisa cuti',
             'desc'     => 'Mengingatkan karyawan yang masih punya sisa cuti menjelang akhir tahun.',
@@ -110,6 +117,7 @@ final class Scheduler
             $result = match ($job) {
                 'email_queue'          => self::jobEmailQueue(),
                 'contract_expiry'      => self::jobContractExpiry(),
+                'document_expiry'      => self::jobDocumentExpiry(),
                 'leave_expiry'         => self::jobLeaveExpiry(),
                 'announcement_publish' => self::jobAnnouncementPublish(),
                 default                => ['processed' => 0, 'message' => 'Tidak ada implementasi.'],
@@ -174,6 +182,10 @@ final class Scheduler
             return;
         }
         if (!Database::tableExists('cron_runs')) {
+            return;
+        }
+        // Jangan sapu saat instalasi belum selesai (tabel masih kosong).
+        if ((int) Database::value('SELECT COUNT(*) FROM employees', [], 0) === 0) {
             return;
         }
 
@@ -377,6 +389,95 @@ final class Scheduler
                 $lead,
                 $sent,
                 $skipped
+            ),
+        ];
+    }
+
+    /** @return array{processed:int,message:string} */
+    private static function jobDocumentExpiry(): array
+    {
+        if (!Database::tableExists('employee_documents')) {
+            return ['processed' => 0, 'message' => 'Tabel dokumen karyawan belum tersedia.'];
+        }
+
+        $lead  = max(7, min(180, (int) Settings::get('cron_document_lead_days', 60)));
+        $today = date('Y-m-d');
+        $until = date('Y-m-d', strtotime($today . ' +' . $lead . ' days'));
+
+        $rows = Database::all(
+            "SELECT d.id, d.employee_id, d.title, d.doc_type, d.expires_at, d.is_confidential,
+                    e.full_name, e.email
+               FROM employee_documents d
+               JOIN employees e ON e.id = d.employee_id
+              WHERE d.expires_at IS NOT NULL
+                AND d.expires_at >= ?
+                AND d.expires_at <= ?
+                AND d.status <> 'REJECTED'
+                AND e.flag = 'ACTIVE'
+              ORDER BY d.expires_at ASC",
+            [$today, $until]
+        );
+
+        $sent = 0;
+        $skipped = 0;
+        $confidential = 0;
+        foreach ($rows as $row) {
+            $employeeId = (int) $row['employee_id'];
+            $days = (int) ceil((strtotime((string) $row['expires_at']) - strtotime($today)) / 86400);
+            $typeLabel = \App\Models\DocumentModel::typeLabel((string) $row['doc_type']);
+            $subject = 'Dokumen ' . $typeLabel . ' kedaluwarsa ' . tanggal((string) $row['expires_at'], 'd M Y');
+
+            if (self::alreadyEmailed($employeeId, 'document_expiry', $subject, 45)) {
+                $skipped++;
+                continue;
+            }
+
+            // Dokumen rahasia tidak boleh dibocorkan ke email karyawan; cukup dicatat untuk HR.
+            if ((int) $row['is_confidential'] === 1) {
+                $confidential++;
+                continue;
+            }
+
+            $email = trim((string) $row['email']);
+            if ($email !== '') {
+                Mailer::sendTemplate(
+                    ['email' => $email, 'name' => (string) $row['full_name'], 'employee_id' => $employeeId],
+                    'generic',
+                    $subject,
+                    [
+                        'heading'     => 'Dokumen Anda akan kedaluwarsa',
+                        'greeting'    => 'Halo ' . self::firstName((string) $row['full_name']) . ',',
+                        'message'     => 'Dokumen "' . $row['title'] . '" (' . $typeLabel . ') tercatat berlaku sampai '
+                            . tanggal((string) $row['expires_at'], 'd M Y') . ' (' . $days . ' hari lagi). '
+                            . 'Mohon unggah versi terbarunya melalui portal HRIS.',
+                        'badge'       => 'H-' . $days,
+                        'actionUrl'   => url('me/documents'),
+                        'actionLabel' => 'Perbarui Dokumen',
+                        'note'        => 'Abaikan pesan ini bila dokumen sudah diperbarui atau memang tidak memiliki masa berlaku.',
+                    ]
+                );
+            }
+
+            self::notifyEmployee(
+                $employeeId,
+                'Dokumen ' . $typeLabel . ' akan kedaluwarsa',
+                '"' . $row['title'] . '" berlaku sampai ' . tanggal((string) $row['expires_at'], 'd M Y')
+                    . ' (H-' . $days . ').',
+                '/me/documents',
+                'document'
+            );
+            $sent++;
+        }
+
+        return [
+            'processed' => $sent,
+            'message'   => sprintf(
+                '%d dokumen dalam jendela H-%d. %d pengingat dikirim, %d sudah pernah dikirim, %d rahasia dilewati.',
+                count($rows),
+                $lead,
+                $sent,
+                $skipped,
+                $confidential
             ),
         ];
     }

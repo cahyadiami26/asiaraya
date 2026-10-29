@@ -1848,6 +1848,11 @@ return static function (): array {
     }
     // <<< offboarding-seed
 
+    /* ---------------- Batch 19: dokumen & riwayat jabatan ---------------- */
+    $seedDocuments = require BASE_PATH . '/database/seed_documents.php';
+    $log = array_merge($log, $seedDocuments());
+    // >>> documents-seed
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

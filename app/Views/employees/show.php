@@ -296,3 +296,112 @@ $isActive = ($employee['flag'] ?? '') === 'ACTIVE';
         </section>
     </div>
 </div>
+
+<?php
+/* ------------------------------------------------ Batch 19: dokumen & karier */
+?>
+<div class="split-grid wide-left" style="margin-top:16px">
+    <section class="card" id="documents">
+        <div class="card__head">
+            <div>
+                <h2>Dokumen Kepegawaian</h2>
+                <div class="sub">
+                    <?= number_id(count($docList ?? [])) ?> berkas terarsip ·
+                    <?= number_id((int) ($docSummary['unverified'] ?? 0)) ?> menunggu verifikasi ·
+                    <?= number_id((int) ($docSummary['expiring'] ?? 0)) ?> mendekati kedaluwarsa
+                </div>
+            </div>
+            <div class="page-head__actions">
+                <a class="btn btn-sm btn-outline" href="<?= url('documents?employee=' . (int) $employee['id']) ?>"><?= icon('layers') ?> Semua</a>
+                <a class="btn btn-sm btn-primary" href="<?= url('documents/create?employee_id=' . (int) $employee['id']) ?>"><?= icon('upload') ?> Unggah</a>
+            </div>
+        </div>
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th>Dokumen</th><th>Masa Berlaku</th><th>Status</th><th style="width:96px"></th></tr></thead>
+                <tbody>
+                <?php foreach (array_slice($docList ?? [], 0, 8) as $doc): ?>
+                    <?php $expiry = \App\Models\DocumentModel::expiryState($doc['expires_at'] ?? null); ?>
+                    <tr>
+                        <td>
+                            <div class="name-cell">
+                                <span class="avatar sm" style="background:#e8f0f7;color:var(--navy-800)"><?= icon(str_contains((string) $doc['mime_type'], 'pdf') ? 'file' : 'camera') ?></span>
+                                <div>
+                                    <b><?= e($doc['title']) ?></b>
+                                    <span>
+                                        <?= e($docTypes[$doc['doc_type']]['label'] ?? $doc['doc_type']) ?>
+                                        <?php if (!empty($doc['document_number'])): ?> · <span class="mono"><?= e($doc['document_number']) ?></span><?php endif; ?>
+                                        <?php if ((int) $doc['is_confidential'] === 1): ?> · <span style="color:var(--rose-600)">rahasia</span><?php endif; ?>
+                                    </span>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="small">
+                            <b style="color:<?= $expiry['state'] === 'expired' ? 'var(--rose-600)' : ($expiry['state'] === 'soon' ? 'var(--amber-600)' : 'var(--ink-2)') ?>"><?= e($expiry['label']) ?></b>
+                            <div class="muted" style="font-size:10px"><?= $doc['expires_at'] ? tanggal((string) $doc['expires_at']) : 'tanpa tanggal' ?></div>
+                        </td>
+                        <td><span class="badge badge-<?= \App\Models\DocumentModel::statusTone((string) $doc['status']) ?>"><?= e(\App\Models\DocumentModel::statusLabel((string) $doc['status'])) ?></span></td>
+                        <td>
+                            <div class="flex gap-4" style="justify-content:flex-end">
+                                <a class="icon-btn" href="<?= url('documents/' . (int) $doc['id'] . '/download') ?>" target="_blank" title="Buka berkas"><?= icon('eye') ?></a>
+                                <a class="icon-btn" href="<?= url('documents/' . (int) $doc['id'] . '/edit') ?>" title="Ubah"><?= icon('edit') ?></a>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($docList)): ?>
+                    <tr><td colspan="4">
+                        <div class="empty-state" style="padding:20px">
+                            <div class="empty-icon"><?= icon('file') ?></div>
+                            <h3>Belum ada dokumen</h3>
+                            <p>Unggah KTP, NPWP, ijazah, atau kontrak kerja agar arsip lengkap.</p>
+                        </div>
+                    </td></tr>
+                <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="card" id="career">
+        <div class="card__head">
+            <div><h2>Riwayat Jabatan</h2>
+                <div class="sub"><?= number_id(count($careerHistory ?? [])) ?> catatan perubahan.</div></div>
+            <a class="btn btn-sm btn-primary" href="<?= url('careers/create?employee_id=' . (int) $employee['id']) ?>"><?= icon('plus') ?> Catat</a>
+        </div>
+        <div class="card__body" style="padding-top:6px">
+            <?php if (!empty($careerHistory)): ?>
+                <div class="timeline">
+                    <?php foreach (array_slice($careerHistory, 0, 6) as $item): ?>
+                        <div class="timeline__item">
+                            <b style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                                <?= e($careerTypes[$item['change_type']]['label'] ?? $item['change_type']) ?>
+                                <span class="badge badge-<?= e($careerTypes[$item['change_type']]['tone'] ?? 'slate') ?>"><?= tanggal((string) $item['effective_date'], 'M Y') ?></span>
+                            </b>
+                            <span>
+                                <?= e($item['position_name'] ?: '—') ?>
+                                <?= $item['department_name'] ? ' · ' . e($item['department_name']) : '' ?>
+                                <?= $item['unit_name'] ? ' · ' . e($item['unit_name']) : '' ?>
+                            </span>
+                            <?php if (!empty($item['sk_number'])): ?>
+                                <span class="mono" style="font-size:10px;color:var(--muted)">SK <?= e($item['sk_number']) ?></span>
+                            <?php endif; ?>
+                            <?php if (!empty($item['note'])): ?>
+                                <span style="font-size:10.6px;color:var(--muted)"><?= e($item['note']) ?></span>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <div class="empty-state" style="padding:20px">
+                    <div class="empty-icon"><?= icon('trending') ?></div>
+                    <h3>Belum ada riwayat</h3>
+                    <p>Catat pengangkatan awal agar linimasa karier mulai terbentuk.</p>
+                </div>
+            <?php endif; ?>
+        </div>
+        <div class="card__foot small muted" style="padding:10px 16px">
+            <a href="<?= url('careers?q=' . urlencode((string) $employee['employee_code'])) ?>">Lihat semua riwayat di menu Riwayat Jabatan</a>
+        </div>
+    </section>
+</div>

@@ -35,6 +35,10 @@ final class Nav
                 'items' => [
                     ['route' => 'employees.index', 'label' => 'Data Karyawan', 'icon' => 'users', 'roles' => ['HR']],
                     ['route' => 'employees.contracts', 'label' => 'Kontrak & Status', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'contracts'],
+                    ['route' => 'documents.index', 'label' => 'Dokumen Karyawan', 'icon' => 'layers', 'roles' => ['HR'], 'badge_key' => 'documents'],
+                    ['route' => 'careers.index', 'label' => 'Riwayat Jabatan', 'icon' => 'trending', 'roles' => ['HR']],
+                    ['route' => 'documents.index', 'label' => 'Dokumen Karyawan', 'icon' => 'layers', 'roles' => ['HR'], 'badge_key' => 'documents'],
+                    ['route' => 'careers.index', 'label' => 'Riwayat Jabatan', 'icon' => 'trending', 'roles' => ['HR']],
                 ],
             ],
             [
@@ -115,6 +119,10 @@ final class Nav
                     ['route' => 'leave.index', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.claims', 'label' => 'Klaim Saya', 'icon' => 'wallet', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['KARYAWAN']],
                 ],
             ],
             [
