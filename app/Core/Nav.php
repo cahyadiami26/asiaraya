@@ -39,9 +39,11 @@ final class Nav
             ],
             [
                 'label' => 'Operasional Kerja',
-                'roles' => ['HR'],
+                'roles' => ['HR', 'KARYAWAN'],
                 'items' => [
                     ['route' => 'shifts.index', 'label' => 'Jadwal Kerja & Shift', 'icon' => 'calendar', 'roles' => ['HR']],
+                    ['route' => 'schedules.index', 'label' => 'Penjadwalan Karyawan', 'icon' => 'calendar-check', 'roles' => ['HR']],
+                    ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN'], 'badge_key' => 'shift'],
                     ['route' => 'attendance.live', 'label' => 'Presensi & GPS Live Log', 'icon' => 'map-pin', 'roles' => ['HR'], 'live' => true],
                     ['route' => 'overtime.index', 'label' => 'Lembur (Overtime)', 'icon' => 'clock', 'roles' => ['HR'], 'badge_key' => 'overtime'],
                     ['route' => 'overtime.schedules', 'label' => 'Manajemen Lembur Terjadwal', 'icon' => 'calendar-check', 'roles' => ['HR']],

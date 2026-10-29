@@ -17,6 +17,8 @@ use App\Controllers\EmployeeController;
 use App\Controllers\MediaController;
 use App\Controllers\OrgController;
 use App\Controllers\PlaceholderController;
+use App\Controllers\ScheduleController;
+use App\Controllers\ShiftController;
 use App\Core\Router;
 
 $router = Router::instance();
@@ -68,6 +70,19 @@ $router->get('/employees/{id}/edit', [EmployeeController::class, 'edit'], ['role
 $router->add('POST|PUT', '/employees/{id}', [EmployeeController::class, 'update'], ['roles' => ['HR'], 'name' => 'employees.update']);
 $router->post('/employees/{id}/resign', [EmployeeController::class, 'resign'], ['roles' => ['HR'], 'name' => 'employees.resign']);
 
+/* ------------------------------------------------------ Batch 3: shift & jadwal */
+$router->get('/shifts', [ShiftController::class, 'index'], ['roles' => ['HR'], 'name' => 'shifts.index']);
+$router->post('/shifts', [ShiftController::class, 'store'], ['roles' => ['HR'], 'name' => 'shifts.store']);
+$router->add('POST|PUT', '/shifts/{id}', [ShiftController::class, 'update'], ['roles' => ['HR'], 'name' => 'shifts.update']);
+$router->add('POST|DELETE', '/shifts/{id}/delete', [ShiftController::class, 'destroy'], ['roles' => ['HR'], 'name' => 'shifts.delete']);
+
+$router->get('/schedules', [ScheduleController::class, 'index'], ['roles' => ['HR'], 'name' => 'schedules.index']);
+$router->post('/schedules/assign', [ScheduleController::class, 'assign'], ['roles' => ['HR'], 'name' => 'schedules.assign']);
+$router->add('POST|DELETE', '/schedules/{id}/delete', [ScheduleController::class, 'removeAssignment'], ['roles' => ['HR'], 'name' => 'schedules.delete']);
+$router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.requests']);
+$router->get('/me/schedule', [ScheduleController::class, 'mine'], ['name' => 'me.schedule']);
+$router->post('/me/schedule/request', [ScheduleController::class, 'storeRequest'], ['name' => 'me.schedule.request']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -78,15 +93,11 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/shifts'         => ['Jadwal Kerja & Shift', 'Batch 3'],
-    '/schedules'      => ['Penjadwalan Karyawan', 'Batch 3'],
-    '/schedules/requests' => ['Persetujuan Perubahan Jadwal', 'Batch 3'],
     '/attendance/live'   => ['Live Monitoring Presensi', 'Batch 4'],
     '/attendance/daily'  => ['Presensi Harian', 'Batch 4'],
     '/attendance/rekap'  => ['Rekap Presensi Bulanan', 'Batch 4'],
     '/attendance/settings' => ['Pengaturan Presensi', 'Batch 4'],
     '/me/attendance'  => ['Presensi Saya', 'Batch 4'],
-    '/me/schedule'    => ['Jadwal Saya', 'Batch 3'],
     '/overtime'       => ['Manajemen Lembur', 'Batch 5'],
     '/overtime/schedules' => ['Lembur Terjadwal', 'Batch 5'],
     '/me/overtime'    => ['Lembur Saya', 'Batch 5'],

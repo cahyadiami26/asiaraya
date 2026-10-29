@@ -276,7 +276,7 @@ function parseMultipart(buffer, boundary) {
     const typeMatch = /content-type:\s*([^\r\n]+)/i.exec(rawHeaders);
 
     if (!fileMatch || fileMatch[1] === '') {
-      result.fields[field] = content.toString('utf8');
+      assignField(result.fields, field, content.toString('utf8'));
       continue;
     }
 
@@ -292,6 +292,31 @@ function parseMultipart(buffer, boundary) {
     };
   }
   return result;
+}
+
+
+/**
+ * Assign a form field, mirroring PHP's bracket syntax for the subset we use:
+ *   name[]        → array push
+ *   name[key]     → nested object
+ *   name          → plain value (last one wins, like PHP)
+ */
+function assignField(target, key, value) {
+  const arrayMatch = /^([^\[]+)\[\]$/.exec(key);
+  if (arrayMatch) {
+    const name = arrayMatch[1];
+    if (!Array.isArray(target[name])) target[name] = [];
+    target[name].push(value);
+    return;
+  }
+  const nestedMatch = /^([^\[]+)\[([^\]]*)\]$/.exec(key);
+  if (nestedMatch) {
+    const [, name, sub] = nestedMatch;
+    if (!target[name] || typeof target[name] !== 'object' || Array.isArray(target[name])) target[name] = {};
+    target[name][sub] = value;
+    return;
+  }
+  target[key] = value;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -324,7 +349,7 @@ const server = http.createServer(async (req, res) => {
           Object.assign(files, parsed.files);
         }
       } else if (contentType.includes('application/x-www-form-urlencoded') || contentType === '') {
-        for (const [key, value] of new URLSearchParams(bodyBuffer.toString('utf8'))) post[key] = value;
+        for (const [key, value] of new URLSearchParams(bodyBuffer.toString('utf8'))) assignField(post, key, value);
       } else if (contentType.includes('application/json')) {
         try {
           const parsed = JSON.parse(bodyBuffer.toString('utf8'));

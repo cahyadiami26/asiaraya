@@ -18,7 +18,7 @@ multi-unit dengan slip gaji ber-QR.
 |-------|---------|--------|
 | **1** | Fondasi: autentikasi (username/password + Google), RBAC (HR/FIN/Karyawan), layout & design system, dashboard HR / Finance / Karyawan, profil, pencarian, notifikasi, mesin approval 2 tahap, installer | ✅ selesai |
 | **2** | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan otomatis, direktori & CRUD karyawan (kontrak, foto, resign) | ✅ selesai |
-| 3 | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan, request & approval perubahan jadwal | ⏳ |
+| **3** | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan (matriks harian), pengajuan & approval perubahan jadwal 2 tahap | ✅ selesai |
 | 4 | Presensi PWA (GPS geofence, selfie compress), log & rekap, pengaturan denda keterlambatan & potongan cuti | ⏳ |
 | 5 | Lembur: pengajuan, approval, setting kompensasi & batas maksimum, lembur terjadwal | ⏳ |
 | 6 | Cuti: jenis & jatah, pengajuan, approval, saldo | ⏳ |
@@ -123,6 +123,37 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 
 ---
 
+## 2.5 Modul Batch 3
+
+### Jadwal Kerja & Shift (`/shifts`)
+* Kartu shift: jam masuk/pulang, durasi kerja bersih (dikurangi istirahat), jam
+  istirahat, toleransi keterlambatan, hari kerja, tipe operasional
+  (`NORMAL`/`SHIFT`/`WFH`/`FIELD`), warna penanda, dan cakupan unit.
+* Shift lintas hari (mis. 22:00 → 07:00) dihitung otomatis.
+* Shift yang sudah dipakai penugasan/pengajuan tidak dapat dihapus — nonaktifkan.
+
+### Penjadwalan Karyawan (`/schedules`)
+* **Matriks harian** karyawan × tanggal dengan chip shift berwarna; sel kosong
+  dapat diklik untuk menetapkan shift pada tanggal tersebut (form terisi otomatis).
+* **Penugasan massal** per karyawan terpilih, per business unit, per departemen,
+  atau seluruh karyawan aktif, dengan opsi melewati hari non-kerja shift.
+* **Pemecahan rentang otomatis**: mengubah satu atau beberapa hari di tengah
+  rotasi bulanan akan memotong rentang lama menjadi sisa sebelum + penugasan baru
+  + sisa sesudah, sehingga rotasi lain tidak hilang.
+* Daftar penugasan berjalan dengan rentang, durasi hari, sumber, dan catatan.
+
+### Perubahan Jadwal (`/schedules/requests`, `/me/schedule`)
+* Karyawan melihat kalender jadwal pribadi (30 hari, bisa diubah rentangnya),
+  shift hari ini, dan riwayat pengajuan.
+* Pengajuan: shift pengganti, rentang tanggal, alasan. Satu karyawan hanya boleh
+  memiliki satu pengajuan berjalan; tanggal lampau ditolak.
+* Alur approval: **atasan langsung** (`PENDING → MANAGER_APPROVED`) → **HR**
+  (`→ APPROVED`). Hanya persetujuan final HR yang mengubah tabel `schedules`,
+  dan hanya pada rentang yang diminta.
+* Setiap keputusan mengirim notifikasi ke karyawan; penolakan tidak mengubah jadwal.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -131,8 +162,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Placeholder
-  Models/                # Dashboard, Org, Employee (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -156,7 +187,8 @@ storage/                 # logs, cache, uploads, database preview
 |-------|----|-----|----------|
 | Data karyawan (CRUD, kontrak, foto, resign) | ✅ | – | baca (diri sendiri) |
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
-| Shift & jadwal + approval perubahan | ✅ | – | pengajuan |
+| Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
+| Approval perubahan jadwal | ✅ | – | pengajuan + persetujuan atasan |
 | Presensi (live, harian, rekap, setting) | ✅ | baca | presensi diri |
 | Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
 | Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |

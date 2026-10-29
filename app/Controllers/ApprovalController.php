@@ -7,6 +7,7 @@ use App\Core\Audit;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
+use App\Models\ScheduleModel;
 
 /**
  * Two-stage approval engine shared by overtime, leave and shift-change.
@@ -77,23 +78,17 @@ final class ApprovalController extends Controller
         $stage = $this->resolveStage($request, (int) $request['employee_id']);
 
         if ($decision === 'APPROVED' && $stage === 'HR') {
-            // HR approval rewrites the affected schedule rows.
-            Database::run(
-                'UPDATE schedules SET shift_id = ?, updated_at = ?, source = ? WHERE employee_id = ? AND start_date >= ?',
-                [(int) $request['requested_shift_id'], date('Y-m-d H:i:s'), 'REQUEST', (int) $request['employee_id'], $request['start_date']]
+            // HR approval rewrites only the requested window; the rest of the
+            // existing rotation is preserved (schedules are split as needed).
+            (new ScheduleModel())->assign(
+                (int) $request['employee_id'],
+                (int) $request['requested_shift_id'],
+                (string) $request['start_date'],
+                (string) $request['end_date'],
+                'REQUEST',
+                substr((string) input('note', ''), 0, 255) ?: 'Disetujui HR',
+                Auth::id()
             );
-            if (!Database::value('SELECT id FROM schedules WHERE employee_id = ? AND start_date >= ?', [(int) $request['employee_id'], $request['start_date']])) {
-                Database::insert('schedules', [
-                    'employee_id' => (int) $request['employee_id'],
-                    'shift_id'    => (int) $request['requested_shift_id'],
-                    'start_date'  => $request['start_date'],
-                    'end_date'    => $request['end_date'],
-                    'source'      => 'REQUEST',
-                    'created_by'  => Auth::id(),
-                    'created_at'  => date('Y-m-d H:i:s'),
-                    'updated_at'  => date('Y-m-d H:i:s'),
-                ]);
-            }
         }
 
         $this->applyDecision('shift_change_requests', $request, $decision, $stage, '/schedules/requests');
