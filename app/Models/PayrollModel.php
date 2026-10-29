@@ -27,11 +27,13 @@ final class PayrollModel
 
     private SalaryModel $salary;
     private AttendanceModel $attendance;
+    private ExpenseModel $expenses;
 
     public function __construct()
     {
         $this->salary = new SalaryModel();
         $this->attendance = new AttendanceModel();
+        $this->expenses = new ExpenseModel();
     }
 
     /* ================================================================ periode */
@@ -197,6 +199,7 @@ final class PayrollModel
             return ['error' => 'Periode yang sudah dikirim ke Finance tidak dapat dihapus.'];
         }
 
+        $this->expenses->unlinkPeriod($id);
         Database::run('DELETE FROM payroll_item_components WHERE item_id IN (SELECT id FROM payroll_items WHERE period_id = ?)', [$id]);
         Database::delete('payroll_items', 'period_id = ?', [$id]);
         Database::delete('payroll_periods', 'id = ?', [$id]);
@@ -246,6 +249,10 @@ final class PayrollModel
         $end = (string) $period['end_date'];
         $now = date('Y-m-d H:i:s');
 
+        // Klaim yang sebelumnya menempel pada slip periode ini dilepas dulu,
+        // supaya hitung ulang tidak menghasilkan tautan ke slip yang dihapus.
+        $this->expenses->unlinkPeriod($id);
+
         Database::run('DELETE FROM payroll_item_components WHERE item_id IN (SELECT id FROM payroll_items WHERE period_id = ?)', [$id]);
         Database::delete('payroll_items', 'period_id = ?', [$id]);
 
@@ -267,7 +274,12 @@ final class PayrollModel
                 $deductionLines = $preview['deductions'] ?? [];
 
                 $overtimeAmount = round((float) $overtime['amount'], 2);
-                $gross = round((float) ($preview['gross'] ?? $basic) + $overtimeAmount, 2);
+
+                // Reimbursement: klaim disetujui dalam rentang periode ini.
+                $claimRows = $this->expenses->approvedForRange($employeeId, $start, $end);
+                $claimTotal = round(array_sum(array_map(static fn ($c) => (float) $c['amount'], $claimRows)), 2);
+
+                $gross = round((float) ($preview['gross'] ?? $basic) + $overtimeAmount + $claimTotal, 2);
 
                 $bpjsEmployee = (float) ($preview['bpjs']['employee_total'] ?? 0);
                 $bpjsCompany = (float) ($preview['bpjs']['company_total'] ?? 0);
@@ -358,6 +370,18 @@ final class PayrollModel
                         'amount'     => $overtimeAmount,
                         'sort_order' => ++$sort,
                     ]);
+                }
+                if ($claimTotal > 0) {
+                    Database::insert('payroll_item_components', [
+                        'item_id'    => $itemId,
+                        'code'       => 'REIMBURSEMENT',
+                        'name'       => 'Reimbursement (' . count($claimRows) . ' klaim disetujui)',
+                        'type'       => 'BENEFIT',
+                        'kind'       => 'CLAIM',
+                        'amount'     => $claimTotal,
+                        'sort_order' => ++$sort,
+                    ]);
+                    $this->expenses->linkToPayroll(array_map(static fn ($c) => (int) $c['id'], $claimRows), $itemId);
                 }
                 foreach (($preview['bpjs']['items'] ?? []) as $bpjsItem) {
                     if (($bpjsItem['side'] ?? '') !== 'EMPLOYEE' || (float) $bpjsItem['amount'] <= 0) {
@@ -586,8 +610,10 @@ final class PayrollModel
             'updated_at' => $now,
         ], 'id = ?', [$id]);
 
+        $claims = $this->expenses->markPeriodPaid($id, \App\Core\Auth::id());
+
         $this->notifyEmployees($period);
-        Audit::log('payroll.paid', 'payroll_period', $id, ['items' => $paid]);
+        Audit::log('payroll.paid', 'payroll_period', $id, ['items' => $paid, 'claims' => $claims]);
 
         return ['error' => null, 'paid' => $paid];
     }

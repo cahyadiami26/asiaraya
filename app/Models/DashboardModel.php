@@ -522,10 +522,19 @@ final class DashboardModel
     public function badges(array $user): array
     {
         $counts = $this->pendingApprovals()['counts'];
+        $claims = 0;
+        try {
+            $claims = (int) Database::value(
+                "SELECT COUNT(*) FROM expense_claims WHERE status IN ('PENDING','MANAGER_APPROVED')"
+            );
+        } catch (\Throwable) {
+            // tabel klaim belum ada pada basis data lama
+        }
         return [
             'overtime'  => $counts['overtime'],
             'leave'     => $counts['leave'],
             'shift'     => $counts['shift'],
+            'claims'    => $claims,
             'contracts' => (int) Database::value(
                 "SELECT COUNT(*) FROM employees
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",

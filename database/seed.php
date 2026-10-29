@@ -639,6 +639,79 @@ return static function (): array {
         Settings::set($key, $value, $group);
     }
 
+
+    /* ---------------- Kategori & klaim biaya (Batch 11) ---------------- */
+    $claimCategories = [
+        ['TRANSPORT', 'Transportasi Lokal', 'Perjalanan dinas dalam kota (taksi/ojek/BBM).', 500000, 1],
+        ['KESEHATAN', 'Kesehatan & Medis', 'Kunjungan dokter, obat, atau rawat jalan.', 5000000, 1],
+        ['PERJALANAN', 'Perjalanan Dinas', 'Tiket, penginapan, dan uang jalan luar kota.', 7500000, 1],
+        ['KONSUMSI', 'Konsumsi & Jamuan', 'Jamuan klien dan konsumsi rapat.', 1500000, 1],
+        ['KOMUNIKASI', 'Komunikasi & Internet', 'Paket data dan telepon untuk pekerjaan.', 750000, 0],
+        ['LAINNYA', 'Lain-lain', 'Penggantian biaya lain dengan persetujuan HR.', null, 0],
+    ];
+    $categoryIds = [];
+    foreach ($claimCategories as [$code, $name, $description, $maxAmount, $receipt]) {
+        $categoryIds[$code] = Database::insert('expense_categories', [
+            'code'             => $code,
+            'name'             => $name,
+            'description'      => $description,
+            'max_amount'       => $maxAmount,
+            'requires_receipt' => $receipt,
+            'is_active'        => 1,
+            'created_at'       => date('Y-m-d H:i:s'),
+            'updated_at'       => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    $claimEmployees = Database::all(
+        "SELECT e.id, e.business_unit_id, e.direct_manager_id FROM employees e
+         WHERE e.flag = 'ACTIVE' AND e.role = 'KARYAWAN' ORDER BY e.id LIMIT 8"
+    );
+    $hrId = (int) Database::value("SELECT id FROM employees WHERE role = 'HR' AND flag = 'ACTIVE' LIMIT 1");
+    $finId = (int) Database::value("SELECT id FROM employees WHERE role = 'FIN' AND flag = 'ACTIVE' LIMIT 1");
+    $unitCode = (string) (Database::value('SELECT code FROM business_units ORDER BY id LIMIT 1') ?? 'HQ');
+    $claimSequence = 0;
+    $claims = [
+        ['TRANSPORT', 6, 185000, 'Taksi ke kantor klien Sudirman', 'PENDING'],
+        ['KONSUMSI', 4, 640000, 'Jamuan makan siang klien PT Sinar Jaya', 'PENDING'],
+        ['TRANSPORT', 8, 275000, 'Ojek online ke lokasi survey gudang', 'MANAGER_APPROVED'],
+        ['KOMUNIKASI', 5, 320000, 'Paket data bulanan untuk koordinasi lapangan', 'MANAGER_APPROVED'],
+        ['KESEHATAN', 3, 850000, 'Pemeriksaan kesehatan tahunan', 'APPROVED'],
+        ['PERJALANAN', 2, 2450000, 'Hotel 2 malam dinas Surabaya', 'APPROVED'],
+        ['TRANSPORT', 9, 145000, 'BBM kunjungan cabang Bandung', 'PAID'],
+        ['KESEHATAN', 7, 420000, 'Obat dan vitamin pasca rawat jalan', 'PAID'],
+        ['KONSUMSI', 10, 300000, 'Konsumsi rapat internal divisi', 'REJECTED'],
+    ];
+    foreach ($claims as $index => [$code, $day, $amount, $description, $status]) {
+        $employee = $claimEmployees[$index % max(1, count($claimEmployees))] ?? null;
+        if (!$employee) {
+            break;
+        }
+        $claimSequence++;
+        $managerId = (int) ($employee['direct_manager_id'] ?? 0);
+        $claimDate = date('Y-m-', strtotime('-1 month')) . str_pad((string) min(28, $day + 10), 2, '0', STR_PAD_LEFT);
+        Database::insert('expense_claims', [
+            'claim_number'        => 'KLM/' . strtoupper($unitCode) . '/' . date('Ym', strtotime($claimDate)) . '/' . str_pad((string) $claimSequence, 4, '0', STR_PAD_LEFT),
+            'employee_id'         => (int) $employee['id'],
+            'category_id'         => $categoryIds[$code],
+            'claim_date'          => $claimDate,
+            'amount'              => $amount,
+            'description'         => $description,
+            'receipt'             => null,
+            'status'              => $status,
+            'manager_id'          => in_array($status, ['MANAGER_APPROVED', 'APPROVED', 'PAID', 'REJECTED'], true) ? ($managerId ?: $hrId) : null,
+            'manager_approved_at' => in_array($status, ['MANAGER_APPROVED', 'APPROVED', 'PAID', 'REJECTED'], true) ? date('Y-m-d H:i:s', strtotime($claimDate . ' +2 days')) : null,
+            'approver_id'         => in_array($status, ['APPROVED', 'PAID'], true) ? ($finId ?: $hrId) : null,
+            'approved_at'         => in_array($status, ['APPROVED', 'PAID'], true) ? date('Y-m-d H:i:s', strtotime($claimDate . ' +3 days')) : null,
+            'paid_at'             => $status === 'PAID' ? date('Y-m-d H:i:s', strtotime($claimDate . ' +5 days')) : null,
+            'paid_by'             => $status === 'PAID' ? ($finId ?: $hrId) : null,
+            'created_at'          => $claimDate . ' 09:12:00',
+            'updated_at'          => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    $log[] = 'Data kategori & ' . $claimSequence . ' klaim biaya contoh dibuat.';
+
     /* ---------------- Holidays ---------------- */
     foreach ([
         [date('Y') . '-01-01', 'Tahun Baru Masehi'],

@@ -432,3 +432,48 @@ CREATE TABLE IF NOT EXISTS password_resets (
     used_at DATETIME NULL,
     created_at DATETIME NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 11 — Klaim & Reimbursement
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS expense_categories (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(30) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(255) NULL,
+    max_amount DECIMAL(14,2) NULL,
+    requires_receipt TINYINT(1) NOT NULL DEFAULT 1,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_expense_category_code (code),
+    KEY idx_expense_category_active (is_active)
+);
+
+CREATE TABLE IF NOT EXISTS expense_claims (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    claim_number VARCHAR(40) NOT NULL,
+    employee_id INT UNSIGNED NOT NULL,
+    category_id INT UNSIGNED NOT NULL,
+    claim_date DATE NOT NULL,
+    amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+    description VARCHAR(255) NOT NULL,
+    receipt VARCHAR(255) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    manager_id INT UNSIGNED NULL,
+    manager_approved_at DATETIME NULL,
+    manager_note VARCHAR(255) NULL,
+    approver_id INT UNSIGNED NULL,
+    approved_at DATETIME NULL,
+    approver_note VARCHAR(255) NULL,
+    payroll_item_id INT UNSIGNED NULL,
+    paid_at DATETIME NULL,
+    paid_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_expense_claim_number (claim_number),
+    KEY idx_expense_claim_employee (employee_id, claim_date),
+    KEY idx_expense_claim_status (status),
+    KEY idx_expense_claim_category (category_id),
+    KEY idx_expense_claim_payroll (payroll_item_id)
+);

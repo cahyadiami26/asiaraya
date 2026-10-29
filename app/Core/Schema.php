@@ -12,6 +12,12 @@ namespace App\Core;
  */
 final class Schema
 {
+    /**
+     * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
+     * akan menjalankan ulang installer (idempoten) untuk basis data lama.
+     */
+    public const VERSION = 11;
+
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
         'CREATE INDEX IF NOT EXISTS idx_employees_code ON employees (employee_code)',
@@ -36,6 +42,11 @@ final class Schema
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_balance ON leave_balances (employee_id, leave_type_id, period_year)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_component_code ON salary_components (code)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_type_code ON leave_types (code)',
+        'CREATE INDEX IF NOT EXISTS idx_expense_claim_employee ON expense_claims (employee_id, claim_date)',
+        'CREATE INDEX IF NOT EXISTS idx_expense_claim_status ON expense_claims (status)',
+        'CREATE INDEX IF NOT EXISTS idx_expense_claim_payroll ON expense_claims (payroll_item_id)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_claim_number ON expense_claims (claim_number)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_expense_category_code ON expense_categories (code)',
     ];
 
     public static function install(bool $withSeed = true, bool $fresh = false): array
@@ -81,7 +92,25 @@ final class Schema
             $log = array_merge($log, self::seed($fresh));
         }
 
+        self::markInstalled();
+
         return $log;
+    }
+
+    /** Catat versi skema aktif agar upgrade hanya berjalan sekali. */
+    private static function markInstalled(): void
+    {
+        try {
+            \App\Core\Settings::set('schema_version', (string) self::VERSION, 'system');
+        } catch (\Throwable) {
+            // abaikan: versi hanya penanda, bukan data operasional
+        }
+    }
+
+    /** Apakah basis data perlu di-upgrade ke versi skema terbaru. */
+    public static function needsUpgrade(): bool
+    {
+        return (int) \App\Core\Settings::get('schema_version', 0) < self::VERSION;
     }
 
     public static function isInstalled(): bool

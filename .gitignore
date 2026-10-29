@@ -18,6 +18,10 @@ storage/exports/*
 tools/preview/node_modules
 tools/preview/package-lock.json
 
+# phpqrcode runtime logs
+vendor/phpqrcode/*-errors.txt
+vendor/phpqrcode/cache/*.dat
+
 # OS / editor
 .DS_Store
 Thumbs.db

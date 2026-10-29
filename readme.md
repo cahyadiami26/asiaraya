@@ -1,8 +1,8 @@
 # HRIS Enterprise — PT Asia Raya Group
 
 Sistem Informasi Sumber Daya Manusia terpadu: data kepegawaian, jadwal & shift,
-presensi geofence + selfie (PWA), lembur, cuti, komponen gaji, dan payroll
-multi-unit dengan slip gaji ber-QR.
+presensi geofence + selfie (PWA), lembur, cuti, komponen gaji, klaim &
+reimbursement, serta payroll multi-unit dengan slip gaji ber-QR.
 
 * **Backend** — PHP 8 (native, tanpa framework), arsitektur MVC ringan buatan sendiri
 * **Database** — MySQL 8 / MariaDB 10.4+
@@ -26,8 +26,9 @@ multi-unit dengan slip gaji ber-QR.
 | **8** | Payroll: periode per unit, kalkulasi slip dari presensi/lembur/komponen, rekap per departemen, slip gaji PDF ber-QR + verifikasi publik, alur HR → FIN → PAID | ✅ selesai |
 | **9** | Laporan & cetak (PDF & CSV Excel-ready) untuk presensi/lembur/cuti/payroll, log aktivitas (audit trail) + retensi, pengaturan lanjutan (penandatangan laporan) | ✅ selesai |
 | **10** | Keamanan akun & sesi: reset kata sandi mandiri (tautan sekali pakai), ganti sandi dengan verifikasi sandi lama, "ingat perangkat" 30 hari, batas sesi 8 jam / idle 2 jam, proteksi brute-force | ✅ selesai |
+| **11** | Klaim & reimbursement: kategori dengan plafon, pengajuan + bukti, persetujuan atasan → HR/Finance, aksi massal, export CSV, integrasi otomatis ke slip payroll | ✅ selesai |
 
-Seluruh sepuluh batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh sebelas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan tanpa migrasi besar.
 
@@ -540,6 +541,66 @@ Empat laporan dengan tab terpisah, semuanya membaca data operasional terkini
 * Semua halaman autentikasi kini menampilkan pesan flash (mis. sesi berakhir,
   reset berhasil) — sebelumnya hanya halaman di dalam aplikasi.
 
+## 2.13 Modul Batch 11 — Klaim & Reimbursement
+
+### Kategori Klaim (`/claims/categories`) — HR
+* Master kategori: kode, nama, deskripsi, **plafon per klaim** (opsional), dan
+  penanda **wajib bukti**.
+* Kategori yang sudah dipakai pengajuan tidak dapat dihapus — nonaktifkan agar
+  riwayat tetap utuh (penghapusan hanya untuk kategori tanpa pemakaian).
+* Contoh bawaan: Transportasi Lokal, Kesehatan & Medis, Perjalanan Dinas,
+  Konsumsi & Jamuan, Komunikasi & Internet, Lain-lain.
+
+### Klaim Saya (`/me/claims`) — semua peran
+* Kartu ringkas: total klaim, nilai yang masih diproses, dibayarkan bulan ini,
+  dan total reimbursement diterima.
+* Formulir pengajuan: kategori, tanggal transaksi, nominal, keterangan, dan
+  lampiran bukti (PDF/JPG/PNG maks 4 MB).
+* Validasi: kategori aktif, nominal > 0 dan tidak melebihi plafon, tanggal tidak
+  melewati hari ini dan tidak lebih lama dari **batas usia klaim** (default 90
+  hari, diatur di `/settings?tab=advanced`), bukti wajib bila diminta kategori.
+* Nomor klaim otomatis berformat `KLM/{UNIT}/{YYYYMM}/{0001}`.
+* Atasan langsung otomatis mendapat **inbox "Persetujuan Klaim Tim"** di
+  halaman yang sama; karyawan dapat membatalkan klaim selama belum disetujui final.
+
+### Antrean Klaim (`/claims`) — HR & Finance
+* Filter status (default: semua yang berjalan), kategori, unit, departemen,
+  bulan transaksi, dan pencarian (nomor klaim/keterangan/nama/NIK).
+* Lima kartu KPI: menunggu atasan, menunggu HR/Finance, siap dibayar (beserta
+  nominal disetujui), masuk payroll, dan pembayaran bulan berjalan.
+* **Aksi massal**: centang beberapa klaim → "Setujui Terpilih"/"Tolak Terpilih".
+* `GET /claims/export` — CSV 5.000 baris terbaru sesuai filter, lengkap dengan
+  baris TOTAL.
+
+### Alur status
+```
+PENDING ──atasan──▶ MANAGER_APPROVED ──HR/Finance──▶ APPROVED
+   │                      │                            │
+   ├──ditolak atasan──▶ REJECTED                        ├──masuk payroll──▶ SCHEDULED ──payroll dibayar──▶ PAID
+   └──dibatalkan pengaju──▶ CANCELLED                   └──transfer FIN──▶ PAID
+```
+Karyawan tanpa atasan langsung melewati tahap 1 (`PENDING` → `MANAGER_APPROVED`
+otomatis). Setiap keputusan mengirim notifikasi ke pengaju; persetujuan atasan
+juga memberi tahu HR.
+
+### Integrasi payroll
+* Saat periode payroll dihitung, klaim berstatus `APPROVED` yang tanggal
+  transaksinya berada dalam rentang periode **otomatis masuk slip** sebagai
+  komponen `REIMBURSEMENT` (jenis BENEFIT, tidak menambah dasar pengenaan PPh)
+  dan ditandai `SCHEDULED`.
+* Saat periode ditandai dibayar, klaim terkait berubah `PAID` beserta tanggal
+  dan penerima pembayaran.
+* Hitung ulang, reopen, atau hapus periode melepas kembali klaim menjadi
+  `APPROVED` sehingga tidak ada tautan menggantung ke slip yang dihapus
+  (idempoten — diuji hitung ulang dua kali tanpa duplikasi).
+* Finance tetap dapat membayar klaim di luar payroll lewat tombol
+  **"Tandai Dibayarkan"** pada halaman detail (khusus peran FIN).
+
+### Detail klaim (`/claims/{id}`)
+Halaman detail menampilkan rincian, lampiran (gambar dipratinjau, PDF dibuka di
+tab baru), dan **timeline persetujuan**: pengajuan → atasan → HR/Finance →
+pembayaran. Akses dibatasi untuk pemilik, atasan langsungnya, HR, dan Finance.
+
 ---
 
 ## 3. Struktur proyek
@@ -550,8 +611,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -582,6 +643,7 @@ storage/                 # logs, cache, uploads, database preview
 | Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
 | Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
+| Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
@@ -616,6 +678,8 @@ diperlukan pada server produksi dan aman untuk dihapus.
 * Sesi: batas absolut 8 jam + idle 2 jam; "ingat perangkat" 30 hari dengan token
   yang dirotasi setiap pemakaian dan dicabut saat logout/ganti sandi.
 * Login dibatasi 5 kegagalan/15 menit per identifier + IP (brute-force).
+* Bukti klaim disimpan di `storage/uploads/claims` (di luar document root) dan
+  hanya dapat diakses pengguna yang sudah login lewat rute `/media/{folder}/{file}`.
 * Semua query memakai prepared statement (PDO), tanpa konkatenasi input.
 * Cookie sesi `HttpOnly`, `SameSite=Lax`, `Secure` otomatis pada HTTPS.
 * Audit trail: login, login gagal, approval, perubahan data.

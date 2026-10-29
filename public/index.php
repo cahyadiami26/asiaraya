@@ -16,6 +16,7 @@ use App\Controllers\AuthController;
 use App\Controllers\ComponentController;
 use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
+use App\Controllers\ExpenseController;
 use App\Controllers\MediaController;
 use App\Controllers\LeaveController;
 use App\Controllers\LogController;
@@ -184,6 +185,23 @@ $router->get('/reports/{type}/pdf', [ReportController::class, 'pdf'], ['roles' =
 $router->get('/logs', [LogController::class, 'index'], ['roles' => ['HR'], 'name' => 'logs.index']);
 $router->get('/logs/export', [LogController::class, 'export'], ['roles' => ['HR'], 'name' => 'logs.export', 'csrf' => false]);
 $router->post('/logs/purge', [LogController::class, 'purge'], ['roles' => ['HR'], 'name' => 'logs.purge']);
+
+
+/* ----------------------------------- Batch 11: klaim & reimbursement */
+$router->get('/claims/export', [ExpenseController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'claims.export', 'csrf' => false]);
+$router->get('/claims/categories', [ExpenseController::class, 'categories'], ['roles' => ['HR'], 'name' => 'claims.categories']);
+$router->post('/claims/categories', [ExpenseController::class, 'storeCategory'], ['roles' => ['HR'], 'name' => 'claims.categories.store']);
+$router->post('/claims/bulk-decide', [ExpenseController::class, 'bulkDecide'], ['roles' => ['HR', 'FIN'], 'name' => 'claims.bulk']);
+$router->add('POST|PUT', '/claims/categories/{id}', [ExpenseController::class, 'updateCategory'], ['roles' => ['HR'], 'name' => 'claims.categories.update']);
+$router->add('POST|DELETE', '/claims/categories/{id}/delete', [ExpenseController::class, 'destroyCategory'], ['roles' => ['HR'], 'name' => 'claims.categories.delete']);
+$router->get('/claims', [ExpenseController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'claims.index']);
+$router->get('/claims/{id}', [ExpenseController::class, 'show'], ['name' => 'claims.show']);
+$router->post('/claims/{id}/decide', [ExpenseController::class, 'decide'], ['roles' => ['HR', 'FIN', 'KARYAWAN'], 'name' => 'claims.decide']);
+$router->post('/claims/{id}/pay', [ExpenseController::class, 'pay'], ['roles' => ['FIN'], 'name' => 'claims.pay']);
+
+$router->get('/me/claims', [ExpenseController::class, 'mine'], ['name' => 'me.claims']);
+$router->post('/me/claims', [ExpenseController::class, 'store'], ['name' => 'me.claims.store']);
+$router->post('/me/claims/{id}/cancel', [ExpenseController::class, 'cancel'], ['name' => 'me.claims.cancel']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

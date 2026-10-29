@@ -64,6 +64,7 @@ final class SettingsController extends Controller
                 'signer_hr'  => (string) (Settings::get('report_signer_hr') ?: ''),
                 'signer_fin' => (string) (Settings::get('report_signer_fin') ?: ''),
                 'retention'  => (int) Settings::get('audit_retention_days', 180),
+                'claim_age'  => (int) Settings::get('claim_max_age_days', 90),
                 'log_total'  => (int) Database::value('SELECT COUNT(*) FROM activity_logs'),
                 'log_oldest' => (string) (Database::value('SELECT MIN(created_at) FROM activity_logs') ?? ''),
             ],
@@ -146,16 +147,20 @@ final class SettingsController extends Controller
             $v->custom(mb_strlen((string) ($_POST['report_signer_fin'] ?? '')) > 120, 'report_signer_fin', 'Nama penandatangan maksimal 120 karakter.');
             $retention = (int) ($_POST['audit_retention_days'] ?? 0);
             $v->custom($retention < 30 || $retention > 1825, 'audit_retention_days', 'Retensi log harus antara 30 dan 1825 hari.');
+            $claimAge = (int) ($_POST['claim_max_age_days'] ?? 0);
+            $v->custom($claimAge < 7 || $claimAge > 365, 'claim_max_age_days', 'Batas usia klaim harus antara 7 dan 365 hari.');
         }, '/settings?tab=advanced');
 
         Settings::many([
             'report_signer_hr'     => trim((string) ($data['report_signer_hr'] ?? '')),
             'report_signer_fin'    => trim((string) ($data['report_signer_fin'] ?? '')),
             'audit_retention_days' => (int) ($data['audit_retention_days'] ?? 180),
+            'claim_max_age_days'   => (int) ($data['claim_max_age_days'] ?? 90),
         ], 'general');
 
         Audit::log('settings.advanced', 'settings', null, [
             'retention' => (int) ($data['audit_retention_days'] ?? 180),
+            'claim_age' => (int) ($data['claim_max_age_days'] ?? 90),
         ]);
         flash('success', 'Pengaturan laporan & audit disimpan.');
         redirect('/settings?tab=advanced');

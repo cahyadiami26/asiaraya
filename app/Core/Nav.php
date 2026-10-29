@@ -60,6 +60,7 @@ final class Nav
                 'items' => [
                     ['route' => 'payroll.index', 'label' => 'Payroll', 'icon' => 'wallet', 'roles' => ['HR', 'FIN']],
                     ['route' => 'components.index', 'label' => 'Komponen Gaji', 'icon' => 'layers', 'roles' => ['HR']],
+                    ['route' => 'claims.index', 'label' => 'Klaim & Reimbursement', 'icon' => 'wallet', 'roles' => ['HR', 'FIN'], 'badge_key' => 'claims'],
                     ['route' => 'reports.index', 'label' => 'Laporan', 'icon' => 'receipt', 'roles' => ['HR', 'FIN']],
                 ],
             ],
@@ -73,6 +74,7 @@ final class Nav
                     ['route' => 'me.overtime', 'label' => 'Lembur Saya', 'icon' => 'clock', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.leave', 'label' => 'Cuti Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
                     ['route' => 'leave.index', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.claims', 'label' => 'Klaim Saya', 'icon' => 'wallet', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
                 ],
             ],

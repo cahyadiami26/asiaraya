@@ -364,6 +364,11 @@ $pphMethods = [
                         <input class="input" type="number" min="30" max="1825" name="audit_retention_days" value="<?= e($val('audit_retention_days', (string) $advanced['retention'])) ?>">
                         <span class="hint">Antara 30–1825 hari. Tombol "Bersihkan" di halaman Log Aktivitas menghapus data lebih tua dari batas ini.</span>
                     </div>
+                    <div class="field">
+                        <label>Batas Usia Klaim Biaya (hari)</label>
+                        <input class="input" type="number" min="7" max="365" name="claim_max_age_days" value="<?= e($val('claim_max_age_days', (string) $advanced['claim_age'])) ?>">
+                        <span class="hint">Karyawan hanya dapat mengajukan klaim untuk transaksi maksimal N hari ke belakang (7–365 hari).</span>
+                    </div>
                 </div>
                 <div class="form-actions" style="margin-top:14px">
                     <button class="btn btn-primary" type="submit"><?= icon('check') ?> Simpan Pengaturan</button>
