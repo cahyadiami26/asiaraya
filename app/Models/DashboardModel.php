@@ -564,6 +564,7 @@ final class DashboardModel
                 [(int) $user['id']],
                 0
             ),
+            'training' => (new \App\Models\TrainingModel())->pendingNominationCount(),
             'contracts' => (int) Database::value(
                 "SELECT COUNT(*) FROM employees
                  WHERE flag = 'ACTIVE' AND contract_end IS NOT NULL AND contract_end BETWEEN ? AND ?",

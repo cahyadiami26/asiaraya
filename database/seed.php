@@ -905,7 +905,7 @@ return static function (): array {
     mt_srand(1313);
     $hrReviewer = (int) Database::value("SELECT id FROM employees WHERE role = 'HR' AND flag = 'ACTIVE' ORDER BY id LIMIT 1");
     $reviewEmployees = Database::all(
-        "SELECT id, direct_manager_id, business_unit_id, department_id, position_id
+        "SELECT id, full_name, direct_manager_id, business_unit_id, department_id, position_id
            FROM employees WHERE flag = 'ACTIVE' ORDER BY id"
     );
 
@@ -1043,6 +1043,250 @@ return static function (): array {
     }
 
     $log[] = 'Penilaian kinerja: ' . count($indicatorRows) . ' indikator, periode arsip (' . $closedCount . ' karyawan), dan periode berjalan (' . $activeCount . ' karyawan) dibuat.';
+
+    /* ---------------- Pelatihan & pengembangan ---------------- */
+    $programSeed = [
+        ['TRN-LEAD-01', 'Leadership Fundamentals', 'KEPEMIMPINAN', 'INTERNAL', 'HRGA & People Development',
+            'Dasar kepemimpinan situasional, coaching bawahan, dan pengambilan keputusan.', 16, 0, 0],
+        ['TRN-K3-01', 'Keselamatan & Kesehatan Kerja', 'KEPATUHAN', 'EKSTERNAL', 'Badan Sertifikasi K3',
+            'Identifikasi bahaya, penggunaan APD, dan prosedur tanggap darurat area produksi.', 8, 1500000, 1],
+        ['TRN-EXCEL-01', 'Excel Lanjutan untuk Analis', 'TEKNIS', 'ONLINE', 'Asia Raya Academy',
+            'Pivot table, Power Query, dan penyusunan dashboard operasional.', 12, 350000, 0],
+        ['TRN-COMM-01', 'Komunikasi Efektif & Asertif', 'SOFT_SKILL', 'INTERNAL', 'HRGA',
+            'Menyampaikan umpan balik, mendengar aktif, dan menangani konflik antar tim.', 6, 0, 0],
+        ['TRN-ONB-01', 'Onboarding Budaya Perusahaan', 'ONBOARDING', 'INTERNAL', 'HRGA',
+            'Nilai perusahaan, kode etik, tata tertib, dan pengenalan unit bisnis.', 4, 0, 1],
+        ['TRN-INTG-01', 'Integritas & Anti Penyuapan', 'KEPATUHAN', 'ONLINE', 'Compliance Team',
+            'Gratifikasi, benturan kepentingan, dan saluran pelaporan pelanggaran.', 3, 0, 1],
+    ];
+    $programIds = [];
+    foreach ($programSeed as [$code, $name, $category, $type, $provider, $description, $hours, $cost, $mandatory]) {
+        $programIds[$code] = Database::insert('trainings', [
+            'code'                 => $code,
+            'name'                 => $name,
+            'category'             => $category,
+            'type'                 => $type,
+            'provider'             => $provider,
+            'description'          => $description,
+            'duration_hours'       => $hours,
+            'cost_per_participant' => $cost,
+            'is_mandatory'         => $mandatory,
+            'is_active'            => 1,
+            'created_by'           => $hrReviewer,
+            'created_at'           => date('Y-m-d H:i:s'),
+            'updated_at'           => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    $sessionSeed = [
+        'k3' => [
+            'training_id' => $programIds['TRN-K3-01'], 'mode' => 'OFFLINE',
+            'location' => 'Surabaya Plant — Aula Produksi', 'start' => '-24 days', 'end' => '-24 days',
+            'deadline' => '-31 days', 'quota' => 30, 'status' => 'COMPLETED',
+            'note' => 'Batch wajib tahunan untuk seluruh operator dan supervisor produksi.',
+        ],
+        'comm' => [
+            'training_id' => $programIds['TRN-COMM-01'], 'mode' => 'OFFLINE',
+            'location' => 'Medan Branch — Ruang Rapat 2', 'start' => '0 days', 'end' => '0 days',
+            'deadline' => '-3 days', 'quota' => 18, 'status' => 'ONGOING',
+            'note' => 'Kelas untuk tim layanan pelanggan cabang Medan.',
+        ],
+        'lead' => [
+            'training_id' => $programIds['TRN-LEAD-01'], 'mode' => 'OFFLINE',
+            'location' => 'Jakarta HQ — Training Room Lt. 3', 'start' => '+9 days', 'end' => '+10 days',
+            'deadline' => '+4 days', 'quota' => 20, 'status' => 'OPEN',
+            'note' => 'Untuk supervisor dan manajer yang baru diangkat.',
+        ],
+        'excel' => [
+            'training_id' => $programIds['TRN-EXCEL-01'], 'mode' => 'ONLINE',
+            'location' => 'https://meet.asia-raya.co.id/excel-lanjutan', 'start' => '+16 days', 'end' => '+17 days',
+            'deadline' => '+12 days', 'quota' => 0, 'status' => 'OPEN',
+            'note' => 'Kelas daring, rekaman tersedia 14 hari setelah sesi.',
+        ],
+        'onb' => [
+            'training_id' => $programIds['TRN-ONB-01'], 'mode' => 'HYBRID',
+            'location' => 'Jakarta HQ — Auditorium', 'start' => '+34 days', 'end' => '+34 days',
+            'deadline' => '+28 days', 'quota' => 25, 'status' => 'DRAFT',
+            'note' => 'Orientasi karyawan baru periode berikutnya.',
+        ],
+    ];
+
+    $sessionIds = [];
+    foreach ($sessionSeed as $key => $meta) {
+        $sessionIds[$key] = Database::insert('training_sessions', [
+            'training_id'     => $meta['training_id'],
+            'mode'            => $meta['mode'],
+            'location'        => $meta['location'],
+            'start_date'      => date('Y-m-d', strtotime($meta['start'])),
+            'end_date'        => date('Y-m-d', strtotime($meta['end'])),
+            'enroll_deadline' => date('Y-m-d', strtotime($meta['deadline'])),
+            'quota'           => $meta['quota'],
+            'status'          => $meta['status'],
+            'note'            => $meta['note'],
+            'created_by'      => $hrReviewer,
+            'created_at'      => date('Y-m-d H:i:s'),
+            'updated_at'      => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    $certificateDir = rtrim((string) config('upload_path'), '/') . '/trainings';
+    if (!is_dir($certificateDir)) {
+        @mkdir($certificateDir, 0775, true);
+    }
+
+    $certificateHtml = static function (string $name, string $program, float $hours, string $number, string $date): string {
+        return '<div style="font-family:DejaVu Sans,sans-serif;padding:48px 56px;color:#0f172a">'
+            . '<div style="letter-spacing:.32em;font-size:11px;color:#0f766e;text-transform:uppercase">PT Asia Raya Group</div>'
+            . '<div style="font-size:26px;font-weight:700;margin:6px 0 2px">Sertifikat Pelatihan</div>'
+            . '<div style="font-size:12px;color:#64748b">Nomor: ' . $number . '</div>'
+            . '<hr style="border:none;border-top:1px solid #cbd5e1;margin:22px 0">'
+            . '<p style="font-size:13px;color:#475569;margin:0 0 6px">Diberikan kepada</p>'
+            . '<div style="font-size:22px;font-weight:700;margin-bottom:14px">' . $name . '</div>'
+            . '<p style="font-size:13px;color:#475569;line-height:1.7;margin:0">'
+            . 'atas keberhasilan menyelesaikan program pelatihan <b>' . $program . '</b> '
+            . 'dengan total ' . number_format($hours, 0, ',', '.') . ' jam pelatihan '
+            . 'yang diselenggarakan oleh PT Asia Raya Group.</p>'
+            . '<div style="margin-top:42px;font-size:12px;color:#334155">'
+            . 'Diterbitkan ' . $date . '<br><br><br>'
+            . '<b>Siti Rahmawati</b><br><span style="color:#64748b">HR Administrator</span></div>'
+            . '</div>';
+    };
+
+    $attendeePlan = [
+        'k3'   => ['attended' => 15, 'absent' => 3, 'offset' => 0, 'certificates' => 5],
+        'comm' => ['attended' => 0, 'absent' => 0, 'offset' => 20, 'approved' => 10],
+        'lead' => ['attended' => 0, 'absent' => 0, 'offset' => 34, 'approved' => 7, 'nominated' => 4],
+        'excel' => ['attended' => 0, 'absent' => 0, 'offset' => 48, 'nominated' => 5],
+    ];
+
+    $participantCount = 0;
+    $certificateCount = 0;
+    foreach ($attendeePlan as $key => $plan) {
+        $employees = array_slice($reviewEmployees, (int) $plan['offset'], 20);
+        $cursor = 0;
+
+        $attendedTotal = (int) ($plan['attended'] ?? 0);
+        $absentTotal = (int) ($plan['absent'] ?? 0);
+        $approvedTotal = (int) ($plan['approved'] ?? 0);
+        $nominatedTotal = (int) ($plan['nominated'] ?? 0);
+        $certificateTotal = (int) ($plan['certificates'] ?? 0);
+
+        for ($i = 0; $i < $attendedTotal; $i++) {
+            $employee = $employees[$i] ?? null;
+            if (!$employee) {
+                break;
+            }
+            $score = mt_rand(780, 960) / 10;
+            $certificate = null;
+            $certificateNo = null;
+            if ($certificateCount < $certificateTotal) {
+                $certificateNo = 'CERT/' . strtoupper($key) . '/' . date('Y') . '/' . str_pad((string) ($certificateCount + 1), 4, '0', STR_PAD_LEFT);
+                $fileName = 'trainings/' . date('Ymd') . '-' . bin2hex(random_bytes(5)) . '.pdf';
+                try {
+                    $bytes = \App\Core\Pdf::render($certificateHtml(
+                        (string) $employee['full_name'],
+                        'Keselamatan & Kesehatan Kerja',
+                        8.0,
+                        $certificateNo,
+                        date('d F Y', strtotime('-24 days'))
+                    ));
+                    if (@file_put_contents((string) config('upload_path') . '/' . $fileName, $bytes) !== false) {
+                        $certificate = $fileName;
+                        $certificateCount++;
+                    }
+                } catch (\Throwable) {
+                    $certificate = null;
+                }
+            }
+
+            Database::insert('training_participants', [
+                'session_id'      => $sessionIds[$key],
+                'employee_id'     => (int) $employee['id'],
+                'source'          => 'HR',
+                'status'          => 'ATTENDED',
+                'score'           => $score,
+                'attended_hours'  => 8,
+                'certificate'     => $certificate,
+                'certificate_no'  => $certificate ? $certificateNo : null,
+                'note'            => $score >= 90 ? 'Sangat aktif dalam simulasi evakuasi.' : null,
+                'approved_by'     => $hrReviewer,
+                'approved_at'     => date('Y-m-d H:i:s', strtotime('-30 days')),
+                'completed_at'    => date('Y-m-d H:i:s', strtotime('-24 days')),
+                'created_at'      => date('Y-m-d H:i:s'),
+                'updated_at'      => date('Y-m-d H:i:s'),
+            ]);
+            $participantCount++;
+            $cursor++;
+        }
+
+        for ($i = 0; $i < $absentTotal; $i++) {
+            $employee = $employees[$cursor] ?? null;
+            if (!$employee) {
+                break;
+            }
+            Database::insert('training_participants', [
+                'session_id'   => $sessionIds[$key],
+                'employee_id'  => (int) $employee['id'],
+                'source'       => 'HR',
+                'status'       => 'ABSENT',
+                'approved_by'  => $hrReviewer,
+                'approved_at'  => date('Y-m-d H:i:s', strtotime('-30 days')),
+                'completed_at' => date('Y-m-d H:i:s', strtotime('-24 days')),
+                'note'         => 'Berhalangan hadir, dijadwalkan pada batch berikutnya.',
+                'created_at'   => date('Y-m-d H:i:s'),
+                'updated_at'   => date('Y-m-d H:i:s'),
+            ]);
+            $participantCount++;
+            $cursor++;
+        }
+
+        for ($i = 0; $i < $approvedTotal; $i++) {
+            $employee = $employees[$cursor] ?? null;
+            if (!$employee) {
+                break;
+            }
+            Database::insert('training_participants', [
+                'session_id'  => $sessionIds[$key],
+                'employee_id' => (int) $employee['id'],
+                'source'      => 'HR',
+                'status'      => 'APPROVED',
+                'approved_by' => $hrReviewer,
+                'approved_at' => date('Y-m-d H:i:s'),
+                'created_at'  => date('Y-m-d H:i:s'),
+                'updated_at'  => date('Y-m-d H:i:s'),
+            ]);
+            $participantCount++;
+            $cursor++;
+        }
+
+        for ($i = 0; $i < $nominatedTotal; $i++) {
+            $employee = $employees[$cursor] ?? null;
+            if (!$employee) {
+                break;
+            }
+            Database::insert('training_participants', [
+                'session_id'  => $sessionIds[$key],
+                'employee_id' => (int) $employee['id'],
+                'source'      => 'SELF',
+                'status'      => 'NOMINATED',
+                'created_at'  => date('Y-m-d H:i:s'),
+                'updated_at'  => date('Y-m-d H:i:s'),
+            ]);
+            Database::insert('notifications', [
+                'employee_id' => (int) $employee['id'],
+                'title'       => 'Pendaftaran pelatihan menunggu persetujuan',
+                'message'     => 'HR akan meninjau pendaftaran Anda. Cek status di menu Pelatihan Saya.',
+                'link'        => '/me/trainings',
+                'type'        => 'info',
+                'created_at'  => date('Y-m-d H:i:s'),
+            ]);
+            $participantCount++;
+            $cursor++;
+        }
+    }
+
+    $log[] = 'Pelatihan: ' . count($programIds) . ' program, ' . count($sessionIds) . ' sesi, '
+        . $participantCount . ' peserta, dan ' . $certificateCount . ' sertifikat PDF dibuat.';
 
     /* ---------------- Holidays ---------------- */
     foreach ([

@@ -568,3 +568,64 @@ CREATE TABLE IF NOT EXISTS expense_claims (
     KEY idx_expense_claim_category (category_id),
     KEY idx_expense_claim_payroll (payroll_item_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 14 — Pelatihan & Pengembangan
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS trainings (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(30) NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    category VARCHAR(30) NOT NULL DEFAULT 'TEKNIS',
+    type VARCHAR(20) NOT NULL DEFAULT 'INTERNAL',
+    provider VARCHAR(120) NULL,
+    description VARCHAR(500) NULL,
+    duration_hours DECIMAL(6,2) NOT NULL DEFAULT 0,
+    cost_per_participant DECIMAL(14,2) NOT NULL DEFAULT 0,
+    is_mandatory TINYINT(1) NOT NULL DEFAULT 0,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_training_code (code),
+    KEY idx_training_category (category, is_active)
+);
+
+CREATE TABLE IF NOT EXISTS training_sessions (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    training_id INT UNSIGNED NOT NULL,
+    mode VARCHAR(20) NOT NULL DEFAULT 'OFFLINE',
+    location VARCHAR(150) NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NULL,
+    enroll_deadline DATE NULL,
+    quota INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+    note VARCHAR(255) NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    KEY idx_training_session_training (training_id),
+    KEY idx_training_session_status (status, start_date)
+);
+
+CREATE TABLE IF NOT EXISTS training_participants (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    session_id INT UNSIGNED NOT NULL,
+    employee_id INT UNSIGNED NOT NULL,
+    source VARCHAR(10) NOT NULL DEFAULT 'HR',
+    status VARCHAR(20) NOT NULL DEFAULT 'NOMINATED',
+    score DECIMAL(5,2) NULL,
+    attended_hours DECIMAL(6,2) NULL,
+    certificate VARCHAR(255) NULL,
+    certificate_no VARCHAR(60) NULL,
+    note VARCHAR(255) NULL,
+    approved_by INT UNSIGNED NULL,
+    approved_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    created_at DATETIME NULL,
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_training_participant (session_id, employee_id),
+    KEY idx_training_participant_employee (employee_id, status),
+    KEY idx_training_participant_status (session_id, status)
+);

@@ -49,6 +49,8 @@ abstract class Controller
                 'performance_team' => $performance->teamPendingCount($employeeId),
             ];
             if (Auth::hasRole('HR')) {
+                $training = new \App\Models\TrainingModel();
+                $badges['training'] = $training->pendingNominationCount();
                 $badges['performance'] = (int) \App\Core\Database::value(
                     "SELECT COUNT(*) FROM performance_reviews r
                        JOIN review_periods p ON p.id = r.period_id

@@ -10,8 +10,8 @@ define('APP_PATH', BASE_PATH . '/app');
 define('STORAGE_PATH', BASE_PATH . '/storage');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 define('VENDOR_PATH', BASE_PATH . '/vendor');
-define('APP_VERSION', '2.8.0');
-define('APP_BUILD', '2026.10.5');
+define('APP_VERSION', '2.9.0');
+define('APP_BUILD', '2026.10.6');
 
 $GLOBALS['config'] = require APP_PATH . '/config/config.php';
 

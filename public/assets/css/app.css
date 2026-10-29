@@ -1446,3 +1446,26 @@ a:hover > .thumb { border-color: var(--teal-400); }
   .score-input label { flex: 1; width: auto; }
   .calib-preview { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   BATCH 14 — PELATIHAN & SERTIFIKASI
+   ========================================================================== */
+select.select[multiple] {
+  padding: 6px 8px;
+  height: auto;
+  min-height: 132px;
+  line-height: 1.6;
+  background-image: none;
+}
+select.select[multiple] option {
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+select.select[multiple] option:checked {
+  background: linear-gradient(0deg, var(--teal-50), var(--teal-50));
+  color: var(--teal-700);
+}
+
+@media (max-width: 720px) {
+  .assess-row .btn { width: 100%; }
+}

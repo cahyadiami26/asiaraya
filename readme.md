@@ -30,8 +30,9 @@ dengan slip gaji ber-QR.
 | **11** | Klaim & reimbursement: kategori dengan plafon, pengajuan + bukti, persetujuan atasan → HR/Finance, aksi massal, export CSV, integrasi otomatis ke slip payroll | ✅ selesai |
 | **12** | Pengumuman & notifikasi in-app: papan pengumuman dengan audiens (semua/unit/departemen/jabatan/peran), jadwal terbit, pin, pelacakan dibaca, pusat notifikasi + lonceng | ✅ selesai |
 | **13** | Penilaian kinerja: periode penilaian (self → atasan → kalibrasi HR → tutup), master indikator berbobot, self assessment karyawan, penilaian atasan, kalibrasi/nilai final + rating A–E, riwayat & konfirmasi hasil, export CSV/PDF | ✅ selesai |
+| **14** | Pelatihan & sertifikasi: katalog program (kategori, durasi, biaya), jadwal sesi dengan kuota & pendaftaran daring, nominasi peserta oleh HR, presensi, nilai, sertifikat PDF, riwayat & sertifikat karyawan, export CSV | ✅ selesai |
 
-Seluruh tiga belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh empat belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -737,6 +738,64 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.16 Modul Batch 14 — Pelatihan & Sertifikasi
+
+### Katalog pelatihan (`/trainings/catalog`) — HR
+* Master program: kode unik, nama, kategori (**Teknis**, **Soft Skill**,
+  **Kepemimpinan**, **Kepatuhan & Regulasi**, **Onboarding**), jenis
+  (internal/eksternal/online), penyedia/narasumber, deskripsi, durasi jam, biaya
+  acuan per peserta, penanda **wajib**, dan status aktif.
+* Program yang sudah dipakai pada sesi tidak dapat dihapus — nonaktifkan saja
+  agar riwayat peserta & sertifikat tetap utuh.
+
+### Jadwal pelatihan (`/trainings`) — HR
+* Statistik: program aktif, sesi berjalan, peserta terdaftar, total jam, biaya
+  kumulatif, tingkat kehadiran, dan jumlah pendaftaran menunggu persetujuan.
+* Tabel sesi dengan filter status/program/mode/pencarian: program + kategori,
+  rentang tanggal & batas pendaftaran, mode/lokasi, keterisian kuota (bar), status.
+* Formulir sesi: program, mode (tatap muka/daring/hybrid), lokasi atau tautan,
+  tanggal mulai–selesai, batas pendaftaran, kuota (0 = tanpa batas), catatan.
+* Alur status: **DRAF** → **Pendaftaran Dibuka** → **Berlangsung** → **Selesai**,
+  dengan **Dibatalkan** sebagai jalur pembatalan. Sesi draf/batal dapat dihapus.
+
+### Detail sesi (`/trainings/{id}`) — HR
+* Panel informasi sesi, statistik peserta (terdaftar, hadir, absen, rata-rata
+  nilai, biaya, jam), dan keterisian kuota.
+* **Nominasi peserta**: pilih beberapa karyawan aktif sekaligus; peserta nominasi
+  HR langsung berstatus *Terdaftar* dan menerima notifikasi.
+* **Persetujuan pendaftaran mandiri**: setujui/tolak per peserta atau
+  **Setujui Semua**; pendaftar yang disetujui otomatis diberi notifikasi.
+* **Presensi**: tandai hadir/absen per peserta atau **Tandai Semua Hadir**.
+* **Hasil & sertifikat**: nilai 0–100, jam hadir, nomor sertifikat, catatan, serta
+  unggah berkas sertifikat (PDF/JPG/PNG maks 4 MB) yang menggantikan berkas lama.
+* Ekspor peserta ke CSV (`/trainings/{id}/export`).
+
+### Pelatihan Saya (`/me/trainings`) — semua peran
+* Kartu ringkasan: pelatihan selesai, jam pelatihan, jumlah sertifikat, dan
+  rata-rata nilai.
+* **Pendaftaran dibuka**: sesi yang masih menerima pendaftaran beserta sisa kursi;
+  karyawan mendaftar sendiri dan menunggu persetujuan HR.
+* **Jadwal mendatang**: status pendaftaran (menunggu persetujuan/terdaftar) dan
+  tombol pembatalan selama sesi belum berlangsung.
+* **Riwayat pelatihan**: kehadiran, jam, nilai, nomor sertifikat, dan tautan
+  unduh berkas sertifikat.
+
+### Catatan teknis
+* Tabel baru: `trainings`, `training_sessions`, dan `training_participants`
+  (satu baris per karyawan per sesi), plus index unik
+  `training_participants (session_id, employee_id)`.
+* Berkas sertifikat disimpan di `storage/uploads/trainings` (di luar document
+  root) dan disajikan lewat `/media/trainings/{file}` untuk pengguna yang login.
+* Badge navigasi `training` menampilkan jumlah pendaftaran mandiri yang menunggu
+  persetujuan HR.
+* Notifikasi: pendaftaran dibuka (seluruh karyawan aktif), nominasi/disetujui
+  (karyawan terkait), dan pembatalan sesi (peserta terdampak).
+* Ekspor CSV memakai argumen *escape* eksplisit agar bebas peringatan PHP 8.4.
+* Upgrade skema otomatis (versi 14) saat basis data lama dibuka — idempoten dan
+  tidak menyentuh data operasional.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -745,8 +804,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -781,6 +840,7 @@ storage/                 # logs, cache, uploads, database preview
 | Pengumuman | ✅ tulis, terbitkan, arsipkan | baca (sesuai audiens) | baca (sesuai audiens) |
 | Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
+| Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
@@ -815,8 +875,10 @@ diperlukan pada server produksi dan aman untuk dihapus.
 * Sesi: batas absolut 8 jam + idle 2 jam; "ingat perangkat" 30 hari dengan token
   yang dirotasi setiap pemakaian dan dicabut saat logout/ganti sandi.
 * Login dibatasi 5 kegagalan/15 menit per identifier + IP (brute-force).
-* Bukti klaim disimpan di `storage/uploads/claims` (di luar document root) dan
-  hanya dapat diakses pengguna yang sudah login lewat rute `/media/{folder}/{file}`.
+* Berkas sensitif — bukti klaim (`claims`), sertifikat pelatihan (`trainings`), dan
+  lampiran pengumuman (`announcements`) — disimpan di `storage/uploads` (di luar
+  document root) dan hanya dapat diakses pengguna yang sudah login lewat rute
+  `/media/{folder}/{file}`.
 * Semua query memakai prepared statement (PDO), tanpa konkatenasi input.
 * Cookie sesi `HttpOnly`, `SameSite=Lax`, `Secure` otomatis pada HTTPS.
 * Audit trail: login, login gagal, approval, perubahan data.

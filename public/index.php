@@ -26,6 +26,7 @@ use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PayrollController;
 use App\Controllers\PerformanceController;
+use App\Controllers\TrainingController;
 use App\Controllers\PlaceholderController;
 use App\Controllers\ReportController;
 use App\Controllers\ScheduleController;
@@ -250,6 +251,34 @@ $router->get('/performance/{id}', [PerformanceController::class, 'show'], ['name
 
 $router->get('/me/performance', [PerformanceController::class, 'mine'], ['name' => 'me.performance']);
 $router->post('/me/performance/{id}', [PerformanceController::class, 'submitSelf'], ['name' => 'me.performance.submit']);
+
+/* -------------------------------------------------- Pelatihan & sertifikasi */
+$router->get('/trainings', [TrainingController::class, 'index'], ['roles' => ['HR'], 'name' => 'trainings.index']);
+$router->post('/trainings', [TrainingController::class, 'storeSession'], ['roles' => ['HR'], 'name' => 'trainings.store']);
+
+$router->get('/trainings/catalog', [TrainingController::class, 'catalog'], ['roles' => ['HR'], 'name' => 'trainings.catalog']);
+$router->post('/trainings/catalog', [TrainingController::class, 'storeProgram'], ['roles' => ['HR'], 'name' => 'trainings.catalog.store']);
+$router->add('POST|PUT', '/trainings/catalog/{id}', [TrainingController::class, 'updateProgram'], ['roles' => ['HR'], 'name' => 'trainings.catalog.update']);
+$router->add('POST|DELETE', '/trainings/catalog/{id}/delete', [TrainingController::class, 'destroyProgram'], ['roles' => ['HR'], 'name' => 'trainings.catalog.delete']);
+
+$router->get('/trainings/{id}/export', [TrainingController::class, 'export'], ['roles' => ['HR'], 'name' => 'trainings.export', 'csrf' => false]);
+$router->post('/trainings/{id}/open', [TrainingController::class, 'openSession'], ['roles' => ['HR'], 'name' => 'trainings.open']);
+$router->post('/trainings/{id}/start', [TrainingController::class, 'startSession'], ['roles' => ['HR'], 'name' => 'trainings.start']);
+$router->post('/trainings/{id}/complete', [TrainingController::class, 'completeSession'], ['roles' => ['HR'], 'name' => 'trainings.complete']);
+$router->post('/trainings/{id}/cancel', [TrainingController::class, 'cancelSession'], ['roles' => ['HR'], 'name' => 'trainings.cancel']);
+$router->post('/trainings/{id}/participants', [TrainingController::class, 'storeParticipants'], ['roles' => ['HR'], 'name' => 'trainings.participants.store']);
+$router->post('/trainings/{id}/results', [TrainingController::class, 'storeResult'], ['roles' => ['HR'], 'name' => 'trainings.results']);
+$router->post('/trainings/{id}/participants/{pid}', [TrainingController::class, 'updateParticipantStatus'], ['roles' => ['HR'], 'name' => 'trainings.participants.status']);
+$router->add('POST|DELETE', '/trainings/{id}/participants/{pid}/remove', [TrainingController::class, 'removeParticipant'], ['roles' => ['HR'], 'name' => 'trainings.participants.remove']);
+$router->post('/trainings/{id}/approve-all', [TrainingController::class, 'approveAll'], ['roles' => ['HR'], 'name' => 'trainings.approve_all']);
+$router->post('/trainings/{id}/attendance-all', [TrainingController::class, 'attendanceAll'], ['roles' => ['HR'], 'name' => 'trainings.attendance_all']);
+$router->add('POST|PUT', '/trainings/{id}', [TrainingController::class, 'updateSession'], ['roles' => ['HR'], 'name' => 'trainings.update']);
+$router->add('POST|DELETE', '/trainings/{id}/delete', [TrainingController::class, 'destroySession'], ['roles' => ['HR'], 'name' => 'trainings.delete']);
+$router->get('/trainings/{id}', [TrainingController::class, 'show'], ['roles' => ['HR'], 'name' => 'trainings.show']);
+
+$router->get('/me/trainings', [TrainingController::class, 'mine'], ['name' => 'me.trainings']);
+$router->post('/me/trainings/{id}/enroll', [TrainingController::class, 'enroll'], ['name' => 'me.trainings.enroll']);
+$router->post('/me/trainings/{id}/cancel', [TrainingController::class, 'cancelEnrollment'], ['name' => 'me.trainings.cancel']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

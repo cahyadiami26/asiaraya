@@ -356,7 +356,7 @@ final class PerformanceController extends Controller
         fputcsv($out, [
             'Periode', 'NIK', 'Karyawan', 'Unit', 'Departemen', 'Atasan',
             'Nilai Self', 'Nilai Atasan', 'Nilai Akhir', 'Mutu', 'Status', 'Self Terkirim', 'Final',
-        ]);
+        ], ',', '"', '');
 
         foreach ($rows as $row) {
             fputcsv($out, [
@@ -373,7 +373,7 @@ final class PerformanceController extends Controller
                 PerformanceModel::STATUSES[$row['status']] ?? $row['status'],
                 $row['self_submitted_at'] ?? '',
                 $row['calibrated_at'] ?? '',
-            ]);
+            ], ',', '"', '');
         }
         fclose($out);
         exit;

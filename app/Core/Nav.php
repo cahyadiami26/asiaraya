@@ -73,6 +73,9 @@ final class Nav
                     ['route' => 'performance.indicators', 'label' => 'Indikator Penilaian', 'icon' => 'layers', 'roles' => ['HR']],
                     ['route' => 'performance.team', 'label' => 'Penilaian Tim', 'icon' => 'users', 'roles' => ['HR', 'FIN', 'KARYAWAN'], 'badge_key' => 'performance_team'],
                     ['route' => 'me.performance', 'label' => 'Penilaian Saya', 'icon' => 'award', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'trainings.index', 'label' => 'Pelatihan & Sertifikasi', 'icon' => 'briefcase', 'roles' => ['HR'], 'badge_key' => 'training'],
+                    ['route' => 'trainings.catalog', 'label' => 'Katalog Pelatihan', 'icon' => 'layers', 'roles' => ['HR']],
+                    ['route' => 'me.trainings', 'label' => 'Pelatihan Saya', 'icon' => 'award', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
                 ],
             ],
             [
