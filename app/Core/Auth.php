@@ -15,6 +15,10 @@ final class Auth
     private static ?array $user = null;
     private static bool $resolved = false;
 
+    /** Nama cookie "ingat saya" + masa berlakunya (hari). */
+    public const REMEMBER_COOKIE = 'ASRAYA_REMEMBER';
+    public const REMEMBER_DAYS = 30;
+
     /** Permission matrix per role. */
     private const MATRIX = [
         'HR' => [
@@ -143,11 +147,183 @@ final class Auth
         return true;
     }
 
+    /**
+     * Batas sesi: absolut (session_life, default 8 jam) dan idle
+     * (session_idle, default 2 jam). Kedaluwarsa → sesi dibersihkan,
+     * pengguna diarahkan ke halaman masuk dengan pesan.
+     */
+    public static function guardSession(): void
+    {
+        $id = Session::get('auth_id');
+        if (!$id) {
+            return;
+        }
+
+        $now = time();
+        $started = (int) Session::get('auth_at', $now);
+        $seen = (int) Session::get('auth_seen', $started);
+        $life = (int) ($GLOBALS['config']['session_life'] ?? 28800);
+        $idle = (int) ($GLOBALS['config']['session_idle'] ?? 7200);
+
+        if (($life > 0 && $now - $started > $life) || ($idle > 0 && $now - $seen > $idle)) {
+            Session::forget('auth_id');
+            Session::forget('auth_at');
+            Session::forget('auth_seen');
+            Session::regenerate();
+            self::$user = null;
+            self::$resolved = false;
+            Audit::log('session.timeout', 'employee', (int) $id);
+            flash('info', 'Sesi Anda berakhir karena tidak ada aktivitas. Silakan masuk kembali.');
+            return;
+        }
+
+        // Simpan waktu aktivitas terakhir minimal sekali per menit agar hemat tulis.
+        if ($now - $seen > 60 || $seen <= 0) {
+            Session::set('auth_seen', $now);
+        }
+    }
+
+    /** Aktifkan "ingat saya" untuk perangkat ini (token selector + validator). */
+    public static function issueRememberCookie(int $employeeId): void
+    {
+        try {
+            $selector = bin2hex(random_bytes(8));
+            $validator = bin2hex(random_bytes(32));
+            $expires = time() + self::REMEMBER_DAYS * 86400;
+
+            Database::delete('remember_tokens', 'expires_at < ?', [date('Y-m-d H:i:s')]);
+            Database::insert('remember_tokens', [
+                'employee_id'    => $employeeId,
+                'selector'       => $selector,
+                'validator_hash' => hash('sha256', $validator),
+                'expires_at'     => date('Y-m-d H:i:s', $expires),
+                'created_at'     => date('Y-m-d H:i:s'),
+            ]);
+
+            self::setRememberCookie($selector . ':' . $validator, $expires);
+        } catch (\Throwable) {
+            // token "ingat saya" bersifat opsional; jangan gagalkan login
+        }
+    }
+
+    /**
+     * Coba masuk kembali dari cookie "ingat saya" (bila sesi sudah habis).
+     * Token dirotasi setiap kali dipakai agar tidak bisa dipakai ulang.
+     */
+    public static function rememberFromCookie(): bool
+    {
+        $raw = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if ($raw === '' || !str_contains($raw, ':')) {
+            return false;
+        }
+
+        [$selector, $validator] = explode(':', $raw, 2);
+        if (!preg_match('/^[a-f0-9]{16}$/', $selector) || !preg_match('/^[a-f0-9]{64}$/', $validator)) {
+            self::clearRememberCookie();
+            return false;
+        }
+
+        try {
+            $row = Database::one('SELECT * FROM remember_tokens WHERE selector = ?', [$selector]);
+            if (!$row) {
+                self::clearRememberCookie();
+                return false;
+            }
+
+            $expired = strtotime((string) $row['expires_at']) < time();
+            $matches = hash_equals((string) $row['validator_hash'], hash('sha256', $validator));
+            Database::delete('remember_tokens', 'selector = ?', [$selector]);
+
+            if ($expired || !$matches) {
+                self::clearRememberCookie();
+                return false;
+            }
+
+            $employee = Database::one('SELECT * FROM employees WHERE id = ? AND flag = ?', [(int) $row['employee_id'], 'ACTIVE']);
+            if (!$employee) {
+                self::clearRememberCookie();
+                return false;
+            }
+
+            self::login($employee);
+            self::issueRememberCookie((int) $employee['id']);
+            Audit::log('login_remember', 'employee', (int) $employee['id']);
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** Cabut token perangkat ini (dipakai saat logout). */
+    public static function revokeRememberCookie(): void
+    {
+        $raw = (string) ($_COOKIE[self::REMEMBER_COOKIE] ?? '');
+        if ($raw !== '' && str_contains($raw, ':')) {
+            [$selector] = explode(':', $raw, 2);
+            if (preg_match('/^[a-f0-9]{16}$/', $selector)) {
+                try {
+                    Database::delete('remember_tokens', 'selector = ?', [$selector]);
+                } catch (\Throwable) {
+                    // abaikan
+                }
+            }
+        }
+        self::clearRememberCookie();
+    }
+
+    /** Cabut seluruh token perangkat milik satu karyawan (reset kata sandi). */
+    public static function revokeAllRememberTokens(int $employeeId): void
+    {
+        try {
+            Database::delete('remember_tokens', 'employee_id = ?', [$employeeId]);
+        } catch (\Throwable) {
+            // abaikan
+        }
+    }
+
+    private static function setRememberCookie(string $value, int $expires): void
+    {
+        // Ditulis sebagai header eksplisit agar tetap terkirim baik pada PHP-FPM
+        // maupun pada jembatan pratinjau php-wasm (SAPI cli + header kustom).
+        $_COOKIE[self::REMEMBER_COOKIE] = $value;
+        self::sendCookie($value, $expires);
+    }
+
+    private static function clearRememberCookie(): void
+    {
+        unset($_COOKIE[self::REMEMBER_COOKIE]);
+        self::sendCookie('', time() - 3600);
+    }
+
+    private static function sendCookie(string $value, int $expires): void
+    {
+        $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        $cookie = self::REMEMBER_COOKIE . '=' . $value
+            . '; Expires=' . gmdate('D, d M Y H:i:s', $expires) . ' GMT'
+            . '; Max-Age=' . max(0, $expires - time())
+            . '; Path=/'
+            . ($secure ? '; Secure' : '')
+            . '; HttpOnly; SameSite=Lax';
+
+        // Jembatan pratinjau php-wasm hanya meneruskan satu header Set-Cookie,
+        // jadi cookie tambahan dititipkan lewat globals untuk diteruskan bridge.
+        if (!empty($GLOBALS['HRIS_EXTERNAL_SESSION'])) {
+            $GLOBALS['HRIS_SET_COOKIES'][] = $cookie;
+            return;
+        }
+
+        if (headers_sent()) {
+            return;
+        }
+        header('Set-Cookie: ' . $cookie, false);
+    }
+
     public static function login(array $employee): void
     {
         Session::regenerate();
         Session::set('auth_id', (int) $employee['id']);
         Session::set('auth_at', time());
+        Session::set('auth_seen', time());
         self::$resolved = false;
         self::$user = null;
         Database::update('employees', ['last_login_at' => date('Y-m-d H:i:s')], 'id = ?', [(int) $employee['id']]);
@@ -182,6 +358,7 @@ final class Auth
         if (self::check()) {
             Audit::log('logout', 'employee', self::id());
         }
+        self::revokeRememberCookie();
         Session::forget('auth_id');
         Session::forget('auth_at');
         self::$user = null;

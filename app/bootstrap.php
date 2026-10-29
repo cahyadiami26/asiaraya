@@ -10,8 +10,8 @@ define('APP_PATH', BASE_PATH . '/app');
 define('STORAGE_PATH', BASE_PATH . '/storage');
 define('PUBLIC_PATH', BASE_PATH . '/public');
 define('VENDOR_PATH', BASE_PATH . '/vendor');
-define('APP_VERSION', '2.4.1');
-define('APP_BUILD', '2026.10');
+define('APP_VERSION', '2.5.0');
+define('APP_BUILD', '2026.10.2');
 
 $GLOBALS['config'] = require APP_PATH . '/config/config.php';
 
@@ -66,3 +66,9 @@ require APP_PATH . '/Core/helpers.php';
 \App\Core\Database::boot($GLOBALS['config']);
 \App\Core\Settings::boot();
 \App\Core\Auth::boot();
+\App\Core\Auth::guardSession();
+
+// Pulihkan sesi dari cookie "ingat saya" bila sesi PHP sudah kedaluwarsa.
+if (!isset($_SESSION['auth_id']) && !empty($_COOKIE[\App\Core\Auth::REMEMBER_COOKIE])) {
+    \App\Core\Auth::rememberFromCookie();
+}

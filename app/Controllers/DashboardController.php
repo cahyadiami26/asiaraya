@@ -157,7 +157,13 @@ final class DashboardController extends Controller
             $v->required('phone', 'Nomor HP')->required('address', 'Alamat');
             if (input('password') !== '') {
                 $v->min('password', 'Kata sandi baru', 8)
-                  ->same('password', 'password_confirmation', 'Konfirmasi kata sandi');
+                  ->same('password', 'password_confirmation', 'Konfirmasi kata sandi')
+                  ->custom(
+                      !((string) input('password_current') !== ''
+                          && password_verify((string) input('password_current'), (string) ($user['password_hash'] ?? ''))),
+                      'password_current',
+                      'Masukkan kata sandi Anda saat ini dengan benar untuk mengubah kata sandi.'
+                  );
             }
             if (input('email') !== '' && strtolower((string) input('email')) !== strtolower((string) $user['email'])) {
                 $v->custom(true, 'email', 'Email perusahaan tidak dapat diubah sendiri. Hubungi HR.');
@@ -175,7 +181,13 @@ final class DashboardController extends Controller
 
         Database::update('employees', $update, 'id = ?', [(int) $user['id']]);
         \App\Core\Audit::log('profile.update', 'employee', (int) $user['id']);
-        flash('success', 'Profil berhasil diperbarui.');
+        if (!empty($data['password'])) {
+            \App\Core\Audit::log('password.change', 'employee', (int) $user['id']);
+            \App\Core\Auth::revokeAllRememberTokens((int) $user['id']);
+            flash('success', 'Profil dan kata sandi berhasil diperbarui. Perangkat lain yang memakai "ingat saya" telah dikeluarkan.');
+        } else {
+            flash('success', 'Profil berhasil diperbarui.');
+        }
         redirect('/me/profile');
     }
 

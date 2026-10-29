@@ -169,7 +169,12 @@ register_shutdown_function(function () use ($sessDir, $sid) {
     if (!empty($GLOBALS['HRIS_SESSION_ROTATE'])) { @unlink($sessDir . '/sess_' . $sid . '.json'); }
     @file_put_contents($sessDir . '/sess_' . $finalSid . '.json', json_encode($_SESSION ?? []));
     if (!headers_sent()) {
-        header('Set-Cookie: ASRAYA_HRIS=' . $finalSid . '; Path=/; HttpOnly; SameSite=Lax');
+        header('Set-Cookie: ASRAYA_HRIS=' . $finalSid . '; Path=/; HttpOnly; SameSite=Lax', false);
+        // Cookie tambahan dari aplikasi (mis. "ingat saya") — wasm hanya
+        // meneruskan satu Set-Cookie, jadi dititipkan sebagai header JSON.
+        if (!empty($GLOBALS['HRIS_SET_COOKIES']) && is_array($GLOBALS['HRIS_SET_COOKIES'])) {
+            header('X-HRIS-Set-Cookies: ' . base64_encode(json_encode(array_values($GLOBALS['HRIS_SET_COOKIES']))));
+        }
     }
 });
 
@@ -394,8 +399,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (payload.length) responseHeaders['Content-Length'] = payload.length;
 
-    if (cookies) {
-      responseHeaders['set-cookie'] = Array.isArray(cookies) ? cookies : [cookies];
+    const jar = cookies ? (Array.isArray(cookies) ? cookies : [cookies]) : [];
+    const extra = responseHeaders['x-hris-set-cookies'] || responseHeaders['X-HRIS-Set-Cookies'];
+    delete responseHeaders['x-hris-set-cookies'];
+    delete responseHeaders['X-HRIS-Set-Cookies'];
+    if (extra) {
+      try {
+        const decoded = JSON.parse(Buffer.from(String(extra), 'base64').toString('utf8'));
+        if (Array.isArray(decoded)) decoded.forEach((c) => { if (typeof c === 'string' && c) jar.push(c); });
+      } catch { /* abaikan cookie tambahan yang tidak valid */ }
+    }
+    if (jar.length) {
+      responseHeaders['set-cookie'] = jar;
     }
     res.writeHead(response.httpStatusCode || 200, responseHeaders);
     res.end(payload);

@@ -25,8 +25,9 @@ multi-unit dengan slip gaji ber-QR.
 | **7** | Komponen gaji: master tunjangan/potongan, penugasan per karyawan/unit/departemen, simulasi take-home (PPh 21 TER/flat/progresif + BPJS), pengaturan payroll & BPJS | ✅ selesai |
 | **8** | Payroll: periode per unit, kalkulasi slip dari presensi/lembur/komponen, rekap per departemen, slip gaji PDF ber-QR + verifikasi publik, alur HR → FIN → PAID | ✅ selesai |
 | **9** | Laporan & cetak (PDF & CSV Excel-ready) untuk presensi/lembur/cuti/payroll, log aktivitas (audit trail) + retensi, pengaturan lanjutan (penandatangan laporan) | ✅ selesai |
+| **10** | Keamanan akun & sesi: reset kata sandi mandiri (tautan sekali pakai), ganti sandi dengan verifikasi sandi lama, "ingat perangkat" 30 hari, batas sesi 8 jam / idle 2 jam, proteksi brute-force | ✅ selesai |
 
-Seluruh sembilan batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh sepuluh batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan tanpa migrasi besar.
 
@@ -493,6 +494,52 @@ Empat laporan dengan tab terpisah, semuanya membaca data operasional terkini
 * Ringkasan status log (total baris, log terlama, batas retensi aktif) dan
   pintasan ke halaman log serta export CSV.
 
+## 2.12 Modul Batch 10 — Keamanan Akun & Sesi
+
+### Lupa kata sandi (`/forgot-password`) — publik
+* Form email perusahaan. Respons **selalu sama** (tidak membocorkan apakah email
+  terdaftar) dan diproses hanya untuk karyawan berstatus `ACTIVE`.
+* Tautan reset dibuat dengan token 64 heksadesimal; yang disimpan hanya
+  `sha256` token, berlaku **60 menit**, dan **sekali pakai** (`used_at`).
+* Batas frekuensi: maksimal 1 permintaan/menit dan 5 per jam per email.
+* Tanpa SMTP: tautan ditulis ke `storage/logs/password-reset.log` (dan
+  ditampilkan langsung pada `demo_mode`). Setiap permintaan dicatat sebagai
+  `password.request` di log aktivitas.
+
+### Atur ulang kata sandi (`/reset-password?token=…`) — publik
+* Token diverifikasi ulang saat form dibuka **dan** saat disimpan; token
+  kedaluwarsa/dipakai ulang menampilkan halaman "Tautan tidak berlaku".
+* Kata sandi baru minimal 8 karakter + konfirmasi, disimpan sebagai hash bcrypt
+  dalam satu transaksi bersama penandaan `used_at` dan penghapusan token lain.
+* Efek samping: seluruh token "ingat perangkat" milik karyawan dicabut
+  (`password.reset` tercatat di audit trail), lalu pengguna diarahkan ke login.
+
+### Ganti kata sandi dari profil (`/me/profile`)
+* Mengisi kata sandi baru kini **wajib menyertakan kata sandi saat ini**;
+  kesalahan verifikasi menampilkan pesan pada field tersebut dan tidak
+  menyimpan apa pun.
+* Perubahan dicatat sebagai `password.change`, dan semua perangkat lain yang
+  memakai "ingat saya" otomatis dikeluarkan.
+
+### Ingat perangkat (30 hari)
+* Checkbox "Ingat perangkat ini selama 30 hari" membuat token
+  `selector:validator` pada tabel `remember_tokens` (yang disimpan hanya
+  `sha256(validator)`), cookie `HttpOnly` + `SameSite=Lax` (+ `Secure` pada HTTPS).
+* Setiap pemakaian token **dirotasi**; token kedaluwarsa/tidak cocok langsung
+  dihapus. Logout dan reset kata sandi mencabut token terkait.
+* Pemulihan sesi berjalan otomatis di bootstrap (`login_remember` di audit trail).
+
+### Batas sesi & proteksi brute-force
+* Sesi absolut **8 jam** (`session_life`) dan **idle 2 jam** (`session_idle`,
+  dapat diubah di `app/config/config.php` atau env `HRIS_SESSION_IDLE`).
+  Kedaluwarsa → sesi dibersihkan, `session.timeout` tercatat, pengguna kembali
+  ke halaman login dengan pesan.
+* Login dibatasi **5 kegagalan per 15 menit** untuk kombinasi identifier + IP.
+  Percobaan berikutnya ditolak dengan pesan sisa waktu, dan aksi blokir
+  tercatat sebagai `login_blocked` (aksi ini terlihat di `/logs`).
+* Semua halaman autentikasi kini menampilkan pesan flash (mis. sesi berakhir,
+  reset berhasil) — sebelumnya hanya halaman di dalam aplikasi.
+
 ---
 
 ## 3. Struktur proyek
@@ -564,6 +611,11 @@ diperlukan pada server produksi dan aman untuk dihapus.
 
 ## 6. Catatan keamanan
 * Kata sandi: `password_hash()` bcrypt; CSRF token pada seluruh form POST.
+* Reset kata sandi: token acak 256-bit (disimpan sebagai hash), berlaku 60 menit,
+  sekali pakai, dibatasi frekuensinya; ganti sandi mandiri mewajibkan sandi lama.
+* Sesi: batas absolut 8 jam + idle 2 jam; "ingat perangkat" 30 hari dengan token
+  yang dirotasi setiap pemakaian dan dicabut saat logout/ganti sandi.
+* Login dibatasi 5 kegagalan/15 menit per identifier + IP (brute-force).
 * Semua query memakai prepared statement (PDO), tanpa konkatenasi input.
 * Cookie sesi `HttpOnly`, `SameSite=Lax`, `Secure` otomatis pada HTTPS.
 * Audit trail: login, login gagal, approval, perubahan data.

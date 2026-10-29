@@ -1,5 +1,9 @@
 <?php
-/** Minimal shell for authentication screens. @var string $content */
+/**
+ * Shell autentikasi (login, lupa kata sandi, atur ulang kata sandi).
+ * @var string $content
+ */
+$flashMessages = \App\Core\Session::flashes();
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -12,6 +16,21 @@
     <link rel="stylesheet" href="<?= asset('css/app.css') ?>?v=<?= APP_BUILD ?>">
 </head>
 <body class="auth-body">
+<?php if ($flashMessages): ?>
+    <div class="auth-flash">
+        <?php foreach ($flashMessages as $flash): ?>
+            <?php
+            $tone = $flash['type'] === 'success' ? 'success' : ($flash['type'] === 'error' ? 'error' : ($flash['type'] === 'warning' ? 'warning' : 'info'));
+            $iconName = $tone === 'success' ? 'check' : ($tone === 'error' ? 'alert' : ($tone === 'warning' ? 'alert' : 'info'));
+            ?>
+            <div class="alert alert-<?= $tone ?>" role="alert">
+                <?= icon($iconName) ?>
+                <div><?= e($flash['message']) ?></div>
+                <button type="button" class="alert__close" aria-label="Tutup"><?= icon('x') ?></button>
+            </div>
+        <?php endforeach; ?>
+    </div>
+<?php endif; ?>
 <?= $content ?>
 <script src="<?= asset('js/app.js') ?>?v=<?= APP_BUILD ?>"></script>
 </body>

@@ -359,6 +359,8 @@ final class ReportModel
     {
         return [
             'login'      => 'Login & Sesi',
+            'password'   => 'Kata Sandi',
+            'session'    => 'Sesi',
             'payroll'    => 'Payroll',
             'component'  => 'Komponen Gaji',
             'settings'   => 'Pengaturan',

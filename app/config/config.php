@@ -27,7 +27,10 @@ $defaults = [
     'db_sqlite_path' => $root . '/storage/database.sqlite',
 
     'session_name' => 'ASRAYA_HRIS',
-    'session_life' => 28800, // 8 hours
+    'session_life' => 28800, // 8 jam — batas absolut satu sesi
+    'session_idle' => 7200,  // 2 jam — keluar otomatis bila tidak ada aktivitas
+    'login_max_attempts' => 5,   // gagal login sebelum diblokir sementara
+    'login_lockout_minutes' => 15,
 
     'upload_path' => $root . '/storage/uploads',
     'upload_url'  => '/uploads',

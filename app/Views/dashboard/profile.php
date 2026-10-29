@@ -65,9 +65,16 @@
                             <textarea class="textarea" name="address" required><?= e(old('address', $employee['address'])) ?></textarea>
                         </div>
                         <div class="field">
+                            <label>Kata Sandi Saat Ini</label>
+                            <input class="input" type="password" name="password_current" autocomplete="current-password"
+                                   placeholder="Wajib diisi bila mengganti kata sandi">
+                            <?php if (!empty($errors['password_current'])): ?><span class="err"><?= e($errors['password_current']) ?></span><?php endif; ?>
+                            <span class="hint">Diverifikasi sebelum kata sandi baru disimpan.</span>
+                        </div>
+                        <div class="field">
                             <label>Kata Sandi Baru</label>
-                            <input class="input" type="password" name="password" placeholder="Kosongkan bila tidak diubah">
-                            <span class="hint">Minimal 8 karakter.</span>
+                            <input class="input" type="password" name="password" autocomplete="new-password" placeholder="Kosongkan bila tidak diubah">
+                            <span class="hint">Minimal 8 karakter. Mengganti kata sandi akan mengeluarkan perangkat lain yang memakai "ingat saya".</span>
                         </div>
                         <div class="field">
                             <label>Konfirmasi Kata Sandi</label>

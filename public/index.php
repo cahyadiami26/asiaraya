@@ -38,6 +38,8 @@ $router->get('/login/google', [AuthController::class, 'googleRedirect'], ['auth'
 $router->get('/login/google/callback', [AuthController::class, 'googleCallback'], ['auth' => false, 'csrf' => false]);
 $router->get('/forgot-password', [AuthController::class, 'showForgot'], ['auth' => false, 'csrf' => false, 'name' => 'password.request']);
 $router->post('/forgot-password', [AuthController::class, 'sendReset'], ['auth' => false, 'name' => 'password.email']);
+$router->get('/reset-password', [AuthController::class, 'showReset'], ['auth' => false, 'csrf' => false, 'name' => 'password.reset']);
+$router->post('/reset-password', [AuthController::class, 'resetPassword'], ['auth' => false, 'name' => 'password.update']);
 $router->post('/logout', [AuthController::class, 'logout'], ['name' => 'logout']);
 
 /* --------------------------------------------------------------- Dashboard */

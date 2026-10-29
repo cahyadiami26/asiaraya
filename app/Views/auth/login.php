@@ -159,9 +159,9 @@ $activeUnitLabel = setting('company_city', 'Jakarta');
             <div class="auth-meta">
                 <label class="checkbox">
                     <input type="checkbox" name="remember" value="1">
-                    <span>Ingat sesi di perangkat terdaftar ini</span>
+                    <span>Ingat perangkat ini selama 30 hari</span>
                 </label>
-                <span class="small muted" style="display:flex;align-items:center;gap:5px"><?= icon('clock', 'ico') ?> Masa aktif 8 jam</span>
+                <span class="small muted" style="display:flex;align-items:center;gap:5px" title="Sesi berakhir otomatis setelah 2 jam tanpa aktivitas"><?= icon('clock', 'ico') ?> Masa aktif 8 jam · idle 2 jam</span>
             </div>
 
             <button type="submit" class="btn btn-primary btn-block auth-submit">

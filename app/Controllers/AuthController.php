@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Core\Audit;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
@@ -63,6 +64,15 @@ final class AuthController extends Controller
             redirect('/login');
         }
 
+        // Proteksi brute force: blokir sementara setelah N kegagalan beruntun.
+        $lock = $this->lockoutState($identifier);
+        if ($lock['locked']) {
+            Session::set('login_error', 'Terlalu banyak percobaan gagal. Coba lagi dalam ' . $lock['minutes'] . ' menit atau hubungi HR/IT Helpdesk.');
+            Session::set('_old_identifier', $identifier);
+            $this->recordBlockedAttempt($identifier);
+            redirect('/login');
+        }
+
         if (!Auth::attempt($identifier, $password)) {
             $this->recordFailedAttempt($identifier);
             Session::set('login_error', 'Kredensial tidak cocok atau akun tidak aktif. Periksa NIK/email dan kata sandi.');
@@ -71,7 +81,7 @@ final class AuthController extends Controller
         }
 
         if ($remember) {
-            Session::set('remember_login', true);
+            Auth::issueRememberCookie((int) Auth::id());
         }
 
         $intended = Session::pull('intended');
@@ -126,38 +136,220 @@ final class AuthController extends Controller
     {
         $this->view('auth/forgot', [
             'title' => 'Lupa Kata Sandi',
-            'sent'  => Session::pull('reset_sent', false),
+            'sent'  => (bool) Session::pull('reset_sent', false),
+            'mail'  => (string) Session::pull('reset_mail', ''),
+            'demoLink' => (string) Session::pull('reset_link', ''),
         ], 'layouts/auth');
     }
 
+    /**
+     * Kirim tautan reset. Tanpa SMTP: tautan ditulis ke storage/logs/password-reset.log
+     * (dan ditampilkan langsung pada mode demo). Respons selalu sama agar email
+     * tidak bisa ditebak keberadaannya.
+     */
     public function sendReset(): void
     {
-        $email = strtolower((string) input('email', ''));
-        $employee = $email !== '' ? Database::one('SELECT id FROM employees WHERE LOWER(email) = ? AND flag = ?', [$email, 'ACTIVE']) : null;
+        $email = strtolower(trim((string) input('email', '')));
+        Session::set('reset_sent', true);
+        Session::set('reset_mail', $email);
+
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            Session::set('login_error', 'Masukkan alamat email perusahaan yang valid.');
+            redirect('/forgot-password');
+        }
+
+        // Batasi frekuensi: maksimal 5 permintaan/jam dan 1/menit per email.
+        $recent = (int) Database::value(
+            'SELECT COUNT(*) FROM password_resets WHERE email = ? AND created_at >= ?',
+            [$email, date('Y-m-d H:i:s', strtotime('-1 hour'))]
+        );
+        $last = (string) (Database::value('SELECT MAX(created_at) FROM password_resets WHERE email = ?', [$email]) ?? '');
+        $tooSoon = $last !== '' && strtotime($last) > time() - 60;
+
+        if ($recent >= 5 || $tooSoon) {
+            flash('warning', 'Permintaan reset untuk email ini baru saja dibuat. Tunggu satu menit sebelum mencoba lagi.');
+            redirect('/forgot-password');
+        }
+
+        $employee = Database::one(
+            'SELECT id, full_name FROM employees WHERE LOWER(email) = ? AND flag = ?',
+            [$email, 'ACTIVE']
+        );
 
         if ($employee) {
             $token = bin2hex(random_bytes(32));
+            Database::delete('password_resets', 'email = ? AND used_at IS NULL', [$email]);
             Database::insert('password_resets', [
                 'email'      => $email,
                 'token_hash' => hash('sha256', $token),
                 'expires_at' => date('Y-m-d H:i:s', strtotime('+60 minutes')),
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
+
             $link = url('reset-password?token=' . $token);
-            // No SMTP in scope: write a mail file so IT can deliver it, and surface
-            // the link in demo mode only.
+            $logDir = STORAGE_PATH . '/logs';
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0775, true);
+            }
             @file_put_contents(
-                STORAGE_PATH . '/logs/password-reset.log',
+                $logDir . '/password-reset.log',
                 '[' . date('Y-m-d H:i:s') . '] ' . $email . ' → ' . $link . PHP_EOL,
                 FILE_APPEND
             );
+
+            Audit::log('password.request', 'employee', (int) $employee['id'], ['email' => $email]);
+
             if (config('demo_mode')) {
-                flash('info', 'Mode demo: tautan reset tersedia di storage/logs/password-reset.log');
+                Session::set('reset_link', $link);
             }
         }
 
-        Session::set('reset_sent', true);
         redirect('/forgot-password');
+    }
+
+    /** Form kata sandi baru — token diverifikasi sebelum ditampilkan. */
+    public function showReset(): void
+    {
+        if (Auth::check()) {
+            redirect('/dashboard');
+        }
+
+        $token = (string) ($_GET['token'] ?? '');
+        $reset = $this->findReset($token);
+        if (!$reset) {
+            $this->view('auth/reset', [
+                'title' => 'Tautan Tidak Valid',
+                'valid' => false,
+                'token' => '',
+                'email' => '',
+            ], 'layouts/auth');
+            return;
+        }
+
+        $this->view('auth/reset', [
+            'title' => 'Atur Kata Sandi Baru',
+            'valid' => true,
+            'token' => $token,
+            'email' => $this->maskEmail((string) $reset['email']),
+        ], 'layouts/auth');
+    }
+
+    /** Simpan kata sandi baru: token sekali pakai, cabut sesi "ingat saya". */
+    public function resetPassword(): void
+    {
+        $token = (string) input('token', '');
+        $reset = $this->findReset($token);
+        if (!$reset) {
+            flash('error', 'Tautan reset tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru.');
+            redirect('/forgot-password');
+        }
+
+        $password = (string) input('password', '');
+        $confirm = (string) input('password_confirmation', '');
+
+        $validator = new Validator(['password' => $password, 'password_confirmation' => $confirm]);
+        $validator->required('password', 'Kata sandi baru')->min('password', 'Kata sandi baru', 8)
+                  ->same('password', 'password_confirmation', 'Konfirmasi kata sandi');
+
+        if ($validator->fails()) {
+            Session::set('_errors', $validator->errors());
+            Session::set('login_error', $validator->firstError());
+            redirect('/reset-password?token=' . urlencode($token));
+        }
+
+        $employee = Database::one(
+            'SELECT id FROM employees WHERE LOWER(email) = ? AND flag = ?',
+            [(string) $reset['email'], 'ACTIVE']
+        );
+        if (!$employee) {
+            flash('error', 'Akun tidak ditemukan atau sudah tidak aktif. Hubungi HR.');
+            redirect('/login');
+        }
+
+        try {
+            Database::transaction(static function () use ($reset, $employee, $password): void {
+                Database::update('employees', [
+                    'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                    'updated_at'    => date('Y-m-d H:i:s'),
+                ], 'id = ?', [(int) $employee['id']]);
+
+                Database::update('password_resets', ['used_at' => date('Y-m-d H:i:s')], 'id = ?', [(int) $reset['id']]);
+                Database::delete('password_resets', 'email = ? AND used_at IS NULL', [(string) $reset['email']]);
+            });
+        } catch (\Throwable $e) {
+            flash('error', 'Kata sandi gagal disimpan. Silakan coba lagi.');
+            redirect('/reset-password?token=' . urlencode($token));
+        }
+
+        Auth::revokeAllRememberTokens((int) $employee['id']);
+        Audit::log('password.reset', 'employee', (int) $employee['id'], ['email' => $reset['email']]);
+        flash('success', 'Kata sandi berhasil diperbarui. Silakan masuk dengan kata sandi baru.');
+        redirect('/login');
+    }
+
+    /** Cari token reset yang masih berlaku (hash, belum dipakai, belum kedaluwarsa). */
+    private function findReset(string $token): ?array
+    {
+        if (!preg_match('/^[a-f0-9]{64}$/', $token)) {
+            return null;
+        }
+
+        return Database::one(
+            'SELECT * FROM password_resets WHERE token_hash = ? AND used_at IS NULL AND expires_at >= ? ORDER BY id DESC',
+            [hash('sha256', $token), date('Y-m-d H:i:s')]
+        );
+    }
+
+    private function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email, 2);
+        if (count($parts) !== 2) {
+            return $email;
+        }
+        $name = $parts[0];
+        $visible = mb_substr($name, 0, 2);
+        return $visible . str_repeat('•', max(3, mb_strlen($name) - 2)) . '@' . $parts[1];
+    }
+
+    /** Status blokir login untuk identifier + IP ini. */
+    private function lockoutState(string $identifier): array
+    {
+        $max = (int) ($GLOBALS['config']['login_max_attempts'] ?? 5);
+        $window = (int) ($GLOBALS['config']['login_lockout_minutes'] ?? 15);
+        if ($max <= 0) {
+            return ['locked' => false, 'minutes' => 0];
+        }
+
+        $since = date('Y-m-d H:i:s', time() - $window * 60);
+        $needle = '%' . Database::like($identifier) . '%';
+        $attempts = (int) Database::value(
+            "SELECT COUNT(*) FROM activity_logs
+             WHERE action = 'login_failed' AND created_at >= ? AND ip_address = ?
+               AND meta LIKE ?",
+            [$since, (string) ($_SERVER['REMOTE_ADDR'] ?? ''), $needle]
+        );
+
+        return [
+            'locked'  => $attempts >= $max,
+            'minutes' => $window,
+        ];
+    }
+
+    private function recordBlockedAttempt(string $identifier): void
+    {
+        try {
+            Database::insert('activity_logs', [
+                'employee_id' => null,
+                'action'      => 'login_blocked',
+                'entity'      => 'employee',
+                'meta'        => json_encode(['identifier' => $identifier], JSON_UNESCAPED_UNICODE),
+                'ip_address'  => $_SERVER['REMOTE_ADDR'] ?? null,
+                'user_agent'  => substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+                'created_at'  => date('Y-m-d H:i:s'),
+            ]);
+        } catch (\Throwable) {
+            // abaikan
+        }
     }
 
     public function logout(): void
