@@ -19,7 +19,7 @@ multi-unit dengan slip gaji ber-QR.
 | **1** | Fondasi: autentikasi (username/password + Google), RBAC (HR/FIN/Karyawan), layout & design system, dashboard HR / Finance / Karyawan, profil, pencarian, notifikasi, mesin approval 2 tahap, installer | ✅ selesai |
 | **2** | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan otomatis, direktori & CRUD karyawan (kontrak, foto, resign) | ✅ selesai |
 | **3** | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan (matriks harian), pengajuan & approval perubahan jadwal 2 tahap | ✅ selesai |
-| 4 | Presensi PWA (GPS geofence, selfie compress), log & rekap, pengaturan denda keterlambatan & potongan cuti | ⏳ |
+| **4** | Presensi PWA (GPS geofence + selfie ber-cap waktu), live monitoring, presensi harian, rekap bulanan + export CSV, pengaturan toleransi/denda/alpha | ✅ selesai |
 | 5 | Lembur: pengajuan, approval, setting kompensasi & batas maksimum, lembur terjadwal | ⏳ |
 | 6 | Cuti: jenis & jatah, pengajuan, approval, saldo | ⏳ |
 | 7 | Komponen gaji (CRUD & assign), PPh, BPJS | ⏳ |
@@ -154,6 +154,57 @@ mysql -u user -p asiaraya_hris < database/schema.sql
 
 ---
 
+## 2.6 Modul Batch 4 — Presensi
+
+### Presensi Saya (`/me/attendance`) — PWA
+* Halaman mobile-first: jam live, shift hari ini, radius geofence unit, dan tombol
+  **Check In / Check Out** yang aktif hanya bila syarat terpenuhi.
+* **Geofence**: jarak dihitung dengan formula haversine antara koordinat GPS
+  (`watchPosition`, akurasi tinggi) dan titik kantor unit + radius. Di luar radius
+  presensi ditolak dengan pesan jarak sebenarnya; shift bertipe `WFH`/`FIELD` dapat
+  melewati validasi ini (dapat dimatikan di pengaturan).
+* **Selfie**: diambil dari kamera (`getUserMedia`) atau unggahan foto, dikompres di
+  browser (lebar & kualitas dari pengaturan), lalu diproses ulang di server dengan GD
+  dan diberi **cap waktu** di sudut foto. Berkas disimpan di
+  `storage/uploads/attendance` dan disajikan lewat `/media/attendance/...`.
+* Status dihitung server-side: `PRESENT` bila masih dalam toleransi, `LATE` beserta
+  jumlah menit terlambat, `work_minutes` dan `early_leave_minutes` saat check-out.
+* Mode demo sandbox menyediakan tombol **Simulasi presensi** (hanya ketika
+  `demo_mode` aktif) untuk mencoba alur tanpa kamera/GPS sungguhan.
+
+### Live Monitoring (`/attendance/live`)
+* KPI: tingkat kehadiran, karyawan masih di kantor (sudah check-in belum check-out),
+  belum presensi, dan status geofence per unit.
+* Bar kehadiran per business unit, daftar karyawan yang belum check-in, dan tabel
+  log presensi dengan jarak geofence, menit terlambat, selfie (klik untuk ukuran
+  penuh), sumber presensi, serta penyegaran otomatis tiap 30 detik.
+
+### Presensi Harian (`/attendance/daily`)
+* Filter tanggal, unit, departemen, status (termasuk *masih di kantor* dan *belum
+  presensi*), serta pencarian nama/NIK.
+* Tombol **Tandai Alpha** membuat baris `ABSENT` bagi karyawan aktif tanpa catatan
+  pada tanggal tersebut, dan **Export CSV** (Excel-ready, `;` separator + BOM).
+
+### Rekap Bulanan (`/attendance/rekap`)
+* Tren kehadiran harian (grafik batang), total hadir/telat/alpha/cuti, jam kerja, dan
+  **denda keterlambatan per karyawan** mengikuti kebijakan aktif.
+* Export CSV per periode, filter unit/departemen, navigasi bulan sebelumnya/berikutnya.
+
+### Pengaturan Presensi (`/attendance/settings`)
+* Jam kerja standar & toleransi (dipakai bila karyawan tanpa jadwal shift).
+* Validasi: wajib selfie, wajib radius geofence, bypass untuk WFH/kerja lapangan.
+* Denda keterlambatan: `PER_MINUTE`, `PER_DAY`, `FIXED`, atau `PERCENT`, lengkap
+  dengan tabel simulasi; serta penanganan alpha (potong cuti/gaji).
+* Kualitas foto: lebar maksimum dan kualitas JPEG.
+* Rincian radius tiap unit ditampilkan di sini; perubahan koordinat dilakukan pada
+  halaman Unit Organisasi.
+
+> **Catatan produksi:** kamera dan GPS memerlukan **HTTPS** (secure context) serta
+> izin pengguna pada browser. Semua perhitungan jarak, status, dan denda tetap
+> divalidasi ulang di server sehingga tidak dapat dimanipulasi dari sisi klien.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -162,8 +213,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -189,7 +240,7 @@ storage/                 # logs, cache, uploads, database preview
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
 | Approval perubahan jadwal | ✅ | – | pengajuan + persetujuan atasan |
-| Presensi (live, harian, rekap, setting) | ✅ | baca | presensi diri |
+| Presensi (live monitoring, harian, rekap, pengaturan) | ✅ | – | presensi diri (PWA) |
 | Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
 | Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
 | Komponen gaji & payroll | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |

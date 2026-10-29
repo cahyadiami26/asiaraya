@@ -938,6 +938,56 @@ table.matrix tbody tr:hover td.matrix__sticky { background: #fbfdff; }
 }
 
 /* ==========================================================================
+   Batch 4 — presensi PWA, monitoring, rekap
+   ========================================================================== */
+.punch-grid { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.punch-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.punch-actions .btn { justify-content: center; }
+.punch-actions .small { line-height: 1.5; }
+
+.thumb {
+  width: 40px; height: 44px; border-radius: 7px; object-fit: cover;
+  border: 1px solid var(--line); background: #f1f5f9; display: block;
+}
+.thumb.sm { width: 26px; height: 30px; margin-top: 3px; }
+a:hover > .thumb { border-color: var(--teal-400); }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
+.person-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px 6px 7px;
+  border: 1px solid var(--line); border-radius: 22px; background: #fff;
+  text-decoration: none !important; color: inherit;
+}
+.person-chip:hover { border-color: var(--teal-400); background: #f7fffd; }
+.person-chip b { display: block; font-size: 11.6px; font-weight: 650; color: var(--ink); line-height: 1.25; }
+.person-chip i { display: block; font-style: normal; font-size: 10px; color: var(--muted); }
+
+.trend-chart {
+  display: flex; align-items: flex-end; gap: 4px; height: 132px;
+  padding: 8px 4px 0; border-bottom: 1px solid var(--line);
+}
+.trend-bar { flex: 1; min-width: 6px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; position: relative; }
+.trend-bar__fill {
+  width: 100%; max-width: 22px; border-radius: 4px 4px 0 0;
+  background: linear-gradient(180deg, var(--teal-400), var(--teal-600));
+  transition: height .3s ease;
+}
+.trend-bar.is-weekend .trend-bar__fill { background: #dbe4ee; }
+.trend-bar:hover .trend-bar__fill { filter: brightness(1.08); }
+.trend-bar__label {
+  font-size: 8.4px; color: var(--muted-2); margin-top: 3px; font-variant-numeric: tabular-nums;
+  position: absolute; bottom: -16px;
+}
+.trend-chart + .flex { margin-top: 22px; }
+.trend-chart .dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; margin-right: 5px; }
+
+@media (max-width: 1024px) {
+  .punch-grid { grid-template-columns: 1fr; }
+  .trend-chart { gap: 3px; height: 110px; }
+  .trend-bar__label { font-size: 7.2px; }
+}
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 @media (max-width: 1280px) {

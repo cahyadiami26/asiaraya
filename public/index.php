@@ -11,6 +11,7 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/app/bootstrap.php';
 
 use App\Controllers\ApprovalController;
+use App\Controllers\AttendanceController;
 use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
@@ -83,6 +84,16 @@ $router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['r
 $router->get('/me/schedule', [ScheduleController::class, 'mine'], ['name' => 'me.schedule']);
 $router->post('/me/schedule/request', [ScheduleController::class, 'storeRequest'], ['name' => 'me.schedule.request']);
 
+/* -------------------------------------------------- Batch 4: presensi & GPS */
+$router->get('/me/attendance', [AttendanceController::class, 'mine'], ['name' => 'me.attendance']);
+$router->post('/attendance/punch', [AttendanceController::class, 'punch'], ['name' => 'attendance.punch']);
+$router->get('/attendance/live', [AttendanceController::class, 'live'], ['roles' => ['HR'], 'name' => 'attendance.live']);
+$router->get('/attendance/daily', [AttendanceController::class, 'daily'], ['roles' => ['HR'], 'name' => 'attendance.daily']);
+$router->post('/attendance/mark-absent', [AttendanceController::class, 'markAbsent'], ['roles' => ['HR'], 'name' => 'attendance.mark-absent']);
+$router->get('/attendance/rekap', [AttendanceController::class, 'rekap'], ['roles' => ['HR'], 'name' => 'attendance.rekap']);
+$router->get('/attendance/settings', [AttendanceController::class, 'settings'], ['roles' => ['HR'], 'name' => 'attendance.settings']);
+$router->post('/attendance/settings', [AttendanceController::class, 'saveSettings'], ['roles' => ['HR'], 'name' => 'attendance.settings.save']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -93,11 +104,6 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/attendance/live'   => ['Live Monitoring Presensi', 'Batch 4'],
-    '/attendance/daily'  => ['Presensi Harian', 'Batch 4'],
-    '/attendance/rekap'  => ['Rekap Presensi Bulanan', 'Batch 4'],
-    '/attendance/settings' => ['Pengaturan Presensi', 'Batch 4'],
-    '/me/attendance'  => ['Presensi Saya', 'Batch 4'],
     '/overtime'       => ['Manajemen Lembur', 'Batch 5'],
     '/overtime/schedules' => ['Lembur Terjadwal', 'Batch 5'],
     '/me/overtime'    => ['Lembur Saya', 'Batch 5'],

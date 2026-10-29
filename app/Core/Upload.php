@@ -125,6 +125,90 @@ final class Upload
     }
 
     /**
+     * Store an inline `data:image/...;base64,...` payload (PWA camera capture).
+     * The bytes are decoded, validated by magic number and re-encoded with GD so
+     * nothing but a clean image ever reaches storage.
+     *
+     * @return array{path:?string,error:?string}
+     */
+    public static function dataUrl(?string $dataUrl, string $folder, int $maxWidth = 720, int $quality = 70): array
+    {
+        if (!$dataUrl) {
+            return ['path' => null, 'error' => null];
+        }
+        if (!preg_match('#^data:(image/(?:jpeg|jpg|png|webp));base64,([A-Za-z0-9+/=\s]+)$#', trim($dataUrl), $m)) {
+            return ['path' => null, 'error' => 'Format foto tidak dikenali.'];
+        }
+
+        $binary = base64_decode(preg_replace('/\s+/', '', $m[2]) ?? '', true);
+        if ($binary === false || $binary === '') {
+            return ['path' => null, 'error' => 'Foto tidak dapat dibaca.'];
+        }
+        if (strlen($binary) > self::MAX_BYTES) {
+            return ['path' => null, 'error' => 'Ukuran foto maksimal 4 MB.'];
+        }
+
+        $info = @getimagesizefromstring($binary);
+        if ($info === false || !isset(self::ALLOWED[$info['mime'] ?? ''])) {
+            return ['path' => null, 'error' => 'Berkas bukan gambar JPG, PNG, atau WEBP yang valid.'];
+        }
+
+        $folder = trim(preg_replace('/[^a-z0-9_\-]/i', '', $folder) ?? '', '/');
+        $directory = rtrim((string) config('upload_path'), '/') . '/' . $folder;
+        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            return ['path' => null, 'error' => 'Folder penyimpanan tidak dapat dibuat.'];
+        }
+
+        $relative = $folder . '/' . date('Ymd') . '-' . bin2hex(random_bytes(6)) . '.jpg';
+        $target = (string) config('upload_path') . '/' . $relative;
+
+        if (!extension_loaded('gd')) {
+            if (@file_put_contents($target, $binary) === false) {
+                return ['path' => null, 'error' => 'Gagal menyimpan foto.'];
+            }
+            return ['path' => $relative, 'error' => null];
+        }
+
+        $source = @imagecreatefromstring($binary);
+        if (!$source) {
+            return ['path' => null, 'error' => 'Foto tidak dapat diproses.'];
+        }
+
+        [$width, $height] = $info;
+        $scale = min(1, $maxWidth / max(1, $width));
+        $newWidth = max(1, (int) round($width * $scale));
+        $newHeight = max(1, (int) round($height * $scale));
+
+        $canvas = imagecreatetruecolor($newWidth, $newHeight);
+        $white = imagecolorallocate($canvas, 255, 255, 255);
+        imagefilledrectangle($canvas, 0, 0, $newWidth, $newHeight, $white);
+        imagecopyresampled($canvas, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
+
+        // Stamp the capture time in the corner so the selfie is auditable.
+        $stamp = date('d/m/Y H:i');
+        $font = 3;
+        $textWidth = imagefontwidth($font) * strlen($stamp);
+        $textHeight = imagefontheight($font);
+        $padding = 8;
+        $boxX = max(0, $newWidth - $textWidth - ($padding * 2));
+        $boxY = max(0, $newHeight - $textHeight - ($padding * 2));
+        $box = imagecolorallocatealpha($canvas, 8, 25, 42, 40);
+        imagefilledrectangle($canvas, $boxX, $boxY, $newWidth, $newHeight, $box);
+        $ink = imagecolorallocate($canvas, 255, 255, 255);
+        imagestring($canvas, $font, $boxX + $padding, $boxY + $padding, $stamp, $ink);
+
+        $saved = imagejpeg($canvas, $target, max(40, min(90, $quality)));
+        imagedestroy($canvas);
+        imagedestroy($source);
+
+        if (!$saved) {
+            return ['path' => null, 'error' => 'Gagal menyimpan foto.'];
+        }
+
+        return ['path' => $relative, 'error' => null];
+    }
+
+    /**
      * Move an uploaded temp file into place.
      * move_uploaded_file() only accepts genuine SAPI uploads; the wasm preview
      * bridge supplies files through a different channel, so fall back to a plain

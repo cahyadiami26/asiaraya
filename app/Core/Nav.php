@@ -45,6 +45,8 @@ final class Nav
                     ['route' => 'schedules.index', 'label' => 'Penjadwalan Karyawan', 'icon' => 'calendar-check', 'roles' => ['HR']],
                     ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN'], 'badge_key' => 'shift'],
                     ['route' => 'attendance.live', 'label' => 'Presensi & GPS Live Log', 'icon' => 'map-pin', 'roles' => ['HR'], 'live' => true],
+                    ['route' => 'attendance.daily', 'label' => 'Presensi Harian', 'icon' => 'list', 'roles' => ['HR']],
+                    ['route' => 'attendance.rekap', 'label' => 'Rekap Presensi Bulanan', 'icon' => 'receipt', 'roles' => ['HR']],
                     ['route' => 'overtime.index', 'label' => 'Lembur (Overtime)', 'icon' => 'clock', 'roles' => ['HR'], 'badge_key' => 'overtime'],
                     ['route' => 'overtime.schedules', 'label' => 'Manajemen Lembur Terjadwal', 'icon' => 'calendar-check', 'roles' => ['HR']],
                     ['route' => 'leave.index', 'label' => 'Manajemen Cuti', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'leave'],
@@ -76,6 +78,7 @@ final class Nav
                 'roles' => ['HR'],
                 'items' => [
                     ['route' => 'logs.index', 'label' => 'Log Aktivitas', 'icon' => 'activity', 'roles' => ['HR']],
+                    ['route' => 'attendance.settings', 'label' => 'Pengaturan Presensi', 'icon' => 'map-pin', 'roles' => ['HR']],
                     ['route' => 'settings.index', 'label' => 'Pengaturan HR & Payroll', 'icon' => 'sliders', 'roles' => ['HR']],
                 ],
             ],
