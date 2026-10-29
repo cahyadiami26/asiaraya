@@ -50,6 +50,8 @@ final class Nav
                     ['route' => 'overtime.index', 'label' => 'Lembur (Overtime)', 'icon' => 'clock', 'roles' => ['HR'], 'badge_key' => 'overtime'],
                     ['route' => 'overtime.schedules', 'label' => 'Manajemen Lembur Terjadwal', 'icon' => 'calendar-check', 'roles' => ['HR']],
                     ['route' => 'leave.index', 'label' => 'Manajemen Cuti', 'icon' => 'file', 'roles' => ['HR'], 'badge_key' => 'leave'],
+                    ['route' => 'leave.balances', 'label' => 'Saldo Cuti Karyawan', 'icon' => 'layers', 'roles' => ['HR']],
+                    ['route' => 'leave.types', 'label' => 'Jenis & Jatah Cuti', 'icon' => 'settings', 'roles' => ['HR']],
                 ],
             ],
             [
@@ -70,6 +72,7 @@ final class Nav
                     ['route' => 'me.schedule', 'label' => 'Jadwal Saya', 'icon' => 'calendar', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.overtime', 'label' => 'Lembur Saya', 'icon' => 'clock', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.leave', 'label' => 'Cuti Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
+                    ['route' => 'leave.index', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
                 ],
             ],

@@ -125,6 +125,71 @@ final class Upload
     }
 
     /**
+     * Store a document attachment (PDF/JPG/PNG) for leave requests and similar.
+     * Validasi dilakukan lewat MIME asli berkas, bukan ekstensi.
+     *
+     * @return array{path:?string,error:?string}
+     */
+    public static function document(string $field, string $folder, int $maxBytes = 5 * 1024 * 1024): array
+    {
+        if (empty($_FILES[$field]) || ($_FILES[$field]['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            return ['path' => null, 'error' => null];
+        }
+
+        $file = $_FILES[$field];
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $message = match ($file['error']) {
+                UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'Ukuran lampiran melebihi batas server.',
+                UPLOAD_ERR_PARTIAL => 'Unggahan lampiran tidak lengkap.',
+                default => 'Gagal mengunggah lampiran (kode ' . $file['error'] . ').',
+            };
+            return ['path' => null, 'error' => $message];
+        }
+
+        if (($file['size'] ?? 0) > $maxBytes) {
+            return ['path' => null, 'error' => 'Ukuran lampiran maksimal ' . round($maxBytes / 1048576, 1) . ' MB.'];
+        }
+
+        $allowed = [
+            'application/pdf' => 'pdf',
+            'image/jpeg'      => 'jpg',
+            'image/png'       => 'png',
+        ];
+
+        $mime = '';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = $finfo ? (string) finfo_file($finfo, (string) $file['tmp_name']) : '';
+            if ($finfo) {
+                finfo_close($finfo);
+            }
+        }
+        if ($mime === '' || !isset($allowed[$mime])) {
+            $guess = @getimagesize((string) $file['tmp_name']);
+            $mime = $guess['mime'] ?? $mime;
+        }
+        if (!isset($allowed[$mime])) {
+            return ['path' => null, 'error' => 'Lampiran harus berupa PDF, JPG, atau PNG.'];
+        }
+
+        $extension = $allowed[$mime];
+        $folder = trim($folder, '/');
+        $directory = rtrim((string) config('upload_path'), '/') . '/' . $folder;
+        if (!is_dir($directory) && !@mkdir($directory, 0775, true) && !is_dir($directory)) {
+            return ['path' => null, 'error' => 'Folder penyimpanan tidak dapat dibuat.'];
+        }
+
+        $relative = $folder . '/' . date('Ymd') . '-' . bin2hex(random_bytes(6)) . '.' . $extension;
+        $target = (string) config('upload_path') . '/' . $relative;
+
+        if (!self::persist((string) $file['tmp_name'], $target)) {
+            return ['path' => null, 'error' => 'Gagal menyimpan lampiran.'];
+        }
+
+        return ['path' => $relative, 'error' => null];
+    }
+
+    /**
      * Store an inline `data:image/...;base64,...` payload (PWA camera capture).
      * The bytes are decoded, validated by magic number and re-encoded with GD so
      * nothing but a clean image ever reaches storage.

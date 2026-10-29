@@ -16,6 +16,7 @@ use App\Controllers\AuthController;
 use App\Controllers\DashboardController;
 use App\Controllers\EmployeeController;
 use App\Controllers\MediaController;
+use App\Controllers\LeaveController;
 use App\Controllers\OvertimeController;
 use App\Controllers\OrgController;
 use App\Controllers\PlaceholderController;
@@ -110,6 +111,21 @@ $router->get('/me/overtime', [OvertimeController::class, 'mine'], ['name' => 'me
 $router->post('/me/overtime', [OvertimeController::class, 'request'], ['name' => 'me.overtime.request']);
 $router->post('/me/overtime/{id}/cancel', [OvertimeController::class, 'myCancel'], ['name' => 'me.overtime.cancel']);
 
+/* ------------------------------------------------------- Batch 6: cuti & saldo */
+$router->get('/leave', [LeaveController::class, 'index'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.index']);
+$router->get('/leave/export', [LeaveController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'leave.export']);
+$router->get('/leave/types', [LeaveController::class, 'types'], ['roles' => ['HR'], 'name' => 'leave.types']);
+$router->post('/leave/types', [LeaveController::class, 'storeType'], ['roles' => ['HR'], 'name' => 'leave.types.store']);
+$router->add('POST|PUT', '/leave/types/{id}', [LeaveController::class, 'updateType'], ['roles' => ['HR'], 'name' => 'leave.types.update']);
+$router->add('POST|DELETE', '/leave/types/{id}/delete', [LeaveController::class, 'destroyType'], ['roles' => ['HR'], 'name' => 'leave.types.delete']);
+$router->get('/leave/balances', [LeaveController::class, 'balances'], ['roles' => ['HR'], 'name' => 'leave.balances']);
+$router->post('/leave/balances', [LeaveController::class, 'saveBalance'], ['roles' => ['HR'], 'name' => 'leave.balances.save']);
+$router->post('/leave/balances/generate', [LeaveController::class, 'generateBalances'], ['roles' => ['HR'], 'name' => 'leave.balances.generate']);
+$router->post('/leave/{id}/cancel', [LeaveController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'leave.cancel']);
+$router->get('/me/leave', [LeaveController::class, 'mine'], ['name' => 'me.leave']);
+$router->post('/me/leave', [LeaveController::class, 'request'], ['name' => 'me.leave.request']);
+$router->post('/me/leave/{id}/cancel', [LeaveController::class, 'myCancel'], ['name' => 'me.leave.cancel']);
+
 /* --------------------------------------------------------------- Media files */
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
@@ -120,8 +136,6 @@ $router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'de
 
 /* ------------------------------------- Modules scheduled for later batches */
 $pending = [
-    '/leave'          => ['Manajemen Cuti', 'Batch 6'],
-    '/me/leave'       => ['Cuti Saya', 'Batch 6'],
     '/payroll'        => ['Payroll', 'Batch 8'],
     '/components'     => ['Komponen Gaji', 'Batch 7'],
     '/reports'        => ['Laporan', 'Batch 9'],

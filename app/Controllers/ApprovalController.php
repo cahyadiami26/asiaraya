@@ -7,6 +7,7 @@ use App\Core\Audit;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
+use App\Models\LeaveModel;
 use App\Models\ScheduleModel;
 
 /**
@@ -40,28 +41,13 @@ final class ApprovalController extends Controller
         $decision = strtoupper((string) input('decision', 'APPROVED'));
         $stage = $this->resolveStage($request, (int) $request['employee_id']);
 
-        if ($decision === 'APPROVED' && $stage === 'HR') {
-            // Final approval consumes the leave balance.
-            $balance = Database::one(
-                'SELECT * FROM leave_balances WHERE employee_id = ? AND leave_type_id = ? AND period_year = ?',
-                [(int) $request['employee_id'], (int) $request['leave_type_id'], (int) date('Y', strtotime($request['start_date']))]
-            );
-            if ($balance) {
-                Database::update('leave_balances', [
-                    'used' => (float) $balance['used'] + (float) $request['days'],
-                    'updated_at' => date('Y-m-d H:i:s'),
-                ], 'id = ?', [(int) $balance['id']]);
-            } else {
-                Database::insert('leave_balances', [
-                    'employee_id'   => (int) $request['employee_id'],
-                    'leave_type_id' => (int) $request['leave_type_id'],
-                    'period_year'   => (int) date('Y', strtotime($request['start_date'])),
-                    'quota'         => 0,
-                    'used'          => (float) $request['days'],
-                    'carry'         => 0,
-                    'updated_at'    => date('Y-m-d H:i:s'),
-                ]);
-            }
+        // Efek samping final harus dijalankan sebelum applyDecision(), karena
+        // applyDecision berakhir dengan redirect (exit).
+        $leave = new LeaveModel();
+        if ($stage === 'HR' && $decision === 'APPROVED') {
+            $leave->applyApproval((int) $request['id']);   // potong saldo + tandai presensi LEAVE
+        } elseif ($stage === 'HR' && $request['status'] === 'APPROVED') {
+            $leave->revertApproval((int) $request['id']);  // kembalikan saldo + hapus penanda presensi
         }
 
         $this->applyDecision('leave_requests', $request, $decision, $stage, '/leave');
@@ -100,6 +86,10 @@ final class ApprovalController extends Controller
         $user = Auth::user();
         if (!$user) {
             $this->abort(401, 'Sesi berakhir.');
+        }
+
+        if ((int) $user['id'] === $employeeId) {
+            $this->abort(403, 'Anda tidak dapat memutus pengajuan milik sendiri.');
         }
 
         if (Auth::isManagerOf($employeeId) && $request['status'] === 'PENDING') {

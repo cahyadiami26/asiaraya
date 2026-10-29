@@ -18,6 +18,7 @@ final class MediaController extends Controller
         'jpeg' => 'image/jpeg',
         'png'  => 'image/png',
         'webp' => 'image/webp',
+        'pdf'  => 'application/pdf',
     ];
 
     public function show(string $folder = '', string $file = ''): void
@@ -58,6 +59,10 @@ final class MediaController extends Controller
 
         header('Content-Type: ' . $mime);
         header('Content-Length: ' . filesize($path));
+        if ($mime === 'application/pdf') {
+            header('Content-Disposition: inline; filename="' . basename($path) . '"');
+            header('X-Content-Type-Options: nosniff');
+        }
         header('Cache-Control: private, max-age=86400');
         header('ETag: ' . $etag);
         header('X-Content-Type-Options: nosniff');

@@ -21,7 +21,7 @@ multi-unit dengan slip gaji ber-QR.
 | **3** | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan (matriks harian), pengajuan & approval perubahan jadwal 2 tahap | ✅ selesai |
 | **4** | Presensi PWA (GPS geofence + selfie ber-cap waktu), live monitoring, presensi harian, rekap bulanan + export CSV, pengaturan toleransi/denda/alpha | ✅ selesai |
 | **5** | Lembur: pengajuan mandiri, approval dua tahap, lembur terjadwal massal, jam aktual, rekap & export CSV | ✅ selesai |
-| 6 | Cuti: jenis & jatah, pengajuan, approval, saldo | ⏳ |
+| **6** | Cuti: jenis & jatah, saldo tahunan (carry over), pengajuan + lampiran, approval dua tahap, integrasi presensi | ✅ selesai |
 | 7 | Komponen gaji (CRUD & assign), PPh, BPJS | ⏳ |
 | 8 | Payroll: periode per unit, kalkulasi, rekap per unit/departemen, slip gaji PDF ber-QR, alur HR → FIN → PAID | ⏳ |
 | 9 | Laporan & cetak (PDF Excel-ready), log aktivitas, pengaturan lanjutan | ⏳ |
@@ -270,6 +270,63 @@ halaman lembur, dan payroll selalu konsisten.
 
 ---
 
+## 2.8 Modul Batch 6 — Cuti
+
+### Perhitungan hari cuti
+* Hanya **hari kerja** yang dihitung: Sabtu, Minggu, dan tanggal pada tabel `holidays`
+  dilewati. Pengajuan Jumat→Senin bernilai **2 hari**, bukan 4.
+* Hari besar yang dilewati ditampilkan per pengajuan (mis. *"Melewati hari besar: Hari
+  Kemerdekaan RI (tidak dihitung cuti)"*).
+
+### Jenis & Jatah Cuti (`/leave/types`) — HR
+* CRUD jenis cuti: kode, nama, jatah tahunan, batas per pengajuan, minimal pemberitahuan,
+  warna label, serta flag **dibayar**, **wajib lampiran**, **carry over**, **potong gaji**,
+  dan status aktif.
+* Saat mengubah jatah, tersedia opsi **sinkronkan jatah** ke seluruh baris saldo tahun
+  berjalan dan seterusnya.
+* Jenis yang sudah dipakai pengajuan/saldo tidak dapat dihapus (ditolak dengan penjelasan);
+  gunakan nonaktif agar riwayat tetap utuh.
+
+### Saldo Cuti (`/leave/balances`) — HR
+* Tabel saldo per karyawan × jenis cuti × tahun: jatah, carry over, terpakai, sisa, dengan
+  penyuntingan langsung (jatah & carry) pada tiap baris.
+* Filter unit/departemen/jenis/tahun serta sorotan **Menipis (≤2 hari)** dan **Minus**.
+* **Generate saldo tahunan** untuk semua karyawan aktif × jenis aktif (opsional per unit,
+  opsional setel ulang jatah). Baris yang sudah ada dilewati sehingga aman diulang dan
+  tidak menghapus pemakaian.
+
+### Manajemen Cuti (`/leave`)
+* KPI: menunggu atasan, menunggu HR, hari cuti disetujui, saldo terpakai.
+* Grafik hari cuti per jenis + daftar cuti berjalan (disetujui, tanggal ≥ hari ini).
+* Antrean pengajuan dengan tab status, filter jenis/unit/departemen/year/pencarian,
+  tombol **Setujui/Tolak** (atasan pada tahap 1, HR pada tahap final), lampiran yang bisa
+  dibuka, pembatalan oleh HR (saldo dikembalikan otomatis), dan **Export CSV** per tahun.
+* **Atasan langsung** membuka halaman yang sama dan hanya melihat pengajuan anggota timnya
+  (blok KPI/filter HR disembunyikan); pengajuan milik sendiri tidak dapat diputus sendiri.
+
+### Cuti Saya (`/me/leave`)
+* Kartu saldo per jenis (sisa, jatah, terpakai, carry) + ringkasan tahun.
+* Formulir pengajuan dengan **perhitungan hari kerja & validasi real-time** di browser
+  (batas per pengajuan, minimal pemberitahuan, sisa saldo) yang tetap divalidasi ulang di
+  server; unggah lampiran PDF/JPG/PNG (maks 5 MB) untuk jenis yang mewajibkannya.
+* Riwayat 40 pengajuan terakhir dengan progres atasan → HR, lampiran, dan pembatalan
+  mandiri selama masih `PENDING`.
+
+### Efek persetujuan (integrasi lintas modul)
+| Tahap | Efek |
+| --- | --- |
+| Atasan menyetujui | status `MANAGER_APPROVED`, notifikasi ke karyawan |
+| HR menyetujui (final) | status `APPROVED`, **saldo `used` bertambah**, hari kerja pada rentang ditandai `LEAVE` di tabel presensi |
+| Ditolak / dibatalkan | saldo **tidak** berubah; bila cuti yang sudah `APPROVED` dibatalkan, `used` dikurangi kembali dan penanda presensi dihapus |
+| Presensi | baris yang sudah ada (mis. karyawan tetap masuk) **tidak** ditimpa; hanya baris kosong/`ABSENT` yang diubah menjadi `LEAVE` |
+
+Validasi server pada pengajuan: jenis aktif, `end ≥ start`, rentang ≤ `leave_max_range_days`
+(default 90 hari), minimal 1 hari kerja, batas `max_per_request`, minimal pemberitahuan,
+alasan wajib, lampiran wajib bila jenis mensyaratkannya, tidak beririsan dengan pengajuan
+lain, serta saldo mencukupi kecuali `leave_allow_negative` diaktifkan.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -278,8 +335,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
