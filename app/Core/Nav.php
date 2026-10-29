@@ -124,6 +124,7 @@ final class Nav
                     ['route' => 'logs.index', 'label' => 'Log Aktivitas', 'icon' => 'activity', 'roles' => ['HR']],
                     ['route' => 'attendance.settings', 'label' => 'Pengaturan Presensi', 'icon' => 'map-pin', 'roles' => ['HR']],
                     ['route' => 'settings.index', 'label' => 'Pengaturan HR & Payroll', 'icon' => 'sliders', 'roles' => ['HR']],
+                    ['route' => 'system.reset', 'label' => 'Reset Sistem', 'icon' => 'database', 'roles' => ['HR']],
                 ],
             ],
         ];

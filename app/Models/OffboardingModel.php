@@ -107,14 +107,59 @@ final class OffboardingModel
         'NO'    => 'Tidak',
     ];
 
-    /** Checklist default yang dibuat saat HR menyetujui pengajuan. */
+    /** Checklist proses (non-aset) yang dibuat saat HR menyetujui pengajuan. */
     public const DEFAULT_CLEARANCE = [
         ['item' => 'Serah terima pekerjaan & dokumen proyek', 'category' => 'HANDOVER', 'owner_role' => 'MANAGER'],
-        ['item' => 'Pengembalian laptop & perangkat kerja', 'category' => 'ASSET', 'owner_role' => 'IT'],
-        ['item' => 'Pengembalian kartu identitas & akses kantor', 'category' => 'ASSET', 'owner_role' => 'HR'],
         ['item' => 'Penonaktifan akun email & akses sistem', 'category' => 'ACCESS', 'owner_role' => 'IT'],
         ['item' => 'Penyelesaian kasbon, klaim & pinjaman', 'category' => 'FINANCE', 'owner_role' => 'FINANCE'],
         ['item' => 'Penyerahan surat pengalaman kerja & dokumen kepegawaian', 'category' => 'DOCUMENT', 'owner_role' => 'HR'],
+    ];
+
+    /* ------------------------------------------------- register aset/BAST */
+
+    public const ASSET_CATEGORIES = [
+        'LAPTOP'    => 'Laptop / Komputer',
+        'PHONE'     => 'Telepon / Gadget',
+        'ID_CARD'   => 'Kartu Identitas',
+        'ACCESS'    => 'Kartu Akses / Kunci',
+        'TOOLS'     => 'Peralatan Kerja',
+        'UNIFORM'   => 'Seragam / APD',
+        'VEHICLE'   => 'Kendaraan',
+        'OTHER'     => 'Lainnya',
+    ];
+
+    public const ASSET_CONDITIONS = [
+        'GOOD'    => 'Baik',
+        'FAIR'    => 'Cukup',
+        'DAMAGED' => 'Rusak',
+        'LOST'    => 'Hilang',
+    ];
+
+    public const ASSET_STATUSES = [
+        'PENDING'   => 'Belum Kembali',
+        'RETURNED'  => 'Dikembalikan',
+        'WAIVED'    => 'Dikecualikan',
+        'NOT_HELD'  => 'Tidak Dipegang',
+        'LOST'      => 'Hilang / Diganti',
+    ];
+
+    public const ASSET_TONES = [
+        'PENDING'  => 'amber',
+        'RETURNED' => 'teal',
+        'WAIVED'   => 'slate',
+        'NOT_HELD' => 'slate',
+        'LOST'     => 'rose',
+    ];
+
+    /** Status yang dianggap tuntas untuk penerbitan BAST. */
+    public const ASSET_SETTLED = ['RETURNED', 'WAIVED', 'NOT_HELD', 'LOST'];
+
+    /** Daftar aset/inventaris default saat HR menyetujui offboarding. */
+    public const DEFAULT_ASSETS = [
+        ['name' => 'Laptop & adaptor daya', 'category' => 'LAPTOP', 'qty' => 1, 'owner_role' => 'IT'],
+        ['name' => 'Kartu identitas karyawan (ID card)', 'category' => 'ID_CARD', 'qty' => 1, 'owner_role' => 'HR'],
+        ['name' => 'Kartu akses & kunci ruang kerja', 'category' => 'ACCESS', 'qty' => 1, 'owner_role' => 'HR'],
+        ['name' => 'Seragam kerja & perlengkapan APD', 'category' => 'UNIFORM', 'qty' => 1, 'owner_role' => 'HR'],
     ];
 
     /* ============================================================== daftar */
@@ -164,7 +209,12 @@ final class OffboardingModel
             m.full_name AS manager_name, h.full_name AS hr_name,
             hi.full_name AS interviewer_name, ho.full_name AS handover_name,
             (SELECT COUNT(*) FROM offboarding_clearance c WHERE c.request_id = r.id) AS clearance_total,
-            (SELECT COUNT(*) FROM offboarding_clearance c2 WHERE c2.request_id = r.id AND c2.status IN ('DONE','WAIVED')) AS clearance_done";
+            (SELECT COUNT(*) FROM offboarding_clearance c2 WHERE c2.request_id = r.id AND c2.status IN ('DONE','WAIVED')) AS clearance_done,
+            (SELECT COUNT(*) FROM offboarding_assets a WHERE a.request_id = r.id) AS asset_total,
+            (SELECT COUNT(*) FROM offboarding_assets a2 WHERE a2.request_id = r.id
+                AND a2.status IN ('RETURNED','WAIVED','NOT_HELD','LOST')) AS asset_done,
+            (SELECT b.id FROM offboarding_bast b WHERE b.request_id = r.id ORDER BY b.id DESC LIMIT 1) AS bast_id,
+            (SELECT b.bast_number FROM offboarding_bast b WHERE b.request_id = r.id ORDER BY b.id DESC LIMIT 1) AS bast_number";
 
     private const JOINS = " LEFT JOIN employees e ON e.id = r.employee_id
             LEFT JOIN business_units u ON u.id = e.business_unit_id
@@ -309,20 +359,44 @@ final class OffboardingModel
         );
     }
 
-    /** @return array{done:int,total:int,pct:int} */
+    /**
+     * Progress gabungan: checklist proses + register aset/inventaris.
+     *
+     * @return array{done:int,total:int,pct:int,clearance_done:int,clearance_total:int,asset_done:int,asset_total:int}
+     */
     public function progress(int $requestId): array
     {
-        $row = Database::one(
+        $clearance = Database::one(
             "SELECT COUNT(*) AS total,
                     SUM(CASE WHEN status IN ('DONE','WAIVED') THEN 1 ELSE 0 END) AS done
                FROM offboarding_clearance WHERE request_id = ?",
             [$requestId]
         ) ?? ['total' => 0, 'done' => 0];
 
-        $total = (int) ($row['total'] ?? 0);
-        $done = (int) ($row['done'] ?? 0);
+        $assets = Database::one(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN status IN ('RETURNED','WAIVED','NOT_HELD','LOST') THEN 1 ELSE 0 END) AS done
+               FROM offboarding_assets WHERE request_id = ?",
+            [$requestId]
+        ) ?? ['total' => 0, 'done' => 0];
 
-        return ['done' => $done, 'total' => $total, 'pct' => $total > 0 ? (int) round($done / $total * 100) : 0];
+        $clearanceTotal = (int) ($clearance['total'] ?? 0);
+        $clearanceDone = (int) ($clearance['done'] ?? 0);
+        $assetTotal = (int) ($assets['total'] ?? 0);
+        $assetDone = (int) ($assets['done'] ?? 0);
+
+        $total = $clearanceTotal + $assetTotal;
+        $done = $clearanceDone + $assetDone;
+
+        return [
+            'done'            => $done,
+            'total'           => $total,
+            'pct'             => $total > 0 ? (int) round($done / $total * 100) : 0,
+            'clearance_done'  => $clearanceDone,
+            'clearance_total' => $clearanceTotal,
+            'asset_done'      => $assetDone,
+            'asset_total'     => $assetTotal,
+        ];
     }
 
     public function employeeRequests(int $employeeId): array
@@ -606,6 +680,12 @@ final class OffboardingModel
         if ($progress['total'] === 0) {
             return ['error' => 'Checklist serah terima belum tersedia.'];
         }
+        if ($progress['asset_total'] > 0 && $progress['asset_done'] < $progress['asset_total']) {
+            return [
+                'error' => 'Masih ada ' . ($progress['asset_total'] - $progress['asset_done'])
+                    . ' aset/inventaris yang belum dikembalikan. Selesaikan register aset sebelum menutup offboarding.',
+            ];
+        }
         if ($progress['done'] < $progress['total']) {
             return ['error' => 'Masih ada ' . ($progress['total'] - $progress['done']) . ' item serah terima yang belum selesai.'];
         }
@@ -652,6 +732,8 @@ final class OffboardingModel
             return ['error' => 'Hanya pengajuan draf/ditolak/dibatalkan yang dapat dihapus.'];
         }
 
+        Database::delete('offboarding_assets', 'request_id = ?', [$id]);
+        Database::delete('offboarding_bast', 'request_id = ?', [$id]);
         Database::delete('offboarding_clearance', 'request_id = ?', [$id]);
         Database::delete('offboarding_stages', 'request_id = ?', [$id]);
         Database::delete('offboarding_requests', 'id = ?', [$id]);
@@ -661,24 +743,288 @@ final class OffboardingModel
 
     /* --------------------------------------------------------- clearance */
 
-    /** Buat checklist default (idempoten: dilewati bila sudah ada item). */
+    /** Buat checklist default + register aset (idempoten per bagian). */
     public function seedClearance(int $requestId): void
     {
         $exists = (int) Database::value('SELECT COUNT(*) FROM offboarding_clearance WHERE request_id = ?', [$requestId], 0);
+        if ($exists === 0) {
+            $now = date('Y-m-d H:i:s');
+            foreach (self::DEFAULT_CLEARANCE as $item) {
+                Database::insert('offboarding_clearance', [
+                    'request_id' => $requestId,
+                    'item'       => $item['item'],
+                    'category'   => $item['category'],
+                    'owner_role' => $item['owner_role'],
+                    'status'     => 'PENDING',
+                    'created_at' => $now,
+                ]);
+            }
+        }
+
+        $this->seedAssets($requestId);
+    }
+
+    /* ---------------------------------------------------- register aset */
+
+    public function assets(int $requestId): array
+    {
+        return Database::all(
+            "SELECT a.*, e.full_name AS returned_name
+               FROM offboarding_assets a
+               LEFT JOIN employees e ON e.id = a.returned_by
+              WHERE a.request_id = ?
+              ORDER BY CASE a.category WHEN 'LAPTOP' THEN 0 WHEN 'PHONE' THEN 1 WHEN 'ID_CARD' THEN 2
+                                       WHEN 'ACCESS' THEN 3 WHEN 'VEHICLE' THEN 4 WHEN 'TOOLS' THEN 5
+                                       WHEN 'UNIFORM' THEN 6 ELSE 7 END, a.id ASC",
+            [$requestId]
+        );
+    }
+
+    /** @return array{pending:int,returned:int,total:int,units:int,settled:bool} */
+    public function assetStats(int $requestId): array
+    {
+        $row = Database::one(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending,
+                    SUM(CASE WHEN status = 'RETURNED' THEN 1 ELSE 0 END) AS returned,
+                    COALESCE(SUM(CASE WHEN status = 'RETURNED' THEN qty ELSE 0 END), 0) AS units
+               FROM offboarding_assets WHERE request_id = ?",
+            [$requestId]
+        ) ?? [];
+
+        $total = (int) ($row['total'] ?? 0);
+        $pending = (int) ($row['pending'] ?? 0);
+
+        return [
+            'total'    => $total,
+            'pending'  => $pending,
+            'returned' => (int) ($row['returned'] ?? 0),
+            'units'    => (int) ($row['units'] ?? 0),
+            'settled'  => $total > 0 && $pending === 0,
+        ];
+    }
+
+    /** Register aset default (idempoten: dilewati bila sudah ada baris). */
+    public function seedAssets(int $requestId): void
+    {
+        $exists = (int) Database::value('SELECT COUNT(*) FROM offboarding_assets WHERE request_id = ?', [$requestId], 0);
         if ($exists > 0) {
             return;
         }
         $now = date('Y-m-d H:i:s');
-        foreach (self::DEFAULT_CLEARANCE as $item) {
-            Database::insert('offboarding_clearance', [
-                'request_id' => $requestId,
-                'item'       => $item['item'],
-                'category'   => $item['category'],
-                'owner_role' => $item['owner_role'],
-                'status'     => 'PENDING',
-                'created_at' => $now,
+        foreach (self::DEFAULT_ASSETS as $item) {
+            Database::insert('offboarding_assets', [
+                'request_id'      => $requestId,
+                'asset_code'      => null,
+                'name'            => $item['name'],
+                'category'        => $item['category'],
+                'qty'             => (int) $item['qty'],
+                'condition_state' => 'GOOD',
+                'status'          => 'PENDING',
+                'created_at'      => $now,
             ]);
         }
+    }
+
+    /** @param array<string,mixed> $data */
+    public function addAsset(int $requestId, array $data): int
+    {
+        return Database::insert('offboarding_assets', [
+            'request_id'      => $requestId,
+            'asset_code'      => trim((string) ($data['asset_code'] ?? '')) ?: null,
+            'name'            => mb_substr(trim((string) ($data['name'] ?? '')), 0, 150),
+            'category'        => isset(self::ASSET_CATEGORIES[(string) ($data['category'] ?? '')]) ? (string) $data['category'] : 'OTHER',
+            'qty'             => max(1, (int) ($data['qty'] ?? 1)),
+            'condition_state' => isset(self::ASSET_CONDITIONS[(string) ($data['condition_state'] ?? '')]) ? (string) $data['condition_state'] : 'GOOD',
+            'status'          => 'PENDING',
+            'note'            => trim((string) ($data['note'] ?? '')) ?: null,
+            'created_at'      => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    public function findAsset(int $assetId, int $requestId): ?array
+    {
+        return Database::one('SELECT * FROM offboarding_assets WHERE id = ? AND request_id = ?', [$assetId, $requestId]);
+    }
+
+    /**
+     * Perbarui satu baris aset. Status RETURNED/LOST mengisi jejak pengembalian.
+     *
+     * @param array<string,mixed> $data
+     */
+    public function updateAsset(int $assetId, int $requestId, array $data, int $actorId): array
+    {
+        $asset = $this->findAsset($assetId, $requestId);
+        if (!$asset) {
+            return ['error' => 'Aset tidak ditemukan pada pengajuan ini.'];
+        }
+
+        $status = (string) ($data['status'] ?? $asset['status']);
+        if (!isset(self::ASSET_STATUSES[$status])) {
+            return ['error' => 'Status aset tidak dikenal.'];
+        }
+        $condition = (string) ($data['condition_state'] ?? $asset['condition_state']);
+        if (!isset(self::ASSET_CONDITIONS[$condition])) {
+            $condition = (string) $asset['condition_state'];
+        }
+
+        // Hanya kolom yang dikirim yang diubah (form inline cukup mengirim status).
+        $payload = [
+            'condition_state' => $condition,
+            'status'          => $status,
+            'returned_by'     => in_array($status, self::ASSET_SETTLED, true) ? $actorId : null,
+            'returned_at'     => in_array($status, self::ASSET_SETTLED, true) ? date('Y-m-d H:i:s') : null,
+        ];
+        if (array_key_exists('name', $data)) {
+            $payload['name'] = mb_substr(trim((string) $data['name']), 0, 150);
+        }
+        if (array_key_exists('asset_code', $data)) {
+            $payload['asset_code'] = trim((string) $data['asset_code']) ?: null;
+        }
+        if (array_key_exists('category', $data) && isset(self::ASSET_CATEGORIES[(string) $data['category']])) {
+            $payload['category'] = (string) $data['category'];
+        }
+        if (array_key_exists('qty', $data)) {
+            $payload['qty'] = max(1, (int) $data['qty']);
+        }
+        if (array_key_exists('note', $data)) {
+            $payload['note'] = trim((string) $data['note']) ?: null;
+        }
+
+        Database::update('offboarding_assets', $payload, 'id = ?', [$assetId]);
+
+        return ['error' => null, 'status' => $status];
+    }
+
+    public function removeAsset(int $assetId, int $requestId): array
+    {
+        $asset = $this->findAsset($assetId, $requestId);
+        if (!$asset) {
+            return ['error' => 'Aset tidak ditemukan pada pengajuan ini.'];
+        }
+        Database::delete('offboarding_assets', 'id = ?', [$assetId]);
+
+        return ['error' => null];
+    }
+
+    /** Tandai seluruh aset belum tuntas sebagai sudah dikembalikan. */
+    public function returnAllAssets(int $requestId, int $actorId): int
+    {
+        return Database::update('offboarding_assets', [
+            'status'      => 'RETURNED',
+            'returned_by' => $actorId,
+            'returned_at' => date('Y-m-d H:i:s'),
+        ], "request_id = ? AND status = 'PENDING'", [$requestId]);
+    }
+
+    /* -------------------------------------------------------------- BAST */
+
+    public function bast(int $requestId): ?array
+    {
+        return Database::one(
+            'SELECT b.*, e.full_name AS issued_name
+               FROM offboarding_bast b
+               LEFT JOIN employees e ON e.id = b.issued_by
+              WHERE b.request_id = ?
+              ORDER BY b.id DESC LIMIT 1',
+            [$requestId]
+        );
+    }
+
+    public function bastList(int $requestId): array
+    {
+        return Database::all(
+            'SELECT b.*, e.full_name AS issued_name
+               FROM offboarding_bast b
+               LEFT JOIN employees e ON e.id = b.issued_by
+              WHERE b.request_id = ?
+              ORDER BY b.id DESC',
+            [$requestId]
+        );
+    }
+
+    private function nextBastNumber(): string
+    {
+        $prefix = 'BAST/' . date('Y') . '/';
+        $last = (string) (Database::value(
+            'SELECT bast_number FROM offboarding_bast WHERE bast_number LIKE ? ORDER BY id DESC LIMIT 1',
+            [$prefix . '%']
+        ) ?? '');
+        $sequence = $last !== '' ? (int) substr($last, -4) + 1 : 1;
+
+        return $prefix . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Terbitkan BAST. Ditolak bila masih ada aset berstatus BELUM KEMBALI,
+     * kecuali penerbit memaksa dengan catatan (force = true).
+     *
+     * @param array<string,mixed> $data
+     * @return array{error:?string,id:?int,number:?string}
+     */
+    public function issueBast(int $requestId, array $data, int $actorId): array
+    {
+        $request = $this->find($requestId);
+        if (!$request) {
+            return ['error' => 'Pengajuan tidak ditemukan.', 'id' => null, 'number' => null];
+        }
+        if (!in_array($request['status'], ['IN_PROGRESS', 'COMPLETED'], true)) {
+            return ['error' => 'BAST hanya dapat diterbitkan setelah serah terima dimulai (disetujui HR).', 'id' => null, 'number' => null];
+        }
+
+        $assets = $this->assets($requestId);
+        if (!$assets) {
+            return ['error' => 'Register aset masih kosong — tambahkan aset yang dipegang karyawan terlebih dahulu.', 'id' => null, 'number' => null];
+        }
+
+        $stats = $this->assetStats($requestId);
+        $force = !empty($data['force']);
+        if ($stats['pending'] > 0 && !$force) {
+            return [
+                'error' => 'Masih ada ' . $stats['pending'] . ' aset berstatus belum kembali. Selesaikan dulu, atau terbitkan BAST dengan catatan.',
+                'id' => null,
+                'number' => null,
+            ];
+        }
+
+        $snapshot = [];
+        foreach ($assets as $asset) {
+            $snapshot[] = [
+                'code'      => (string) ($asset['asset_code'] ?? ''),
+                'name'      => (string) $asset['name'],
+                'category'  => self::ASSET_CATEGORIES[$asset['category']] ?? $asset['category'],
+                'qty'       => (int) $asset['qty'],
+                'condition' => self::ASSET_CONDITIONS[$asset['condition_state']] ?? $asset['condition_state'],
+                'status'    => self::ASSET_STATUSES[$asset['status']] ?? $asset['status'],
+                'note'      => (string) ($asset['note'] ?? ''),
+            ];
+        }
+
+        $number = $this->nextBastNumber();
+        $id = Database::insert('offboarding_bast', [
+            'request_id'        => $requestId,
+            'bast_number'       => $number,
+            'issued_at'         => date('Y-m-d H:i:s'),
+            'issued_by'         => $actorId,
+            'receiver_name'     => trim((string) ($data['receiver_name'] ?? '')) ?: null,
+            'receiver_position' => trim((string) ($data['receiver_position'] ?? '')) ?: null,
+            'witness_name'      => trim((string) ($data['witness_name'] ?? '')) ?: null,
+            'note'              => trim((string) ($data['note'] ?? '')) ?: null,
+            'items_snapshot'    => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+            'created_at'        => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->logStage($requestId, (string) $request['status'], (string) $request['status'],
+            'BAST aset ' . $number . ' diterbitkan (' . count($snapshot) . ' item).', $actorId);
+
+        return ['error' => null, 'id' => $id, 'number' => $number];
+    }
+
+    /** Item BAST dari snapshot (dokumen tidak berubah walau register diperbarui). */
+    public function bastItems(array $bast): array
+    {
+        $decoded = json_decode((string) ($bast['items_snapshot'] ?? ''), true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     /** @param array<string,mixed> $data */

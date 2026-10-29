@@ -1636,3 +1636,53 @@ select.select[multiple] option:checked {
   .clear-item { flex-wrap: wrap; }
   .clear-item__actions { width: 100%; padding-left: 35px; }
 }
+
+/* --------------------------------------------------------------------------
+   Batch 17 — BAST aset offboarding & reset sistem
+   -------------------------------------------------------------------------- */
+.reset-hero {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #fff 0%, #f7fbfd 100%);
+  box-shadow: var(--shadow-xs);
+}
+.reset-hero__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 12px;
+  background: var(--teal-50);
+  color: var(--teal-700);
+}
+.reset-hero__icon .ico { width: 21px; height: 21px; }
+.reset-hero__body { flex: 1; min-width: 0; }
+.reset-hero__body > b { font-size: 13px; }
+
+.reset-option {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fbfdff;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.reset-option:hover { border-color: var(--teal-400); background: #fff; }
+.reset-option input[type="checkbox"] {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--teal-600);
+}
+.reset-option b { display: block; font-size: 12.6px; color: var(--ink-2); }
+.reset-option > div { min-width: 0; }

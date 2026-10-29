@@ -768,3 +768,39 @@ CREATE TABLE IF NOT EXISTS offboarding_stages (
     created_at DATETIME NULL,
     KEY idx_offboarding_stage (request_id, created_at)
 );
+
+-- ---------------------------------------------------------------------------
+-- Batch 17 — Register aset offboarding & BAST (berita acara serah terima)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS offboarding_assets (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_id INT UNSIGNED NOT NULL,
+    asset_code VARCHAR(60) NULL,
+    name VARCHAR(150) NOT NULL,
+    category VARCHAR(20) NOT NULL DEFAULT 'OTHER',
+    qty INT NOT NULL DEFAULT 1,
+    condition_state VARCHAR(20) NOT NULL DEFAULT 'GOOD',
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    note VARCHAR(255) NULL,
+    returned_by INT UNSIGNED NULL,
+    returned_at DATETIME NULL,
+    created_at DATETIME NULL,
+    KEY idx_offboarding_asset (request_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS offboarding_bast (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    request_id INT UNSIGNED NOT NULL,
+    bast_number VARCHAR(50) NOT NULL,
+    issued_at DATETIME NULL,
+    issued_by INT UNSIGNED NULL,
+    receiver_name VARCHAR(150) NULL,
+    receiver_position VARCHAR(120) NULL,
+    witness_name VARCHAR(150) NULL,
+    note VARCHAR(500) NULL,
+    items_snapshot TEXT NULL,
+    created_at DATETIME NULL,
+    UNIQUE KEY uq_offboarding_bast_number (bast_number),
+    KEY idx_offboarding_bast_request (request_id, issued_at)
+);

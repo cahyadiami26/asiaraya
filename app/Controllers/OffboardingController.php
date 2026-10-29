@@ -8,8 +8,10 @@ use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
 use App\Core\Paginator;
+use App\Core\Pdf;
 use App\Core\Settings;
 use App\Core\Validator;
+use App\Core\View;
 use App\Models\EmployeeModel;
 use App\Models\OffboardingModel;
 use App\Models\OrgModel;
@@ -56,6 +58,11 @@ final class OffboardingController extends Controller
             'active'       => $active,
             'progress'     => $active ? $this->offboarding->progress((int) $active['id']) : ['done' => 0, 'total' => 0, 'pct' => 0],
             'clearance'    => $active ? $this->offboarding->clearance((int) $active['id']) : [],
+            'assets'       => $active ? $this->offboarding->assets((int) $active['id']) : [],
+            'assetStats'   => $active ? $this->offboarding->assetStats((int) $active['id']) : null,
+            'assetStatuses' => OffboardingModel::ASSET_STATUSES,
+            'assetSettled' => OffboardingModel::ASSET_SETTLED,
+            'assetTones'   => OffboardingModel::ASSET_TONES,
             'teamRequests' => $isManager ? $this->offboarding->pendingForManager($employeeId) : [],
             'isManager'    => $isManager,
             'types'        => OffboardingModel::TYPES,
@@ -299,11 +306,23 @@ final class OffboardingController extends Controller
 
         $status = (string) $request['status'];
 
+        $bast = $this->offboarding->bast((int) $id);
+        $bastItems = $bast ? $this->offboarding->bastItems($bast) : [];
+        $bastUnits = 0;
+        foreach ($bastItems as $item) {
+            $bastUnits += (int) ($item['qty'] ?? 0);
+        }
+
         $this->view('offboarding/show', [
             'title'       => 'Offboarding ' . $request['request_number'],
             'pageTitle'   => 'Detail Offboarding',
             'request'     => $request,
             'clearance'   => $this->offboarding->clearance((int) $id),
+            'assets'      => $this->offboarding->assets((int) $id),
+            'assetStats'  => $this->offboarding->assetStats((int) $id),
+            'bast'        => $bast,
+            'bastItems'   => $bastItems,
+            'bastUnits'   => $bastUnits,
             'stages'      => $this->offboarding->stages((int) $id),
             'progress'    => $this->offboarding->progress((int) $id),
             'isOwner'     => $isOwner,
@@ -322,6 +341,10 @@ final class OffboardingController extends Controller
             'statuses'    => OffboardingModel::STATUSES,
             'tones'       => OffboardingModel::STATUS_TONES,
             'reasons'     => OffboardingModel::REASONS,
+            'assetCategories'  => OffboardingModel::ASSET_CATEGORIES,
+            'assetConditions'  => OffboardingModel::ASSET_CONDITIONS,
+            'assetStatuses'    => OffboardingModel::ASSET_STATUSES,
+            'assetTones'       => OffboardingModel::ASSET_TONES,
             'categories'  => OffboardingModel::CLEARANCE_CATEGORIES,
             'clearanceStatuses' => OffboardingModel::CLEARANCE_STATUSES,
             'clearanceTones'    => OffboardingModel::CLEARANCE_TONES,
@@ -543,6 +566,162 @@ final class OffboardingController extends Controller
         Audit::log('offboarding.clearance_all', 'offboarding_request', (int) $id, ['items' => $count]);
         flash('success', $count > 0 ? $count . ' item serah terima ditandai selesai.' : 'Tidak ada item yang tersisa.');
         redirect('/offboarding/' . (int) $id);
+    }
+
+    /* ------------------------------------------------------ register aset */
+
+    public function addAsset(string $id): void
+    {
+        $this->requireRole('HR');
+        $request = $this->offboarding->find((int) $id);
+        if (!$request) {
+            $this->abort(404, 'Pengajuan offboarding tidak ditemukan.');
+        }
+
+        $this->validateOrRedirect(static function (Validator $v): void {
+            $v->required('name', 'Nama aset')
+              ->in('category', 'Kategori aset', array_keys(OffboardingModel::ASSET_CATEGORIES))
+              ->in('condition_state', 'Kondisi', array_keys(OffboardingModel::ASSET_CONDITIONS))
+              ->numeric('qty', 'Jumlah', 1);
+        }, '/offboarding/' . (int) $id);
+
+        $this->offboarding->addAsset((int) $id, [
+            'asset_code'      => (string) input('asset_code', ''),
+            'name'            => (string) input('name', ''),
+            'category'        => (string) input('category', 'OTHER'),
+            'qty'             => (int) input('qty', 1),
+            'condition_state' => (string) input('condition_state', 'GOOD'),
+            'note'            => (string) input('note', ''),
+        ]);
+
+        Audit::log('offboarding.asset_add', 'offboarding_request', (int) $id);
+        flash('success', 'Aset ditambahkan ke register pengembalian.');
+        redirect('/offboarding/' . (int) $id);
+    }
+
+    public function updateAsset(string $id, string $assetId): void
+    {
+        $request = $this->offboarding->find((int) $id);
+        if (!$request) {
+            $this->abort(404, 'Pengajuan offboarding tidak ditemukan.');
+        }
+        if (!Auth::hasRole(['HR', 'FIN']) && !Auth::isManagerOf((int) $request['employee_id'])) {
+            $this->abort(403, 'Hanya HR, atasan langsung, atau Finance yang dapat memperbarui register aset.');
+        }
+
+        $payload = [
+            'status'          => (string) input('status', 'PENDING'),
+            'condition_state' => (string) input('condition_state', 'GOOD'),
+        ];
+        foreach (['asset_code', 'name', 'category', 'note'] as $field) {
+            if (array_key_exists($field, $_POST)) {
+                $payload[$field] = (string) input($field, '');
+            }
+        }
+        if (array_key_exists('qty', $_POST)) {
+            $payload['qty'] = (int) input('qty', 1);
+        }
+
+        $result = $this->offboarding->updateAsset((int) $assetId, (int) $id, $payload, (int) $this->employeeId());
+
+        if ($result['error'] !== null) {
+            flash('error', $result['error']);
+        } else {
+            Audit::log('offboarding.asset_update', 'offboarding_request', (int) $id, ['asset' => (int) $assetId, 'status' => $result['status']]);
+            flash('success', 'Data aset diperbarui.');
+        }
+        redirect('/offboarding/' . (int) $id . '#aset');
+    }
+
+    public function removeAsset(string $id, string $assetId): void
+    {
+        $this->requireRole('HR');
+
+        $result = $this->offboarding->removeAsset((int) $assetId, (int) $id);
+        if ($result['error'] !== null) {
+            flash('error', $result['error']);
+        } else {
+            Audit::log('offboarding.asset_remove', 'offboarding_request', (int) $id, ['asset' => (int) $assetId]);
+            flash('success', 'Aset dihapus dari register.');
+        }
+        redirect('/offboarding/' . (int) $id . '#aset');
+    }
+
+    public function returnAllAssets(string $id): void
+    {
+        $this->requireRole('HR');
+
+        $count = $this->offboarding->returnAllAssets((int) $id, (int) $this->employeeId());
+        Audit::log('offboarding.asset_return_all', 'offboarding_request', (int) $id, ['rows' => $count]);
+        flash('success', $count > 0 ? $count . ' aset ditandai sudah dikembalikan.' : 'Tidak ada aset yang menunggu pengembalian.');
+        redirect('/offboarding/' . (int) $id . '#aset');
+    }
+
+    /* ---------------------------------------------------------------- BAST */
+
+    public function issueBast(string $id): void
+    {
+        $this->requireRole('HR');
+
+        $result = $this->offboarding->issueBast((int) $id, [
+            'receiver_name'     => (string) input('receiver_name', ''),
+            'receiver_position' => (string) input('receiver_position', ''),
+            'witness_name'      => (string) input('witness_name', ''),
+            'note'              => (string) input('note', ''),
+            'force'             => (string) input('force', '') !== '',
+        ], (int) $this->employeeId());
+
+        if ($result['error'] !== null) {
+            flash('error', $result['error']);
+            redirect('/offboarding/' . (int) $id . '#bast');
+        }
+
+        Audit::log('offboarding.bast_issue', 'offboarding_request', (int) $id, ['number' => $result['number']]);
+        flash('success', 'BAST ' . $result['number'] . ' diterbitkan.');
+        redirect('/offboarding/' . (int) $id . '/bast');
+    }
+
+    /** Dokumen BAST (PDF) — dapat diunduh atau dibuka di browser. */
+    public function bastPdf(string $id): void
+    {
+        $request = $this->offboarding->find((int) $id);
+        if (!$request) {
+            $this->abort(404, 'Pengajuan offboarding tidak ditemukan.');
+        }
+
+        $user = (array) $this->employee();
+        $allowed = (int) $request['employee_id'] === (int) $user['id']
+            || Auth::hasRole(['HR', 'FIN'])
+            || Auth::isManagerOf((int) $request['employee_id']);
+        if (!$allowed) {
+            $this->abort(403, 'Anda tidak memiliki akses ke dokumen ini.');
+        }
+
+        $bast = $this->offboarding->bast((int) $id);
+        if (!$bast) {
+            flash('error', 'BAST belum diterbitkan untuk pengajuan ini.');
+            $selfOnly = (int) $request['employee_id'] === (int) $user['id'] && !Auth::hasRole(['HR', 'FIN']);
+            redirect($selfOnly ? '/me/offboarding' : '/offboarding/' . (int) $id . '#bast');
+        }
+
+        $html = View::partial('offboarding/bast_pdf', [
+            'request' => $request,
+            'bast'    => $bast,
+            'items'   => $this->offboarding->bastItems($bast),
+            'types'   => OffboardingModel::TYPES,
+            'company' => [
+                'name'    => (string) setting('company_name', 'PT Asia Raya Group'),
+                'legal'   => (string) setting('company_legal_name', ''),
+                'address' => (string) setting('company_address', ''),
+                'phone'   => (string) setting('company_phone', ''),
+                'email'   => (string) setting('company_email', ''),
+            ],
+            'printedAt' => date('d M Y H:i'),
+        ]);
+
+        Audit::log('offboarding.bast_print', 'offboarding_request', (int) $id, ['number' => $bast['bast_number']]);
+        $filename = str_replace('/', '-', (string) $bast['bast_number']) . '.pdf';
+        Pdf::send($html, $filename, isset($_GET['download']));
     }
 
     public function interview(string $id): void

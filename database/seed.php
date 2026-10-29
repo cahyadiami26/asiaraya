@@ -1485,11 +1485,18 @@ return static function (): array {
 
         $clearanceTemplate = [
             ['Serah terima pekerjaan & dokumen proyek', 'HANDOVER', 'MANAGER'],
-            ['Pengembalian laptop & perangkat kerja', 'ASSET', 'IT'],
-            ['Pengembalian kartu identitas & akses kantor', 'ASSET', 'HR'],
             ['Penonaktifan akun email & akses sistem', 'ACCESS', 'IT'],
             ['Penyelesaian kasbon, klaim & pinjaman', 'FINANCE', 'FINANCE'],
             ['Penyerahan surat pengalaman kerja & dokumen kepegawaian', 'DOCUMENT', 'HR'],
+        ];
+
+        // Register aset/inventaris (Batch 17) — ['kode', 'nama', 'kategori', 'qty', 'kondisi', 'catatan']
+        $assetTemplate = [
+            ['AST-JKT-0412', 'Laptop Lenovo ThinkPad E14', 'LAPTOP', 1, 'GOOD', 'Termasuk adaptor daya'],
+            ['AST-JKT-0987', 'Telepon kerja Samsung A15', 'PHONE', 1, 'FAIR', 'Layar lecet halus'],
+            ['IDC-0206', 'Kartu identitas karyawan', 'ID_CARD', 1, 'GOOD', null],
+            ['ACS-0206', 'Kartu akses gedung & kunci loker', 'ACCESS', 1, 'GOOD', null],
+            ['UNF-0206', 'Seragam kerja & perlengkapan APD', 'UNIFORM', 2, 'GOOD', '1 set seragam, 1 helm'],
         ];
 
         $cases = [
@@ -1501,7 +1508,8 @@ return static function (): array {
                 'last'      => '-18 days',
                 'status'    => 'COMPLETED',
                 'note'      => 'Karyawan melanjutkan studi dan pindah domisili ke Yogyakarta.',
-                'done'      => 6,
+                'done'      => 4,
+                'assets_done' => 5,
                 'interview' => '-24 days 14:00:00',
                 'recommend' => 'YES',
                 'feedback'  => 'Lingkungan kerja suportif, proses produksi sudah rapi. Saran: tambah program pengembangan teknis untuk operator.',
@@ -1516,7 +1524,8 @@ return static function (): array {
                 'last'      => '+12 days',
                 'status'    => 'IN_PROGRESS',
                 'note'      => 'Mendapat tawaran dengan kompensasi lebih tinggi; bersedia menyelesaikan serah terima.',
-                'done'      => 4,
+                'done'      => 3,
+                'assets_done' => 2,
                 'interview' => '+3 days 10:00:00',
                 'recommend' => 'MAYBE',
                 'feedback'  => null,
@@ -1582,6 +1591,7 @@ return static function (): array {
             $submitDate = date('Y-m-d', strtotime($case['submit']));
             $lastDate = date('Y-m-d', strtotime($case['last']));
             $status = $case['status'];
+            $case = $case + ['assets_done' => 0, 'reject' => null];
             $managerId = (int) ($emp['direct_manager_id'] ?? 0) ?: null;
 
             $requestId = Database::insert('offboarding_requests', [
@@ -1667,6 +1677,55 @@ return static function (): array {
                         'created_at' => date('Y-m-d H:i:s', strtotime($submitDate . ' +4 days')),
                     ]);
                 }
+            }
+
+            // register aset / inventaris (Batch 17)
+            if (\App\Core\Database::tableExists('offboarding_assets') && $clearanceExists) {
+                $assetsDone = (int) $case['assets_done'];
+                foreach ($assetTemplate as $i => [$code, $name, $category, $qty, $condition, $note]) {
+                    $returned = $i < $assetsDone;
+                    Database::insert('offboarding_assets', [
+                        'request_id'      => $requestId,
+                        'asset_code'      => $code,
+                        'name'            => $name,
+                        'category'        => $category,
+                        'qty'             => $qty,
+                        'condition_state' => $returned ? $condition : 'GOOD',
+                        'status'          => $returned ? 'RETURNED' : 'PENDING',
+                        'note'            => $note,
+                        'returned_by'     => $returned ? $hrId : null,
+                        'returned_at'     => $returned ? date('Y-m-d H:i:s', strtotime($lastDate . ' -' . (2 + $i) . ' days')) : null,
+                        'created_at'      => date('Y-m-d H:i:s', strtotime($submitDate . ' +4 days')),
+                    ]);
+                }
+            }
+
+            // BAST untuk pengajuan yang sudah selesai (Batch 17)
+            if ($status === 'COMPLETED' && \App\Core\Database::tableExists('offboarding_bast')) {
+                $snapshot = [];
+                foreach ($assetTemplate as [$code, $name, $category, $qty, $condition, $note]) {
+                    $snapshot[] = [
+                        'code'      => $code,
+                        'name'      => $name,
+                        'category'  => \App\Models\OffboardingModel::ASSET_CATEGORIES[$category] ?? $category,
+                        'qty'       => (int) $qty,
+                        'condition' => \App\Models\OffboardingModel::ASSET_CONDITIONS[$condition] ?? $condition,
+                        'status'    => \App\Models\OffboardingModel::ASSET_STATUSES['RETURNED'],
+                        'note'      => (string) ($note ?? ''),
+                    ];
+                }
+                Database::insert('offboarding_bast', [
+                    'request_id'        => $requestId,
+                    'bast_number'       => 'BAST/' . date('Y', strtotime($lastDate)) . '/' . str_pad((string) $sequence, 4, '0', STR_PAD_LEFT),
+                    'issued_at'         => date('Y-m-d H:i:s', strtotime($lastDate . ' 15:30:00')),
+                    'issued_by'         => $hrId,
+                    'receiver_name'     => 'Siti Rahmawati',
+                    'receiver_position' => 'HR Super Admin',
+                    'witness_name'      => (string) Database::value('SELECT full_name FROM employees WHERE id = ?', [$managerId ?: $hrId], 'HR Department'),
+                    'note'              => 'Seluruh aset diterima dalam kondisi sesuai catatan.',
+                    'items_snapshot'    => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+                    'created_at'        => date('Y-m-d H:i:s', strtotime($lastDate . ' 15:30:00')),
+                ]);
             }
 
             // karyawan keluar

@@ -2,7 +2,9 @@
 /**
  * Detail offboarding: ringkasan pengajuan, checklist serah terima, exit
  * interview, penyelesaian akhir, dan riwayat tahapan.
- * @var array $request, $clearance, $stages, $progress, $types, $typeTones, $statuses, $tones
+ * @var array $request, $clearance, $assets, $assetStats, $bast, $stages, $progress
+ * @var array $types, $typeTones, $statuses, $tones
+ * @var array $assetCategories, $assetConditions, $assetStatuses, $assetTones
  * @var array $reasons, $categories, $clearanceStatuses, $clearanceTones, $ownerRoles
  * @var array $recommendations, $employees, $errors, $old
  * @var bool $isOwner, $isManager, $isHr, $isFin, $canApproveManager, $canApproveHr, $canComplete
@@ -224,6 +226,192 @@ $stepDone = static function (int $index) use ($stepIndex, $isClosed, $status): b
                     </div>
                     <button class="btn btn-sm btn-primary" type="submit"><?= icon('plus') ?> Tambah</button>
                 </form>
+            <?php endif; ?>
+        </section>
+
+
+        <section class="card" id="aset">
+            <div class="card__head">
+                <div><h2>Aset &amp; Inventaris</h2>
+                    <div class="sub">
+                        <?= (int) $assetStats['returned'] ?>/<?= (int) $assetStats['total'] ?> jenis aset dikembalikan
+                        (<?= number_id($assetStats['units']) ?> unit)<?= $assetStats['pending'] > 0 ? ' · ' . (int) $assetStats['pending'] . ' belum kembali' : '' ?>.
+                    </div></div>
+                <?php if ($isHr && !$isClosed && $assetStats['pending'] > 0): ?>
+                    <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/assets-all') ?>"
+                          data-confirm="Tandai semua aset yang belum kembali sebagai sudah dikembalikan?">
+                        <?= csrf_field() ?>
+                        <button class="btn btn-sm btn-outline" type="submit"><?= icon('check') ?> Semua Dikembalikan</button>
+                    </form>
+                <?php endif; ?>
+            </div>
+
+            <div class="table-wrap" style="border-top:1px solid var(--line)">
+                <table class="data">
+                    <thead>
+                    <tr>
+                        <th>Aset / Inventaris</th><th>Kategori</th><th style="width:52px" class="num">Qty</th>
+                        <th>Kondisi</th><th>Status</th><th>Catatan</th><th style="width:44px"></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($assets as $asset): ?>
+                        <tr>
+                            <td class="small">
+                                <b><?= e($asset['name']) ?></b>
+                                <div class="muted mono" style="font-size:9.6px">
+                                    <?= e($asset['asset_code'] ?: 'tanpa kode aset') ?>
+                                    <?php if ($asset['returned_name']): ?> · <?= e($asset['returned_name']) ?>, <?= tanggal($asset['returned_at'], 'd M Y') ?><?php endif; ?>
+                                </div>
+                            </td>
+                            <td class="small"><?= e($assetCategories[$asset['category']] ?? $asset['category']) ?></td>
+                            <td class="num small"><?= (int) $asset['qty'] ?></td>
+                            <td class="small"><?= e($assetConditions[$asset['condition_state']] ?? $asset['condition_state']) ?></td>
+                            <td>
+                                <?php $editable = !$isClosed && ($isHr || $isManager); ?>
+                                <?php if (!$editable): ?>
+                                    <span class="badge badge-<?= $assetTones[$asset['status']] ?? 'slate' ?>"><?= e($assetStatuses[$asset['status']] ?? $asset['status']) ?></span>
+                                <?php else: ?>
+                                    <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/assets/' . (int) $asset['id']) ?>">
+                                        <?= csrf_field() ?>
+                                        <select class="select" name="status" style="min-width:132px;height:28px;font-size:10.6px"
+                                                onchange="this.form.requestSubmit()" aria-label="Ubah status aset">
+                                            <?php foreach ($assetStatuses as $key => $label): ?>
+                                                <option value="<?= e($key) ?>" <?= $asset['status'] === $key ? 'selected' : '' ?>><?= e($label) ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                            <td class="small muted"><?= e($asset['note'] ?: '—') ?></td>
+                            <td>
+                                <?php if ($isHr && !$isClosed): ?>
+                                    <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/assets/' . (int) $asset['id'] . '/delete') ?>"
+                                          data-confirm="Hapus <?= e($asset['name']) ?> dari register aset?">
+                                        <?= csrf_field() ?>
+                                        <?= method_field('DELETE') ?>
+                                        <button class="btn btn-sm btn-ghost" type="submit" style="color:var(--rose-600)" title="Hapus"><?= icon('trash') ?></button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                    <?php if (!$assets): ?>
+                        <tr><td colspan="7">
+                            <div class="empty-state" style="padding:20px">
+                                <div class="empty-icon"><?= icon('briefcase') ?></div>
+                                <h3>Register aset masih kosong</h3>
+                                <p>Tambahkan aset/inventaris yang dipegang karyawan agar pengembaliannya tercatat.</p>
+                            </div>
+                        </td></tr>
+                    <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if ($isHr && !$isClosed): ?>
+                <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/assets') ?>" class="card__foot"
+                      style="padding:12px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:8px;align-items:end">
+                    <?= csrf_field() ?>
+                    <div class="field" style="margin:0"><label style="font-size:10px">Nama aset</label>
+                        <input class="input" name="name" placeholder="Contoh: Laptop Lenovo ThinkPad" required maxlength="150"></div>
+                    <div class="field" style="margin:0"><label style="font-size:10px">Kategori</label>
+                        <select class="select" name="category">
+                            <?php foreach ($assetCategories as $key => $label): ?><option value="<?= e($key) ?>"><?= e($label) ?></option><?php endforeach; ?>
+                        </select></div>
+                    <div class="field" style="margin:0"><label style="font-size:10px">Kode aset / SN</label>
+                        <input class="input" name="asset_code" maxlength="60" placeholder="opsional"></div>
+                    <div class="field" style="margin:0"><label style="font-size:10px">Qty</label>
+                        <input class="input" type="number" name="qty" value="1" min="1" max="999"></div>
+                    <button class="btn btn-sm btn-primary" type="submit"><?= icon('plus') ?> Tambah</button>
+                </form>
+            <?php endif; ?>
+        </section>
+
+        <section class="card" id="bast">
+            <div class="card__head">
+                <div><h2>BAST — Berita Acara Serah Terima</h2>
+                    <div class="sub">Dokumen bukti pengembalian aset/inventaris, ditandatangani karyawan, penerima, dan saksi.</div></div>
+                <?php if ($bast): ?>
+                    <div class="card__head__actions">
+                        <a class="btn btn-sm btn-outline" href="<?= url('offboarding/' . (int) $request['id'] . '/bast') ?>" target="_blank" rel="noopener"><?= icon('file') ?> Lihat BAST</a>
+                        <a class="btn btn-sm btn-primary" href="<?= url('offboarding/' . (int) $request['id'] . '/bast?download=1') ?>"><?= icon('download') ?> Unduh PDF</a>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if ($bast): ?>
+                <div class="card__body">
+                    <div class="alert alert-success" style="margin:0 0 12px">
+                        <?= icon('check') ?>
+                        <div>
+                            <b>BAST <?= e($bast['bast_number']) ?></b> diterbitkan
+                            <?= tanggal($bast['issued_at'], 'd M Y H:i') ?><?= $bast['issued_name'] ? ' oleh ' . e($bast['issued_name']) : '' ?>.
+                        </div>
+                    </div>
+                    <div class="detail-list detail-list--2col">
+                        <div class="detail-list__row"><span>Penerima</span><b><?= e($bast['receiver_name'] ?: 'HR Department') ?></b></div>
+                        <div class="detail-list__row"><span>Jabatan penerima</span><b><?= e($bast['receiver_position'] ?: '—') ?></b></div>
+                        <div class="detail-list__row"><span>Saksi</span><b><?= e($bast['witness_name'] ?: ($request['manager_name'] ?? '—')) ?></b></div>
+                        <div class="detail-list__row"><span>Jumlah aset</span><b><?= count($bastItems) ?> jenis · <?= (int) $bastUnits ?> unit</b></div>
+                    </div>
+                    <?php if (!empty($bast['note'])): ?>
+                        <div class="small muted" style="margin-top:8px">Keterangan: <?= e($bast['note']) ?></div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($isHr && !$isClosed && in_array($status, ['IN_PROGRESS', 'COMPLETED'], true)): ?>
+                <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/bast') ?>"
+                      <?= $bast ? 'style="border-top:1px solid var(--line)"' : '' ?>>
+                    <?= csrf_field() ?>
+                    <div class="card__body">
+                        <div class="muted small" style="font-size:9.8px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:8px">
+                            <?= $bast ? 'Terbitkan ulang BAST' : 'Terbitkan BAST' ?>
+                        </div>
+                        <?php if ($assetStats['pending'] > 0): ?>
+                            <div class="alert alert-warning" style="margin:0 0 12px">
+                                <?= icon('alert') ?>
+                                <div class="small">Masih ada <b><?= (int) $assetStats['pending'] ?></b> aset berstatus belum kembali.
+                                    Selesaikan dulu, atau centang opsi di bawah untuk menerbitkan BAST dengan catatan.</div>
+                            </div>
+                        <?php endif; ?>
+                        <div class="form-grid two">
+                            <div class="field">
+                                <label>Nama penerima</label>
+                                <input class="input" name="receiver_name" maxlength="150"
+                                       value="<?= e($bast['receiver_name'] ?? ($currentUser['full_name'] ?? '')) ?>" placeholder="Nama HR/IT yang menerima">
+                            </div>
+                            <div class="field">
+                                <label>Jabatan penerima</label>
+                                <input class="input" name="receiver_position" maxlength="120"
+                                       value="<?= e($bast['receiver_position'] ?? 'HR Department') ?>" placeholder="Contoh: HR Manager">
+                            </div>
+                            <div class="field">
+                                <label>Nama saksi</label>
+                                <input class="input" name="witness_name" maxlength="150"
+                                       value="<?= e($bast['witness_name'] ?? ($request['manager_name'] ?? '')) ?>" placeholder="Atasan langsung / saksi">
+                            </div>
+                            <div class="field">
+                                <label>Keterangan (opsional)</label>
+                                <input class="input" name="note" maxlength="500" value="<?= e($bast['note'] ?? '') ?>">
+                            </div>
+                        </div>
+                        <?php if ($assetStats['pending'] > 0): ?>
+                            <label class="flex small" style="gap:6px;margin-top:10px">
+                                <input type="checkbox" name="force" value="1">
+                                Terbitkan BAST dengan catatan aset belum kembali
+                            </label>
+                        <?php endif; ?>
+                    </div>
+                    <div class="card__foot" style="padding:12px 16px;display:flex;justify-content:flex-end">
+                        <button class="btn <?= $bast ? 'btn-outline' : 'btn-primary' ?>" type="submit">
+                            <?= icon('file') ?> <?= $bast ? 'Terbitkan Ulang BAST' : 'Terbitkan BAST' ?>
+                        </button>
+                    </div>
+                </form>
+            <?php elseif (!$bast && !$isHr): ?>
+                <div class="card__body"><div class="small muted">BAST diterbitkan HR setelah proses serah terima dimulai.</div></div>
             <?php endif; ?>
         </section>
 

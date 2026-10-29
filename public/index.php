@@ -34,6 +34,7 @@ use App\Controllers\ReportController;
 use App\Controllers\ScheduleController;
 use App\Controllers\SettingsController;
 use App\Controllers\ShiftController;
+use App\Controllers\SystemController;
 use App\Core\Router;
 
 $router = Router::instance();
@@ -314,6 +315,12 @@ $router->post('/offboarding/{id}/reject', [OffboardingController::class, 'reject
 $router->post('/offboarding/{id}/cancel', [OffboardingController::class, 'cancel'], ['roles' => ['HR'], 'name' => 'offboarding.cancel']);
 $router->post('/offboarding/{id}/complete', [OffboardingController::class, 'complete'], ['roles' => ['HR'], 'name' => 'offboarding.complete']);
 $router->post('/offboarding/{id}/interview', [OffboardingController::class, 'interview'], ['roles' => ['HR'], 'name' => 'offboarding.interview']);
+$router->post('/offboarding/{id}/assets', [OffboardingController::class, 'addAsset'], ['roles' => ['HR'], 'name' => 'offboarding.assets.store']);
+$router->post('/offboarding/{id}/assets-all', [OffboardingController::class, 'returnAllAssets'], ['roles' => ['HR'], 'name' => 'offboarding.assets.all']);
+$router->post('/offboarding/{id}/assets/{assetId}', [OffboardingController::class, 'updateAsset'], ['name' => 'offboarding.assets.update']);
+$router->add('POST|DELETE', '/offboarding/{id}/assets/{assetId}/delete', [OffboardingController::class, 'removeAsset'], ['roles' => ['HR'], 'name' => 'offboarding.assets.delete']);
+$router->post('/offboarding/{id}/bast', [OffboardingController::class, 'issueBast'], ['roles' => ['HR'], 'name' => 'offboarding.bast.issue']);
+$router->get('/offboarding/{id}/bast', [OffboardingController::class, 'bastPdf'], ['name' => 'offboarding.bast.pdf', 'csrf' => false]);
 $router->post('/offboarding/{id}/clearance', [OffboardingController::class, 'addClearance'], ['roles' => ['HR'], 'name' => 'offboarding.clearance.store']);
 $router->post('/offboarding/{id}/clearance-all', [OffboardingController::class, 'completeClearance'], ['roles' => ['HR'], 'name' => 'offboarding.clearance.all']);
 $router->post('/offboarding/{id}/clearance/{itemId}', [OffboardingController::class, 'updateClearance'], ['name' => 'offboarding.clearance.update']);
@@ -326,6 +333,10 @@ $router->get('/me/offboarding', [OffboardingController::class, 'mine'], ['name' 
 $router->post('/me/offboarding', [OffboardingController::class, 'submitMine'], ['name' => 'me.offboarding.store']);
 $router->post('/me/offboarding/{id}/withdraw', [OffboardingController::class, 'withdrawMine'], ['name' => 'me.offboarding.withdraw']);
 $router->post('/me/offboarding/{id}/feedback', [OffboardingController::class, 'feedbackMine'], ['name' => 'me.offboarding.feedback']);
+
+/* --------------------------------------------------- Reset sistem (Batch 17) */
+$router->get('/system/reset', [SystemController::class, 'reset'], ['roles' => ['HR'], 'name' => 'system.reset']);
+$router->post('/system/reset', [SystemController::class, 'runReset'], ['roles' => ['HR'], 'name' => 'system.reset.run']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

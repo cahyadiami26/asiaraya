@@ -120,8 +120,8 @@ $daysLeft = static fn (string $date): int => (int) floor((strtotime($date) - str
                     <?php foreach ($requests as $row): ?>
                         <?php
                         $left = $daysLeft((string) $row['last_working_date']);
-                        $total = (int) $row['clearance_total'];
-                        $done = (int) $row['clearance_done'];
+                        $total = (int) $row['clearance_total'] + (int) $row['asset_total'];
+                        $done = (int) $row['clearance_done'] + (int) $row['asset_done'];
                         $pct = $total > 0 ? (int) round($done / $total * 100) : 0;
                         ?>
                         <tr>
@@ -147,12 +147,22 @@ $daysLeft = static fn (string $date): int => (int) floor((strtotime($date) - str
                             <td class="small" style="min-width:96px">
                                 <?php if ($total > 0): ?>
                                     <div class="progress thin"><span style="width:<?= $pct ?>%"></span></div>
-                                    <div class="muted" style="font-size:9.6px;margin-top:3px"><?= $done ?>/<?= $total ?> item</div>
+                                    <div class="muted" style="font-size:9.6px;margin-top:3px">
+                                        <?= $done ?>/<?= $total ?> item
+                                        <?php if ((int) $row['asset_total'] > 0): ?>
+                                            · <?= (int) $row['asset_done'] ?>/<?= (int) $row['asset_total'] ?> aset
+                                        <?php endif; ?>
+                                    </div>
                                 <?php else: ?>
                                     <span class="muted small">—</span>
                                 <?php endif; ?>
                             </td>
-                            <td><?= $badge((string) $row['status']) ?></td>
+                            <td>
+                                <?= $badge((string) $row['status']) ?>
+                                <?php if (!empty($row['bast_number'])): ?>
+                                    <div class="muted mono" style="font-size:9.2px;margin-top:3px" title="BAST terbit"><?= icon('file', 'ico') ?> <?= e($row['bast_number']) ?></div>
+                                <?php endif; ?>
+                            </td>
                             <td><a class="btn btn-sm btn-ghost" href="<?= url('offboarding/' . (int) $row['id']) ?>" title="Detail"><?= icon('arrow-right') ?></a></td>
                         </tr>
                     <?php endforeach; ?>

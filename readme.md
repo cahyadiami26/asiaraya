@@ -33,8 +33,9 @@ dengan slip gaji ber-QR.
 | **14** | Pelatihan & sertifikasi: katalog program (kategori, durasi, biaya), jadwal sesi dengan kuota & pendaftaran daring, nominasi peserta oleh HR, presensi, nilai, sertifikat PDF, riwayat & sertifikat karyawan, export CSV | ✅ selesai |
 | **15** | Rekrutmen & onboarding (ATS): lowongan multi-unit dengan kuota & status, pipeline pelamar APPLIED → SCREENING → INTERVIEW → OFFER, jadwal & pewawancara, rating, CV, konversi otomatis pelamar diterima menjadi karyawan (NIK, akun, notifikasi), export CSV | ✅ selesai |
 | **16** | Offboarding & exit: pengunduran diri mandiri, PHK/akhir kontrak/pensiun oleh HR, persetujuan atasan → HR, checklist serah terima (aset, dokumen, akses, keuangan), exit interview + penyelesaian akhir, penonaktifan karyawan otomatis, export CSV | ✅ selesai |
+| **17** | Register aset & BAST offboarding: daftar aset/inventaris yang dipegang karyawan (kode, qty, kondisi), status pengembalian per item, **BAST PDF** bertanda tangan, blokir penutupan offboarding bila aset belum kembali, serta halaman **Reset Sistem** (bersihkan data uji, akun admin dipertahankan) | ✅ selesai |
 
-Seluruh enam belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh tujuh belas batch sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -942,6 +943,74 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.19 Modul Batch 17 — Register Aset, BAST & Reset Sistem
+
+### Register aset & inventaris (`/offboarding/{id}#aset`) — HR
+* Setiap pengajuan offboarding memiliki **register aset** terpisah dari checklist
+  proses: nama aset, **kode aset/serial**, kategori (**Laptop/Komputer**,
+  **Telepon/Gadget**, **Kartu Identitas**, **Kartu Akses/Kunci**, **Peralatan
+  Kerja**, **Seragam/APD**, **Kendaraan**, **Lainnya**), jumlah (qty), kondisi
+  (**Baik**, **Cukup**, **Rusak**, **Hilang**), dan catatan.
+* Empat aset default dibuat otomatis saat HR menyetujui pengajuan (laptop &
+  adaptor, ID card, kartu akses & kunci, seragam/APD) — dapat diedit/dihapus.
+* Status per item: **Belum Kembali** → **Dikembalikan** / **Dikecualikan** /
+  **Tidak Dipegang** / **Hilang/Diganti**, diubah langsung dari tabel
+  (dropdown inline) dan tercatat siapa penerima serta kapan.
+* Tombol **Semua Dikembalikan** menuntaskan sisa item sekaligus.
+* Progress serah terima kini **gabungan**: 4 item checklist + 5 aset = 9 item;
+  penutupan offboarding **ditolak** selama masih ada aset berstatus
+  *Belum Kembali*.
+
+### BAST — Berita Acara Serah Terima (`/offboarding/{id}#bast`)
+* HR menerbitkan BAST setelah tahap serah terima dimulai. Penerbitan **ditolak**
+  bila masih ada aset belum kembali, kecuali dicentang *"Terbitkan BAST dengan
+  catatan aset belum kembali"* (dokumen memuat peringatan).
+* Isi dokumen: kop perusahaan, nomor BAST (`BAST/{tahun}/{urut}`), data karyawan
+  penyerah (NIK, jabatan, departemen, unit, jenis keluar, hari terakhir kerja),
+  tabel aset lengkap (kode, nama, kategori, qty, kondisi, status, catatan),
+  total unit, paragraf pernyataan, keterangan, dan tiga kolom tanda tangan
+  (**Yang Menyerahkan**, **Yang Menerima**, **Saksi**) + footer penerbit.
+* Dokumen dirender **dompdf** → `/offboarding/{id}/bast` (inline) dan
+  `?download=1` (unduh). Data aset disimpan sebagai **snapshot JSON** saat
+  terbit, sehingga dokumen tidak berubah bila register diperbarui kemudian.
+* Bisa diterbitkan ulang (nomor urut baru) dengan penerima/saksi berbeda.
+
+### Reset Sistem (`/system/reset`) — HR
+* Halaman khusus untuk membersihkan **seluruh jejak ujicoba/demo** sebelum
+  go-live, dengan ringkasan jumlah baris per kelompok data.
+* Opsi penghapusan (masing-masing dapat dicentang):
+  1. **Data operasional** — presensi, lembur, cuti & saldo, jadwal, payroll &
+     slip, klaim, penilaian kinerja, pelatihan, rekrutmen, offboarding (BAST,
+     register aset, checklist, riwayat), pengumuman, notifikasi, log aktivitas,
+     token remember/password reset.
+  2. **Master data organisasi** — unit, departemen, posisi, shift, komponen
+     gaji, jenis cuti, kategori klaim, katalog pelatihan, indikator penilaian,
+     hari libur, sequence nomor ID.
+  3. **Seluruh karyawan kecuali administrator** — akun & profil lain dihapus.
+  4. **Berkas unggahan** — foto, bukti klaim, sertifikat, CV, lampiran
+     (foto administrator dipertahankan).
+* **Selalu dipertahankan:** akun administrator yang menjalankan reset (login,
+  kata sandi, peran HR), tabel `settings` (identitas perusahaan, kebijakan
+  presensi/payroll/BPJS, versi skema), dan data badan hukum perusahaan.
+* Pengaman: wajib mengetik **RESET** + verifikasi **kata sandi** akun sendiri,
+  konfirmasi dialog, CSRF, dan catatan audit `system.reset`. Halaman menampilkan
+  waktu & pelaksana reset terakhir.
+* Setelah reset, sesi tetap aktif dan HR langsung dapat membuat unit organisasi
+  serta karyawan baru.
+
+### Catatan teknis
+* Tabel baru (versi skema 17): `offboarding_assets` dan `offboarding_bast`
+  (index unik `bast_number`).
+* `OffboardingModel::progress()` menghitung checklist + aset; `complete()`
+  memblokir penutupan bila aset belum tuntas; penghapusan pengajuan ikut
+  menghapus aset & BAST.
+* Reset berjalan tanpa `FOREIGN KEY` (skema tidak memakai constraint fisik),
+  tetapi relasi akun administrator (`business_unit_id`, `department_id`,
+  `position_id`, `direct_manager_id`) dilepas sebelum master/karyawan dihapus.
+* `resign_notice_days` dapat diubah di **Pengaturan → Laporan & Audit**.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -950,8 +1019,8 @@ app/
   config/config.php      # default + override env.php + environment variables
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, helpers
-  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, Report, Log, Placeholder
-  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, Report (query/aggregation layer)
+  Controllers/           # Auth, Dashboard, Approval, Org, Employee, Media, Shift, Schedule, Attendance, Overtime, Leave, Component, Settings, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report, Log, Placeholder
+  Models/                # Dashboard, Org, Employee, Schedule, Attendance, Overtime, Leave, Salary, Payroll, Expense, Announcement, Notification, Performance, Training, Recruitment, Offboarding, System, Report (query/aggregation layer)
   Views/                 # layouts, partials, auth, dashboard, errors
 database/
   schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
@@ -989,6 +1058,8 @@ storage/                 # logs, cache, uploads, database preview
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
 | Rekrutmen & onboarding | ✅ lowongan, pipeline, pelamar, konversi karyawan | – | – |
 | Offboarding & exit | ✅ pengajuan, persetujuan, checklist serah terima, exit interview | lihat proses + selesaikan item keuangan | ajukan pengunduran diri, umpan balik, setujui tim |
+| Register aset & BAST | ✅ register aset, status pengembalian, terbitkan BAST | baca BAST | unduh BAST sendiri |
+| Reset sistem | ✅ bersihkan data uji (akun admin dipertahankan) | – | – |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 

@@ -225,7 +225,12 @@ foreach ($clearance as $item) {
                             <td class="small"><?= tanggal($row['submit_date'] ?? $row['created_at']) ?></td>
                             <td class="small"><?= tanggal($row['last_working_date']) ?></td>
                             <td><?= $badge((string) $row['status']) ?></td>
-                            <td><a class="btn btn-sm btn-ghost" href="<?= url('offboarding/' . (int) $row['id']) ?>"><?= icon('arrow-right') ?></a></td>
+                            <td style="white-space:nowrap">
+                                <?php if (!empty($row['bast_number'])): ?>
+                                    <a class="btn btn-sm btn-ghost" href="<?= url('offboarding/' . (int) $row['id'] . '/bast') ?>" target="_blank" title="Unduh BAST <?= e($row['bast_number']) ?>"><?= icon('file') ?> BAST</a>
+                                <?php endif; ?>
+                                <a class="btn btn-sm btn-ghost" href="<?= url('offboarding/' . (int) $row['id']) ?>"><?= icon('arrow-right') ?></a>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                     <?php if (!$requests): ?>
@@ -267,6 +272,40 @@ foreach ($clearance as $item) {
                             <div class="list-row__body">
                                 <b><?= e($item['item']) ?></b>
                                 <span><?= e($item['status'] === 'PENDING' ? 'Menunggu ' . ($ownerRoles[$item['owner_role']] ?? $item['owner_role']) : 'Selesai') ?></span>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+        <?php endif; ?>
+
+        <?php if ($assets): ?>
+            <section class="card">
+                <div class="card__head">
+                    <div><h2>Aset yang Harus Dikembalikan</h2>
+                        <div class="sub">Serahkan seluruh inventaris berikut ke HR sebelum hari terakhir kerja.</div></div>
+                    <?php if ($assetStats): ?>
+                        <div class="card__head__actions">
+                            <span class="badge badge-<?= (int) $assetStats['total'] - (int) $assetStats['pending'] >= (int) $assetStats['total'] ? 'teal' : 'amber' ?>">
+                                <?= (int) $assetStats['total'] - (int) $assetStats['pending'] ?>/<?= (int) $assetStats['total'] ?> kembali
+                            </span>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="card__body" style="padding:0">
+                    <?php foreach ($assets as $asset): ?>
+                        <?php $settled = in_array((string) $asset['status'], $assetSettled, true); ?>
+                        <div class="list-row" style="align-items:flex-start">
+                            <div style="margin-top:1px;color:<?= $settled ? 'var(--teal-700)' : 'var(--amber-600)' ?>">
+                                <?= $settled ? icon('check') : icon('clock') ?>
+                            </div>
+                            <div class="list-row__body">
+                                <b><?= e($asset['name']) ?><?= (int) $asset['qty'] > 1 ? ' × ' . (int) $asset['qty'] : '' ?></b>
+                                <span>
+                                    <?= e($assetStatuses[$asset['status']] ?? $asset['status']) ?>
+                                    <?php if (!empty($asset['asset_code'])): ?> · <span class="mono"><?= e($asset['asset_code']) ?></span><?php endif; ?>
+                                    <?php if (!empty($asset['note'])): ?> — <?= e($asset['note']) ?><?php endif; ?>
+                                </span>
                             </div>
                         </div>
                     <?php endforeach; ?>
