@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 21;
+    public const VERSION = 22;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -91,6 +91,12 @@ final class Schema
         'CREATE INDEX IF NOT EXISTS idx_offboarding_asset ON offboarding_assets (request_id, status)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_offboarding_bast_number ON offboarding_bast (bast_number)',
         'CREATE INDEX IF NOT EXISTS idx_offboarding_bast_request ON offboarding_bast (request_id, issued_at)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_token_hash ON api_tokens (token_hash)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_refresh_hash ON api_tokens (refresh_hash)',
+        'CREATE INDEX IF NOT EXISTS idx_api_token_employee ON api_tokens (employee_id, revoked_at)',
+        'CREATE INDEX IF NOT EXISTS idx_api_token_expiry ON api_tokens (expires_at)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_punch_idem ON api_punch_logs (employee_id, action, idempotency_key)',
+        'CREATE INDEX IF NOT EXISTS idx_api_punch_created ON api_punch_logs (created_at)',
     ];
 
     public static function install(bool $withSeed = true, bool $fresh = false): array

@@ -55,6 +55,25 @@ final class Auth
             return self::$user = null;
         }
 
+        $user = self::findById((int) $id);
+        if (!$user) {
+            Session::forget('auth_id');
+            return self::$user = null;
+        }
+
+        return self::$user = $user;
+    }
+
+    /**
+     * Profil lengkap karyawan aktif (dipakai sesi web dan token REST API).
+     * Mengembalikan null bila tidak ada atau statusnya bukan ACTIVE.
+     */
+    public static function findById(int $id): ?array
+    {
+        if ($id <= 0 || !Database::tableExists('employees')) {
+            return null;
+        }
+
         $user = Database::one(
             'SELECT e.*, bu.name AS business_unit_name, bu.code AS business_unit_code,
                     d.name AS department_name, p.name AS position_name,
@@ -69,11 +88,21 @@ final class Auth
         );
 
         if (!$user || $user['flag'] !== 'ACTIVE') {
-            Session::forget('auth_id');
-            return self::$user = null;
+            return null;
         }
 
-        return self::$user = $user;
+        return $user;
+    }
+
+    /**
+     * Menetapkan pengguna aktif tanpa menyentuh sesi web.
+     * Dipakai ApiAuth setelah bearer token diverifikasi, sehingga model dan
+     * controller yang memakai Auth::id()/isManagerOf() tetap bekerja.
+     */
+    public static function setUser(?array $user): void
+    {
+        self::$user = $user;
+        self::$resolved = true;
     }
 
     public static function id(): ?int
@@ -123,9 +152,24 @@ final class Auth
     /** Attempt username / employee code / email login. */
     public static function attempt(string $identifier, string $password): bool
     {
+        $employee = self::verifyCredentials($identifier, $password);
+        if (!$employee) {
+            return false;
+        }
+
+        self::login($employee);
+        return true;
+    }
+
+    /**
+     * Verifikasi kredensial tanpa membuat sesi (dipakai login REST API).
+     * Menerima employee_code, email, atau username.
+     */
+    public static function verifyCredentials(string $identifier, string $password): ?array
+    {
         $identifier = trim($identifier);
         if ($identifier === '' || $password === '') {
-            return false;
+            return null;
         }
 
         $employee = Database::one(
@@ -134,17 +178,16 @@ final class Auth
         );
 
         if (!$employee || empty($employee['password_hash'])) {
-            return false;
+            return null;
         }
         if (!password_verify($password, $employee['password_hash'])) {
-            return false;
+            return null;
         }
         if ($employee['flag'] !== 'ACTIVE') {
-            return false;
+            return null;
         }
 
-        self::login($employee);
-        return true;
+        return $employee;
     }
 
     /**
