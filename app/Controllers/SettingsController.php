@@ -1,0 +1,371 @@
+<?php
+declare(strict_types=1);
+
+namespace App\Controllers;
+
+use App\Core\Audit;
+use App\Core\Controller;
+use App\Core\Database;
+use App\Core\Mailer;
+use App\Core\Nav;
+use App\Core\Settings;
+use App\Core\Validator;
+use App\Models\MailModel;
+use App\Models\SalaryModel;
+
+/**
+ * Pengaturan HR & Payroll: siklus payroll, PPh 21, iuran BPJS, dan
+ * integrasi login. Identitas perusahaan diatur di /company.
+ */
+final class SettingsController extends Controller
+{
+    private SalaryModel $salary;
+
+    public function __construct()
+    {
+        $this->salary = new SalaryModel();
+    }
+
+    public function index(): void
+    {
+        $tab = (string) ($_GET['tab'] ?? 'payroll');
+        $tabs = [
+            'payroll'     => 'Payroll',
+            'pph'         => 'PPh 21',
+            'bpjs'        => 'BPJS',
+            'integration' => 'Integrasi & Login',
+            'email'       => 'Email',
+            'advanced'    => 'Laporan & Audit',
+            'menu'        => 'Menu Navigasi',
+        ];
+        if (!isset($tabs[$tab])) {
+            $tab = 'payroll';
+        }
+
+        $mail = new MailModel();
+
+        $this->view('settings/index', [
+            'title'     => 'Pengaturan HR & Payroll',
+            'pageTitle' => 'Pengaturan HR & Payroll',
+            'tab'       => $tab,
+            'tabs'      => $tabs,
+            'company'   => [
+                'name'     => (string) Settings::get('company_name', config('app_name')),
+                'legal'    => (string) Settings::get('company_legal_name', ''),
+                'address'  => (string) Settings::get('company_address', ''),
+                'phone'    => (string) Settings::get('company_phone', ''),
+                'email'    => (string) Settings::get('company_email', ''),
+                'website'  => (string) Settings::get('company_website', ''),
+                'npwp'     => (string) Settings::get('company_npwp', ''),
+                'logo'     => (string) Settings::get('company_logo', ''),
+                'timezone' => (string) Settings::get('timezone', 'Asia/Jakarta'),
+                'google_login_enabled' => Settings::bool('google_login_enabled', true),
+                'google_client_id'     => (string) (Settings::get('google_client_id') ?: config('google_client_id', '')),
+                'google_redirect'      => url('login/google/callback'),
+            ],
+            'payroll'   => $this->salary->settings(),
+            'sample'    => $this->salary->simulationSample(5),
+            'stats'     => $this->salary->stats(),
+            'preview'   => $this->samplePreview(),
+            'mail'      => $mail->settings(),
+            'mailStats' => $mail->stats(),
+            'mailTemplates' => $mail->templates(),
+            'advanced'  => [
+                'signer_hr'  => (string) (Settings::get('report_signer_hr') ?: ''),
+                'signer_fin' => (string) (Settings::get('report_signer_fin') ?: ''),
+                'retention'  => (int) Settings::get('audit_retention_days', 180),
+                'claim_age'  => (int) Settings::get('claim_max_age_days', 90),
+                'resign_notice' => (int) Settings::get('resign_notice_days', 30),
+                'log_total'  => (int) Database::value('SELECT COUNT(*) FROM activity_logs'),
+                'log_oldest' => (string) (Database::value('SELECT MIN(created_at) FROM activity_logs') ?? ''),
+            ],
+            'menu'      => Nav::catalog(),
+            'menuStats' => Nav::stats(),
+            'menuConfig' => [
+                'file'          => 'app/config/menu.php',
+                'hidden'        => Nav::config()['hidden'],
+                'hidden_groups' => Nav::config()['hidden_groups'],
+                'locked'        => Nav::lockedItems(),
+                'override'      => Nav::hasOverride(),
+            ],
+        ] + $this->withInput());
+    }
+
+    /** Integrasi & login: status Google Sign-In (identitas perusahaan diatur di /company). */
+    public function saveIntegration(): void
+    {
+        $data = $this->validateOrRedirect(static function (Validator $v): void {
+            $v->custom(mb_strlen((string) ($_POST['google_client_id'] ?? '')) > 200, 'google_client_id', 'Client ID maksimal 200 karakter.');
+            $v->custom((string) ($_POST['google_client_id'] ?? '') !== ''
+                && !str_contains((string) $_POST['google_client_id'], '.apps.googleusercontent.com'),
+                'google_client_id', 'Client ID Google biasanya berakhiran .apps.googleusercontent.com.');
+        }, '/settings?tab=integration');
+
+        Settings::many([
+            'google_login_enabled' => (int) ($_POST['google_login_enabled'] ?? 0),
+            'google_client_id'     => trim((string) ($data['google_client_id'] ?? '')),
+        ], 'integration');
+
+        Audit::log('settings.integration', 'settings', null, [
+            'google_login' => (int) ($_POST['google_login_enabled'] ?? 0) === 1,
+        ]);
+        flash('success', 'Pengaturan integrasi & login disimpan.');
+        redirect('/settings?tab=integration');
+    }
+
+    /** Simpan pengaturan payroll, PPh, dan BPJS sekaligus (satu sumber kebenaran). */
+    public function savePayroll(): void
+    {
+        $current = $this->salary->settings();
+
+        $input = [
+            // payroll
+            'cutoff_day'  => $_POST['cutoff_day'] ?? $current['cutoff_day'],
+            'pay_day'     => $_POST['pay_day'] ?? $current['pay_day'],
+            'auto_cutoff' => $_POST['auto_cutoff'] ?? $current['auto_cutoff'],
+            // pph
+            'pph_enabled' => $_POST['pph_enabled'] ?? $current['pph_enabled'],
+            'pph_method'  => $_POST['pph_method'] ?? $current['pph_method'],
+            'pph_rate'    => $_POST['pph_rate'] ?? $current['pph_rate'],
+            // bpjs
+            'kes_enabled'  => $_POST['kes_enabled'] ?? $current['bpjs_kes_on'],
+            'tk_enabled'   => $_POST['tk_enabled'] ?? $current['bpjs_tk_on'],
+            'kes_company'  => $_POST['kes_company'] ?? $current['kes_company'],
+            'kes_employee' => $_POST['kes_employee'] ?? $current['kes_employee'],
+            'kes_max'      => $_POST['kes_max'] ?? $current['kes_max'],
+            'jht_company'  => $_POST['jht_company'] ?? $current['jht_company'],
+            'jht_employee' => $_POST['jht_employee'] ?? $current['jht_employee'],
+            'jp_company'   => $_POST['jp_company'] ?? $current['jp_company'],
+            'jp_employee'  => $_POST['jp_employee'] ?? $current['jp_employee'],
+            'jp_max'       => $_POST['jp_max'] ?? $current['jp_max'],
+            'jkk'          => $_POST['jkk'] ?? $current['jkk'],
+            'jkm'          => $_POST['jkm'] ?? $current['jkm'],
+        ];
+
+        $result = $this->salary->savePayrollSettings($input);
+        if (!$result['saved']) {
+            flash('error', reset($result['errors']) ?: 'Pengaturan payroll gagal disimpan.');
+            back('/settings?tab=' . (string) ($_POST['_tab'] ?? 'payroll'));
+        }
+
+        $policy = $this->salary->settings();
+        Audit::log('settings.payroll', 'settings', null, [
+            'pph_method' => $policy['pph_method'],
+            'bpjs_kes'   => $policy['kes_employee'],
+        ]);
+
+        $tab = (string) ($_POST['_tab'] ?? 'payroll');
+        flash('success', 'Pengaturan ' . ($tab === 'bpjs' ? 'BPJS' : ($tab === 'pph' ? 'PPh 21' : 'payroll')) . ' disimpan. Perubahan langsung dipakai simulasi dan payroll berikutnya.');
+        redirect('/settings?tab=' . $tab);
+    }
+
+    /** Pengaturan lanjutan: penandatangan laporan & retensi log audit. */
+    public function saveAdvanced(): void
+    {
+        $data = $this->validateOrRedirect(static function (Validator $v): void {
+            $v->custom(mb_strlen((string) ($_POST['report_signer_hr'] ?? '')) > 120, 'report_signer_hr', 'Nama penandatangan maksimal 120 karakter.');
+            $v->custom(mb_strlen((string) ($_POST['report_signer_fin'] ?? '')) > 120, 'report_signer_fin', 'Nama penandatangan maksimal 120 karakter.');
+            $retention = (int) ($_POST['audit_retention_days'] ?? 0);
+            $v->custom($retention < 30 || $retention > 1825, 'audit_retention_days', 'Retensi log harus antara 30 dan 1825 hari.');
+            $claimAge = (int) ($_POST['claim_max_age_days'] ?? 0);
+            $v->custom($claimAge < 7 || $claimAge > 365, 'claim_max_age_days', 'Batas usia klaim harus antara 7 dan 365 hari.');
+            $notice = (int) ($_POST['resign_notice_days'] ?? 0);
+            $v->custom($notice < 7 || $notice > 180, 'resign_notice_days', 'Masa pemberitahuan resign harus antara 7 dan 180 hari.');
+        }, '/settings?tab=advanced');
+
+        Settings::many([
+            'report_signer_hr'     => trim((string) ($data['report_signer_hr'] ?? '')),
+            'report_signer_fin'    => trim((string) ($data['report_signer_fin'] ?? '')),
+            'audit_retention_days' => (int) ($data['audit_retention_days'] ?? 180),
+            'claim_max_age_days'   => (int) ($data['claim_max_age_days'] ?? 90),
+            'resign_notice_days'   => (int) ($data['resign_notice_days'] ?? 30),
+        ], 'general');
+
+        Audit::log('settings.advanced', 'settings', null, [
+            'retention' => (int) ($data['audit_retention_days'] ?? 180),
+            'claim_age' => (int) ($data['claim_max_age_days'] ?? 90),
+            'resign_notice' => (int) ($data['resign_notice_days'] ?? 30),
+        ]);
+        flash('success', 'Pengaturan laporan & audit disimpan.');
+        redirect('/settings?tab=advanced');
+    }
+
+    /**
+     * Simpan konfigurasi email/SMTP (Batch 18).
+     *
+     * Password hanya ditimpa bila field diisi; centang "hapus password" untuk
+     * mengosongkannya (mis. saat berpindah ke relay tanpa autentikasi).
+     */
+    public function saveEmail(): void
+    {
+        $data = $this->validateOrRedirect(static function (Validator $v): void {
+            $v->in('mail_driver', 'Driver email', array_keys(Mailer::DRIVERS));
+            $driver = (string) ($_POST['mail_driver'] ?? 'log');
+            $v->custom($driver === 'smtp' && trim((string) ($_POST['mail_host'] ?? '')) === '',
+                'mail_host', 'Host SMTP wajib diisi bila driver SMTP dipilih.');
+            $port = (int) ($_POST['mail_port'] ?? 0);
+            $v->custom($driver === 'smtp' && ($port < 1 || $port > 65535),
+                'mail_port', 'Port SMTP harus antara 1–65535.');
+            $v->custom(!in_array((string) ($_POST['mail_encryption'] ?? 'tls'), ['tls', 'ssl', 'none'], true),
+                'mail_encryption', 'Pilih enkripsi TLS, SSL, atau tanpa enkripsi.');
+            $from = trim((string) ($_POST['mail_from_email'] ?? ''));
+            $v->custom($from !== '' && !filter_var($from, FILTER_VALIDATE_EMAIL),
+                'mail_from_email', 'Format email pengirim tidak valid.');
+            $reply = trim((string) ($_POST['mail_reply_to'] ?? ''));
+            $v->custom($reply !== '' && !filter_var($reply, FILTER_VALIDATE_EMAIL),
+                'mail_reply_to', 'Format email Reply-To tidak valid.');
+            $timeout = (int) ($_POST['mail_timeout'] ?? 0);
+            $v->custom($timeout < 5 || $timeout > 120, 'mail_timeout', 'Timeout harus antara 5–120 detik.');
+        }, '/settings?tab=email');
+
+        $port = max(1, min(65535, (int) ($data['mail_port'] ?? 587)));
+        $timeout = max(5, min(120, (int) ($data['mail_timeout'] ?? 15)));
+
+        $pairs = [
+            'mail_enabled'    => (int) ($_POST['mail_enabled'] ?? 0),
+            'mail_driver'     => (string) $data['mail_driver'],
+            'mail_host'       => trim((string) ($data['mail_host'] ?? '')),
+            'mail_port'       => $port,
+            'mail_encryption' => (string) ($data['mail_encryption'] ?? 'tls'),
+            'mail_username'   => trim((string) ($data['mail_username'] ?? '')),
+            'mail_from_email' => trim((string) ($data['mail_from_email'] ?? '')),
+            'mail_from_name'  => trim((string) ($data['mail_from_name'] ?? '')),
+            'mail_reply_to'   => trim((string) ($data['mail_reply_to'] ?? '')),
+            'mail_timeout'    => $timeout,
+        ];
+
+        $password = (string) ($_POST['mail_password'] ?? '');
+        if ($password !== '') {
+            $pairs['mail_password'] = $password;
+        } elseif (!empty($_POST['mail_password_clear'])) {
+            $pairs['mail_password'] = '';
+        }
+
+        Settings::many($pairs, 'email');
+
+        Audit::log('settings.email', 'settings', null, [
+            'driver'  => $pairs['mail_driver'],
+            'enabled' => $pairs['mail_enabled'] === 1,
+            'host'    => $pairs['mail_host'],
+            'port'    => $pairs['mail_port'],
+            'auth'    => $pairs['mail_username'] !== '',
+        ]);
+
+        flash('success', 'Konfigurasi email disimpan. Gunakan tombol "Kirim email uji" untuk memastikan koneksi.');
+        redirect('/settings?tab=email');
+    }
+
+    /** Kirim email uji ke alamat yang dimasukkan HR. */
+    public function testEmail(): void
+    {
+        $to = trim((string) ($_POST['test_email'] ?? ''));
+        $result = Mailer::sendTest($to);
+
+        Audit::log('mail.test', 'settings', null, [
+            'to'     => $to,
+            'driver' => $result['driver'],
+            'ok'     => $result['ok'],
+        ]);
+
+        if ($result['ok'] && $result['driver'] === 'log') {
+            flash('info', 'Driver masih "Log berkas" — pesan uji hanya dicatat di storage/logs/mail.log, belum benar-benar dikirim.');
+        } elseif ($result['ok']) {
+            flash('success', 'Email uji terkirim ke ' . $to . ' melalui ' . strtoupper((string) $result['driver']) . '.');
+        } else {
+            flash('error', 'Email uji gagal: ' . (string) $result['error']);
+        }
+
+        redirect('/settings?tab=email');
+    }
+
+    /**
+     * Simpan tampilan menu: item & grup yang dicentang pada form dianggap tampil,
+     * sisanya disimpan sebagai daftar tersembunyi di tabel `settings`.
+     */
+    public function saveMenu(): void
+    {
+        $catalog = Nav::catalog();
+        $groupKeys = [];
+        $itemKeys = [];
+        $lockedItems = Nav::lockedItems();
+        foreach ($catalog as $group) {
+            $groupKeys[] = (string) $group['key'];
+            foreach ($group['items'] as $item) {
+                $itemKeys[] = (string) $item['key'];
+            }
+        }
+
+        // "Kembalikan ke bawaan" → hapus penimpaan, pakai isi app/config/menu.php.
+        if (isset($_POST['reset'])) {
+            Settings::forget('menu_hidden_items');
+            Settings::forget('menu_hidden_groups');
+            Nav::flush();
+            Audit::log('settings.menu', 'settings', null, ['action' => 'reset']);
+            flash('success', 'Tampilan menu dikembalikan ke konfigurasi bawaan app/config/menu.php.');
+            redirect('/settings?tab=menu');
+        }
+
+        $enabledItems = $this->keyList($_POST['items'] ?? []);
+        $enabledGroups = $this->keyList($_POST['groups'] ?? []);
+
+        // Item terkunci selalu tampil, apa pun isi form.
+        $hiddenItems = array_values(array_diff($itemKeys, array_merge($enabledItems, $lockedItems)));
+        // Grup yang memuat item terkunci tidak boleh disembunyikan.
+        $hiddenGroups = array_values(array_diff(
+            array_diff($groupKeys, $enabledGroups),
+            Nav::lockedGroups()
+        ));
+
+        Settings::set('menu_hidden_items', array_values($hiddenItems), 'menu');
+        Settings::set('menu_hidden_groups', array_values($hiddenGroups), 'menu');
+        Nav::flush();
+
+        Audit::log('settings.menu', 'settings', null, [
+            'hidden_items'  => count($hiddenItems),
+            'hidden_groups' => count($hiddenGroups),
+        ]);
+
+        $message = count($hiddenItems) === 0
+            ? 'Semua item menu ditampilkan.'
+            : count($hiddenItems) . ' item menu disembunyikan; sisanya tetap tampil.';
+        if ($hiddenGroups) {
+            $message .= ' ' . count($hiddenGroups) . ' grup menu disembunyikan seluruhnya.';
+        }
+        flash('success', $message);
+        redirect('/settings?tab=menu');
+    }
+
+    /** @return array<int,string> */
+    private function keyList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $keys = [];
+        foreach ($value as $entry) {
+            if (is_scalar($entry) && trim((string) $entry) !== '') {
+                $keys[] = trim((string) $entry);
+            }
+        }
+
+        return array_values(array_unique($keys));
+    }
+
+    /** Dua contoh karyawan (gaji tertinggi & terendah) untuk pratinjau dampak. */
+    private function samplePreview(): array
+    {
+        $rows = $this->salary->simulationSample(50);
+        if (!$rows) {
+            return [];
+        }
+        $sorted = $rows;
+        usort($sorted, static fn ($a, $b) => (float) $a['gross'] <=> (float) $b['gross']);
+        $low = $sorted[0];
+        $high = $sorted[count($sorted) - 1];
+
+        return [
+            'low'  => $this->salary->preview((int) $low['id']),
+            'high' => $this->salary->preview((int) $high['id']),
+        ];
+    }
+}
