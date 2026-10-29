@@ -38,8 +38,9 @@ dengan slip gaji ber-QR.
 | **18** | Email & penjadwal: konfigurasi SMTP (SSL/STARTTLS) + email uji, antrean email keluar dengan template ber-kop perusahaan (pengingat kontrak, sisa cuti, pengumuman, reset sandi), kirim ulang/batal, serta **cron job** (antrean email, pengingat kontrak H-N, pengingat sisa cuti, notifikasi pengumuman terjadwal) lengkap dengan riwayat eksekusi, mode otomatis, dan endpoint cron bertoken | ✅ selesai |
 | **19** | Dokumen karyawan & riwayat jabatan: arsip digital berjenis (KTP, NPWP, KK, ijazah, sertifikat, kontrak, SK, BPJS, SIM, paspor) dengan nomor, masa berlaku, penanda rahasia, verifikasi HR + alasan penolakan, pencarian/filter/pagination, unggah mandiri karyawan, serta **riwayat jabatan** (pengangkatan, promosi, mutasi, demosi, kontrak, gaji, status) bertanggal efektif dengan snapshot organisasi dan penyelarasan data karyawan otomatis, plus job pengingat dokumen kedaluwarsa | ✅ selesai |
 | **20** | Pajak & jaminan sosial: rekap PPh 21 setahun (biaya jabatan, PTKP, PKP, lapisan UU HPP), **bukti potong 1721-A1 PDF ber-QR** dengan verifikasi publik, penerbitan massal + penarikan, **export CSV siap olah e-SPT (1721-I)**, serta **rekap BPJS** Kesehatan & Ketenagakerjaan per program (KES, JHT, JP, JKK, JKM — porsi karyawan vs perusahaan), tren bulanan, kelengkapan nomor peserta, dan cetak PDF/CSV | ✅ selesai |
+| **20.1** | Konfigurasi tampilan menu: berkas `app/config/menu.php` untuk meng-enable/disable setiap item & grup menu, plus tab **Pengaturan → Menu Navigasi** untuk mengaturnya dari aplikasi (per item/grup, item terkunci selalu tampil, tombol “Tampilkan Semua” & “Bawaan Config”) | ✅ selesai |
 
-Seluruh dua puluh batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh batch (plus penyempurnaan 17.1 & 20.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1388,12 +1389,68 @@ tidak ada tabel angka bayangan.
 
 ---
 
+## 2.24 Penyempurnaan 20.1 — Konfigurasi Tampilan Menu (Enable/Disable Item)
+
+Menu samping dapat dikurangi tanpa menyentuh kode, dari dua tempat:
+
+1. **Berkas konfigurasi** — `app/config/menu.php` (nilai bawaan untuk semua
+   server, ikut di-commit):
+
+```php
+return [
+    'hidden'        => ['logs.index', 'attendance.settings'], // kunci item
+    'hidden_groups' => ['recruit'],                          // kunci grup
+    'locked'        => ['dashboard', 'settings.index'],       // selalu tampil
+];
+```
+
+2. **Pengaturan → Menu Navigasi** (`/settings?tab=menu`, HR) — daftar seluruh
+   grup & item dengan kotak centang, khusus untuk kebutuhan operasional tanpa
+   deploy ulang. Pilihan disimpan sebagai JSON di tabel `settings`
+   (`menu_hidden_items`, `menu_hidden_groups`).
+
+* **Kunci item = nama route** (`payroll.index`, `me.payslip`, …). Dua item
+  memakai kunci khusus karena berbagi route dengan peran berbeda:
+  `leave.manage` (Manajemen Cuti — HR) dan `leave.approvals` (Persetujuan Cuti
+  Tim — Karyawan). Kunci grup: `main`, `org`, `hr`, `ops`, `payroll`, `tax`,
+  `recruit`, `performance`, `offboarding`, `comms`, `portal`, `system`.
+* **Bawaan config vs penimpaan** — selama pengaturan aplikasi belum pernah
+  disimpan, isi `app/config/menu.php` yang dipakai. Setelah HR menekan
+  **Simpan Tampilan Menu**, daftar dari tabel `settings` **menimpa** config
+  sepenuhnya. Tombol **Bawaan Config** menghapus penimpaan tersebut.
+* **Item terkunci** — Dashboard, Pengaturan HR & Payroll, dan item pada kunci
+  `locked` di config tidak dapat disembunyikan (agar HR selalu punya jalan
+  kembali ke halaman pengaturan). Grup yang memuat item terkunci (`main`,
+  `system`) otomatis tidak dapat disembunyikan seluruhnya.
+* **Tombol “Tampilkan Semua”** mencentang semua item lalu menyimpan; item yang
+  disembunyikan config ikut dinyalakan kembali (penimpaan).
+* **Hanya tampilan, bukan hak akses** — RBAC tetap berlaku. URL yang
+  disembunyikan tetap bisa dibuka oleh peran yang berhak (mis. `/recruitment`
+  untuk HR) dan tetap ditolak untuk peran lain; menu hanya menyembunyikan
+  tautannya. Setiap penyimpanan dicatat sebagai `settings.menu` pada log
+  aktivitas.
+
+### Catatan teknis
+* `App\Core\Nav` — definisi grup/item kini memakai `key` stabil, ditambah
+  `config()`, `lockedItems()`, `lockedGroups()`, `hiddenItems()`,
+  `hiddenGroups()`, `hasOverride()`, `catalog()`, `stats()`, dan `flush()`.
+  `Nav::forUser()` menyaring item/grup tersembunyi sebelum render.
+* `Settings::forget()` baru untuk menghapus satu kunci pengaturan (dipakai
+  tombol “Bawaan Config”).
+* `SettingsController::saveMenu()` + rute `POST /settings/menu`; tab ketujuh
+  pada halaman pengaturan.
+* Tidak ada perubahan skema basis data (memakai tabel `settings` yang sudah
+  ada), sehingga `Schema::VERSION` tetap **21**.
+
+---
+
 ## 3. Struktur proyek
 
 ```
 app/
   bootstrap.php          # autoloader, config, session, DB, settings, auth
   config/config.php      # default + override env.php + environment variables
+  config/menu.php        # enable/disable item & grup menu samping (nav)
   Core/                  # Database, Router, Auth, View, Session, Settings,
                          # Validator, Schema, Audit, Nav, GoogleAuth, Mailer,
                          # Scheduler, helpers

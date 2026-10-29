@@ -161,6 +161,7 @@ $router->get('/settings', [SettingsController::class, 'index'], ['roles' => ['HR
 $router->post('/settings/integration', [SettingsController::class, 'saveIntegration'], ['roles' => ['HR'], 'name' => 'settings.integration.save']);
 $router->post('/settings/payroll', [SettingsController::class, 'savePayroll'], ['roles' => ['HR'], 'name' => 'settings.payroll.save']);
 $router->post('/settings/advanced', [SettingsController::class, 'saveAdvanced'], ['roles' => ['HR'], 'name' => 'settings.advanced.save']);
+$router->post('/settings/menu', [SettingsController::class, 'saveMenu'], ['roles' => ['HR'], 'name' => 'settings.menu.save']);
 
 /* ------------------------------------------------------- Batch 8: payroll */
 $router->get('/payroll', [PayrollController::class, 'index'], ['roles' => ['HR', 'FIN'], 'name' => 'payroll.index']);

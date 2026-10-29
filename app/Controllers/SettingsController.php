@@ -7,6 +7,7 @@ use App\Core\Audit;
 use App\Core\Controller;
 use App\Core\Database;
 use App\Core\Mailer;
+use App\Core\Nav;
 use App\Core\Settings;
 use App\Core\Validator;
 use App\Models\MailModel;
@@ -35,6 +36,7 @@ final class SettingsController extends Controller
             'integration' => 'Integrasi & Login',
             'email'       => 'Email',
             'advanced'    => 'Laporan & Audit',
+            'menu'        => 'Menu Navigasi',
         ];
         if (!isset($tabs[$tab])) {
             $tab = 'payroll';
@@ -76,6 +78,15 @@ final class SettingsController extends Controller
                 'resign_notice' => (int) Settings::get('resign_notice_days', 30),
                 'log_total'  => (int) Database::value('SELECT COUNT(*) FROM activity_logs'),
                 'log_oldest' => (string) (Database::value('SELECT MIN(created_at) FROM activity_logs') ?? ''),
+            ],
+            'menu'      => Nav::catalog(),
+            'menuStats' => Nav::stats(),
+            'menuConfig' => [
+                'file'          => 'app/config/menu.php',
+                'hidden'        => Nav::config()['hidden'],
+                'hidden_groups' => Nav::config()['hidden_groups'],
+                'locked'        => Nav::lockedItems(),
+                'override'      => Nav::hasOverride(),
             ],
         ] + $this->withInput());
     }
@@ -265,6 +276,79 @@ final class SettingsController extends Controller
         }
 
         redirect('/settings?tab=email');
+    }
+
+    /**
+     * Simpan tampilan menu: item & grup yang dicentang pada form dianggap tampil,
+     * sisanya disimpan sebagai daftar tersembunyi di tabel `settings`.
+     */
+    public function saveMenu(): void
+    {
+        $catalog = Nav::catalog();
+        $groupKeys = [];
+        $itemKeys = [];
+        $lockedItems = Nav::lockedItems();
+        foreach ($catalog as $group) {
+            $groupKeys[] = (string) $group['key'];
+            foreach ($group['items'] as $item) {
+                $itemKeys[] = (string) $item['key'];
+            }
+        }
+
+        // "Kembalikan ke bawaan" → hapus penimpaan, pakai isi app/config/menu.php.
+        if (isset($_POST['reset'])) {
+            Settings::forget('menu_hidden_items');
+            Settings::forget('menu_hidden_groups');
+            Nav::flush();
+            Audit::log('settings.menu', 'settings', null, ['action' => 'reset']);
+            flash('success', 'Tampilan menu dikembalikan ke konfigurasi bawaan app/config/menu.php.');
+            redirect('/settings?tab=menu');
+        }
+
+        $enabledItems = $this->keyList($_POST['items'] ?? []);
+        $enabledGroups = $this->keyList($_POST['groups'] ?? []);
+
+        // Item terkunci selalu tampil, apa pun isi form.
+        $hiddenItems = array_values(array_diff($itemKeys, array_merge($enabledItems, $lockedItems)));
+        // Grup yang memuat item terkunci tidak boleh disembunyikan.
+        $hiddenGroups = array_values(array_diff(
+            array_diff($groupKeys, $enabledGroups),
+            Nav::lockedGroups()
+        ));
+
+        Settings::set('menu_hidden_items', array_values($hiddenItems), 'menu');
+        Settings::set('menu_hidden_groups', array_values($hiddenGroups), 'menu');
+        Nav::flush();
+
+        Audit::log('settings.menu', 'settings', null, [
+            'hidden_items'  => count($hiddenItems),
+            'hidden_groups' => count($hiddenGroups),
+        ]);
+
+        $message = count($hiddenItems) === 0
+            ? 'Semua item menu ditampilkan.'
+            : count($hiddenItems) . ' item menu disembunyikan; sisanya tetap tampil.';
+        if ($hiddenGroups) {
+            $message .= ' ' . count($hiddenGroups) . ' grup menu disembunyikan seluruhnya.';
+        }
+        flash('success', $message);
+        redirect('/settings?tab=menu');
+    }
+
+    /** @return array<int,string> */
+    private function keyList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $keys = [];
+        foreach ($value as $entry) {
+            if (is_scalar($entry) && trim((string) $entry) !== '') {
+                $keys[] = trim((string) $entry);
+            }
+        }
+
+        return array_values(array_unique($keys));
     }
 
     /** Dua contoh karyawan (gaji tertinggi & terendah) untuk pratinjau dampak. */

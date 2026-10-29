@@ -93,6 +93,16 @@ final class Settings
         }
     }
 
+    /** Hapus satu kunci pengaturan (kembali ke nilai bawaan). */
+    public static function forget(string $key): void
+    {
+        self::load();
+        unset(self::$values[$key]);
+        if (Database::tableExists('settings')) {
+            Database::delete('settings', 'setting_key = ?', [$key]);
+        }
+    }
+
     public static function all(): array
     {
         self::load();

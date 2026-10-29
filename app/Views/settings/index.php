@@ -4,6 +4,7 @@
  * @var string $tab
  * @var array $tabs, $company, $payroll, $sample, $stats, $preview
  * @var array $old, $errors, $mail, $mailStats, $mailTemplates
+ * @var array $menu, $menuStats, $menuConfig (tab Menu Navigasi)
  */
 $val = static function (string $key, mixed $default = '') use ($old): mixed {
     return array_key_exists($key, $old) ? $old[$key] : $default;
@@ -565,6 +566,157 @@ $pphMethods = [
             </div>
         </section>
     </div>
+<?php elseif ($tab === 'menu'): ?>
+    <div class="mini-stat-grid">
+        <div class="mini-stat">
+            <span class="k">Item Menu</span>
+            <span class="v"><?= number_id($menuStats['items']) ?></span>
+            <span class="s"><?= number_id($menuStats['groups']) ?> grup navigasi</span>
+        </div>
+        <div class="mini-stat">
+            <span class="k">Ditampilkan</span>
+            <span class="v" style="color:var(--teal-700)"><?= number_id($menuStats['visible']) ?></span>
+            <span class="s">terlihat pada sidebar</span>
+        </div>
+        <div class="mini-stat">
+            <span class="k">Disembunyikan</span>
+            <span class="v" style="color:<?= $menuStats['hidden'] > 0 ? 'var(--amber-600)' : 'var(--muted)' ?>"><?= number_id($menuStats['hidden']) ?></span>
+            <span class="s"><?= number_id($menuStats['hidden_groups']) ?> grup disembunyikan</span>
+        </div>
+        <div class="mini-stat">
+            <span class="k">Terkunci</span>
+            <span class="v"><?= number_id(count($menuConfig['locked'])) ?></span>
+            <span class="s">selalu tampil</span>
+        </div>
+    </div>
+
+    <div class="alert alert-info" style="margin-bottom:14px">
+        <?= icon('info') ?>
+        <div>
+            Pilihan di bawah hanya mengatur <b>tampilan menu samping</b>. Hak akses data tetap mengikuti peran
+            (HR / FIN / Karyawan), jadi URL yang disembunyikan masih bisa dibuka oleh peran yang berhak.
+            Nilai bawaan untuk semua server ada di <span class="mono"><?= e($menuConfig['file']) ?></span>.
+            <?php if ($menuConfig['override']): ?>
+                Saat ini <b>pengaturan aplikasi menimpa config</b> (tersimpan di tabel <span class="mono">settings</span>);
+                tekan <b>Bawaan Config</b> untuk kembali memakai isi berkas.
+            <?php else: ?>
+                Belum ada penimpaan — menu mengikuti isi berkas config sampai Anda menyimpan pengaturan di halaman ini.
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if ($menuConfig['hidden'] || $menuConfig['hidden_groups']): ?>
+        <div class="alert alert-warning" style="margin-bottom:14px">
+            <?= icon('alert') ?>
+            <div>
+                Config menyembunyikan
+                <?php if ($menuConfig['hidden_groups']): ?>
+                    grup <span class="mono"><?= e(implode(', ', $menuConfig['hidden_groups'])) ?></span>
+                <?php endif; ?>
+                <?php if ($menuConfig['hidden'] && $menuConfig['hidden_groups']): ?> dan <?php endif; ?>
+                <?php if ($menuConfig['hidden']): ?>
+                    item <span class="mono"><?= e(implode(', ', $menuConfig['hidden'])) ?></span>
+                <?php endif; ?>.
+                Centang lalu simpan bila ingin menampilkannya lagi.
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <form method="post" action="<?= url('settings/menu') ?>" id="menu-form">
+        <?= csrf_field() ?>
+        <div class="flex-col gap-16">
+            <?php foreach ($menu as $group): ?>
+                <section class="card">
+                    <div class="card__head">
+                        <div>
+                            <h2><?= e($group['label'] ?: 'Menu Utama') ?></h2>
+                            <div class="sub">
+                                <?= number_id(count($group['items'])) ?> item
+                                <?php if ($group['roles']): ?>· peran <?= e(implode(' / ', $group['roles'])) ?><?php endif; ?>
+                                <?php if ($group['by_config']): ?>· <span class="badge badge-amber">disembunyikan di config</span><?php endif; ?>
+                            </div>
+                        </div>
+                        <label class="checkbox" style="font-size:11px">
+                            <?php if ($group['locked']): ?>
+                                <input type="hidden" name="groups[]" value="<?= e($group['key']) ?>">
+                                <input type="checkbox" checked disabled>
+                                <span>Grup aktif (terkunci)</span>
+                            <?php else: ?>
+                                <input type="checkbox" name="groups[]" value="<?= e($group['key']) ?>" data-menu-group <?= $group['hidden'] ? '' : 'checked' ?>>
+                                <span>Tampilkan grup</span>
+                            <?php endif; ?>
+                        </label>
+                    </div>
+                    <div class="card__body">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 14px">
+                            <?php foreach ($group['items'] as $item): ?>
+                                <label class="checkbox" style="font-size:11.5px;align-items:flex-start;padding:6px 8px;border:1px solid var(--line);border-radius:8px">
+                                    <?php if ($item['locked']): ?>
+                                        <input type="hidden" name="items[]" value="<?= e($item['key']) ?>">
+                                    <?php endif; ?>
+                                    <input type="checkbox" name="items[]" value="<?= e($item['key']) ?>"
+                                           data-menu-item="<?= e($group['key']) ?>"
+                                           <?= $item['hidden'] ? '' : 'checked' ?>
+                                           <?= $item['locked'] ? 'disabled' : '' ?>>
+                                    <span>
+                                        <b><?= e($item['label']) ?></b>
+                                        <?php if ($item['locked']): ?>
+                                            <span class="badge badge-slate" style="margin-left:4px">terkunci</span>
+                                        <?php endif; ?>
+                                        <span class="muted mono" style="display:block;font-size:9.6px"><?= e($item['key']) ?></span>
+                                        <span class="muted" style="display:block;font-size:9.6px"><?= e(implode(' · ', $item['roles'])) ?><?= $item['by_config'] ? ' · disembunyikan di config' : '' ?></span>
+                                    </span>
+                                </label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </section>
+            <?php endforeach; ?>
+        </div>
+
+        <div class="form-actions" style="margin-top:14px;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" type="submit"><?= icon('check') ?> Simpan Tampilan Menu</button>
+            <button class="btn btn-outline" type="button" id="menu-show-all"><?= icon('eye') ?> Tampilkan Semua</button>
+            <button class="btn btn-ghost" type="submit" name="reset" value="1" id="menu-reset">
+                <?= icon('refresh') ?> Bawaan Config
+            </button>
+            <span class="small muted" style="margin-left:auto">Perubahan langsung berlaku untuk semua pengguna setelah disimpan.</span>
+        </div>
+    </form>
+
+    <script>
+    (function () {
+        var form = document.getElementById('menu-form');
+        if (!form) { return; }
+        var reset = document.getElementById('menu-reset');
+        if (reset) {
+            reset.addEventListener('click', function (event) {
+                if (!window.confirm('Kembalikan tampilan menu ke nilai bawaan app/config/menu.php?')) {
+                    event.preventDefault();
+                }
+            });
+        }
+        var all = document.getElementById('menu-show-all');
+        if (all) {
+            all.addEventListener('click', function () {
+                form.querySelectorAll('input[data-menu-group], input[data-menu-item]').forEach(function (input) {
+                    if (!input.disabled) { input.checked = true; }
+                });
+                form.requestSubmit();
+            });
+        }
+        // Grup yang tidak dicentang otomatis meredupkan itemnya sebagai petunjuk visual.
+        form.addEventListener('change', function (event) {
+            var toggle = event.target.closest('input[data-menu-group]');
+            if (!toggle) { return; }
+            var group = toggle.closest('.card');
+            if (!group) { return; }
+            group.querySelectorAll('input[data-menu-item]').forEach(function (input) {
+                input.style.opacity = toggle.checked ? '1' : '.45';
+            });
+        });
+    })();
+    </script>
 <?php endif; ?>
 
 <script>
