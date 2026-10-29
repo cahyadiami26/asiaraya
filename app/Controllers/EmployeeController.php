@@ -190,6 +190,8 @@ final class EmployeeController extends Controller
             [(int) $id, (int) date('Y')]
         );
 
+        $offboarding = new \App\Models\OffboardingModel();
+
         $this->view('employees/show', [
             'title'         => $employee['full_name'],
             'pageTitle'     => $employee['full_name'],
@@ -198,6 +200,8 @@ final class EmployeeController extends Controller
             'attendanceStats' => $attendanceStats,
             'payslip'       => $payslip,
             'leaveBalances' => $leaveBalances,
+            'offboardingRequests' => $offboarding->employeeRequests((int) $id),
+            'offboardingActive'   => $offboarding->activeForEmployee((int) $id),
             'activity'      => $this->employees->recentActivity((int) $id),
             'contract'      => $this->contractStatus($employee),
             'badges'        => $this->dashboard->badges($this->employee() ?? []),

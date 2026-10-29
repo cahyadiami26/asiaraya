@@ -291,7 +291,9 @@ final class OffboardingController extends Controller
         $isOwner = (int) $request['employee_id'] === (int) $user['id'];
         $isManager = Auth::isManagerOf((int) $request['employee_id']);
         $isHr = Auth::hasRole('HR');
-        if (!$isOwner && !$isManager && !$isHr) {
+        // Finance perlu membaca pengajuan untuk menyelesaikan item keuangan.
+        $isFin = Auth::hasRole('FIN');
+        if (!$isOwner && !$isManager && !$isHr && !$isFin) {
             $this->abort(403, 'Anda tidak memiliki akses ke pengajuan ini.');
         }
 
@@ -307,6 +309,7 @@ final class OffboardingController extends Controller
             'isOwner'     => $isOwner,
             'isManager'   => $isManager,
             'isHr'        => $isHr,
+            'isFin'       => $isFin,
             'canApproveManager' => in_array($status, ['SUBMITTED'], true) && ($isManager || $isHr),
             'canApproveHr'      => $isHr && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED'], true),
             'canComplete'       => $isHr && $status === 'IN_PROGRESS',
@@ -489,7 +492,17 @@ final class OffboardingController extends Controller
         if (!$request) {
             $this->abort(404, 'Pengajuan offboarding tidak ditemukan.');
         }
-        $this->requireManagerOrHr((int) $request['employee_id']);
+
+        // Finance hanya boleh menyelesaikan item yang menjadi tanggung jawabnya.
+        $item = $this->offboarding->findClearance((int) $itemId, (int) $id);
+        if (!$item) {
+            $this->abort(404, 'Item serah terima tidak ditemukan.');
+        }
+        $isFinanceItem = ($item['owner_role'] ?? '') === 'FINANCE';
+        if (!Auth::hasRole('HR') && !Auth::isManagerOf((int) $request['employee_id'])
+            && !($isFinanceItem && Auth::hasRole('FIN'))) {
+            $this->abort(403, 'Hanya atasan langsung, HR, atau Finance (untuk item keuangan) yang dapat mengubah item ini.');
+        }
 
         $result = $this->offboarding->setClearanceStatus(
             (int) $itemId,

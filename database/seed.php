@@ -627,6 +627,8 @@ return static function (): array {
         ['bpjs_jp_max_wage', '10000000', 'bpjs'],
         ['bpjs_jkk_pct', '0.24', 'bpjs'],
         ['bpjs_jkm_pct', '0.3', 'bpjs'],
+        // offboarding
+        ['resign_notice_days', '30', 'general'],
         // leave
         ['leave_default_quota', '12', 'leave'],
         ['leave_allow_negative', '0', 'leave'],

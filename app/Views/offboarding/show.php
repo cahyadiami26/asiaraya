@@ -5,7 +5,7 @@
  * @var array $request, $clearance, $stages, $progress, $types, $typeTones, $statuses, $tones
  * @var array $reasons, $categories, $clearanceStatuses, $clearanceTones, $ownerRoles
  * @var array $recommendations, $employees, $errors, $old
- * @var bool $isOwner, $isManager, $isHr, $canApproveManager, $canApproveHr, $canComplete
+ * @var bool $isOwner, $isManager, $isHr, $isFin, $canApproveManager, $canApproveHr, $canComplete
  * @var bool $canReject, $canWithdraw, $canCancel, $canDelete
  */
 $status = (string) $request['status'];
@@ -86,6 +86,13 @@ $stepDone = static function (int $index) use ($stepIndex, $isClosed, $status): b
         </div>
     </div>
 </section>
+
+<?php if ($isFin && !$isHr): ?>
+    <div class="alert alert-info" style="margin-bottom:14px">
+        <?= icon('info') ?>
+        <div>Akses Finance: Anda dapat melihat proses ini dan menyelesaikan item serah terima kategori <b>Keuangan</b> saja.</div>
+    </div>
+<?php endif; ?>
 
 <div class="split-grid wide-left">
     <div class="flex-col gap-12">
@@ -174,7 +181,7 @@ $stepDone = static function (int $index) use ($stepIndex, $isClosed, $status): b
                         </div>
                         <div class="clear-item__actions">
                             <span class="badge badge-<?= $clearanceTones[$item['status']] ?? 'slate' ?>"><?= e($clearanceStatuses[$item['status']] ?? $item['status']) ?></span>
-                            <?php if (!$isClosed && ($isHr || $isManager)): ?>
+                            <?php if (!$isClosed && ($isHr || $isManager || ($isFin && $item['owner_role'] === 'FINANCE'))): ?>
                                 <form method="post" action="<?= url('offboarding/' . (int) $request['id'] . '/clearance/' . (int) $item['id']) ?>">
                                     <?= csrf_field() ?>
                                     <select class="select" name="status" style="min-width:120px;height:30px;font-size:11px" onchange="this.form.requestSubmit()">

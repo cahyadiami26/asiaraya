@@ -65,6 +65,7 @@ final class SettingsController extends Controller
                 'signer_fin' => (string) (Settings::get('report_signer_fin') ?: ''),
                 'retention'  => (int) Settings::get('audit_retention_days', 180),
                 'claim_age'  => (int) Settings::get('claim_max_age_days', 90),
+                'resign_notice' => (int) Settings::get('resign_notice_days', 30),
                 'log_total'  => (int) Database::value('SELECT COUNT(*) FROM activity_logs'),
                 'log_oldest' => (string) (Database::value('SELECT MIN(created_at) FROM activity_logs') ?? ''),
             ],
@@ -149,6 +150,8 @@ final class SettingsController extends Controller
             $v->custom($retention < 30 || $retention > 1825, 'audit_retention_days', 'Retensi log harus antara 30 dan 1825 hari.');
             $claimAge = (int) ($_POST['claim_max_age_days'] ?? 0);
             $v->custom($claimAge < 7 || $claimAge > 365, 'claim_max_age_days', 'Batas usia klaim harus antara 7 dan 365 hari.');
+            $notice = (int) ($_POST['resign_notice_days'] ?? 0);
+            $v->custom($notice < 7 || $notice > 180, 'resign_notice_days', 'Masa pemberitahuan resign harus antara 7 dan 180 hari.');
         }, '/settings?tab=advanced');
 
         Settings::many([
@@ -156,11 +159,13 @@ final class SettingsController extends Controller
             'report_signer_fin'    => trim((string) ($data['report_signer_fin'] ?? '')),
             'audit_retention_days' => (int) ($data['audit_retention_days'] ?? 180),
             'claim_max_age_days'   => (int) ($data['claim_max_age_days'] ?? 90),
+            'resign_notice_days'   => (int) ($data['resign_notice_days'] ?? 30),
         ], 'general');
 
         Audit::log('settings.advanced', 'settings', null, [
             'retention' => (int) ($data['audit_retention_days'] ?? 180),
             'claim_age' => (int) ($data['claim_max_age_days'] ?? 90),
+            'resign_notice' => (int) ($data['resign_notice_days'] ?? 30),
         ]);
         flash('success', 'Pengaturan laporan & audit disimpan.');
         redirect('/settings?tab=advanced');

@@ -369,6 +369,11 @@ $pphMethods = [
                         <input class="input" type="number" min="7" max="365" name="claim_max_age_days" value="<?= e($val('claim_max_age_days', (string) $advanced['claim_age'])) ?>">
                         <span class="hint">Karyawan hanya dapat mengajukan klaim untuk transaksi maksimal N hari ke belakang (7–365 hari).</span>
                     </div>
+                    <div class="field">
+                        <label>Masa Pemberitahuan Resign (hari)</label>
+                        <input class="input" type="number" min="7" max="180" name="resign_notice_days" value="<?= e($val('resign_notice_days', (string) $advanced['resign_notice'])) ?>">
+                        <span class="hint">Standar notice pada form pengunduran diri karyawan &amp; offboarding HR (7–180 hari).</span>
+                    </div>
                 </div>
                 <div class="form-actions" style="margin-top:14px">
                     <button class="btn btn-primary" type="submit"><?= icon('check') ?> Simpan Pengaturan</button>

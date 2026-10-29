@@ -130,7 +130,7 @@ final class OffboardingModel
 
         $status = (string) ($filters['status'] ?? '');
         if ($status === 'OPEN') {
-            $where[] = "r.status IN ('SUBMITTED','MANAGER_APPROVED','IN_PROGRESS')";
+            $where[] = "r.status IN ('" . implode("','", self::ACTIVE_STATUSES) . "')";
         } elseif ($status !== '' && isset(self::STATUSES[$status])) {
             $where[] = 'r.status = ?';
             $params[] = $status;
@@ -693,6 +693,12 @@ final class OffboardingModel
             'note'       => trim((string) ($data['note'] ?? '')) ?: null,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
+    }
+
+    /** Satu item checklist (dipakai untuk otorisasi per peran). */
+    public function findClearance(int $itemId, int $requestId): ?array
+    {
+        return Database::one('SELECT * FROM offboarding_clearance WHERE id = ? AND request_id = ?', [$itemId, $requestId]);
     }
 
     public function setClearanceStatus(int $itemId, int $requestId, string $status, string $note, int $actorId): array

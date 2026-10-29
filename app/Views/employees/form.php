@@ -137,7 +137,7 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                             <select class="select" name="department_id" id="field-department">
                                 <option value="">Pilih departemen…</option>
                                 <?php foreach ($departments as $dept): ?>
-                                    <option value="<?= (int) $dept['id'] ?>" data-unit="<?= (int) $dept['business_unit_id'] ?>" <?= $deptId === (int) $dept['id'] ? 'selected' : '' ?>>
+                                    <option value="<?= (int) $dept['id'] ?>" data-unit="<?= (int) ($dept['business_unit_id'] ?? 0) ?>" <?= $deptId === (int) $dept['id'] ? 'selected' : '' ?>>
                                         <?= e($dept['name']) ?> (<?= e($dept['code']) ?>)
                                     </option>
                                 <?php endforeach; ?>
@@ -150,7 +150,7 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                                 <?php foreach ($positions as $position): ?>
                                     <option value="<?= (int) $position['id'] ?>"
                                             data-department="<?= (int) ($position['department_id'] ?? 0) ?>"
-                                            data-salary="<?= (float) $position['basic_salary'] ?>"
+                                            data-salary="<?= (float) ($position['basic_salary'] ?? 0) ?>"
                                             <?= $positionId === (int) $position['id'] ? 'selected' : '' ?>>
                                         <?= e($position['name']) ?>
                                     </option>

@@ -2,7 +2,8 @@
 /**
  * Employee detail.
  * @var array $employee, $attendance, $attendanceStats, $leaveBalances, $activity, $contract
- * @var array|null $payslip
+ * @var array $offboardingRequests
+ * @var array|null $payslip, $offboardingActive
  */
 $join = $employee['join_date'] ?? null;
 $tenure = '-';
@@ -211,6 +212,43 @@ $isActive = ($employee['flag'] ?? '') === 'ACTIVE';
                     </div>
                 <?php else: ?>
                     <div class="small muted">Belum ada kuota cuti tahun <?= date('Y') ?>.</div>
+                <?php endif; ?>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card__head">
+                <div><h2>Offboarding &amp; Exit</h2>
+                    <div class="sub">Proses keluar terstruktur: persetujuan, serah terima, dan exit interview.</div></div>
+                <?php if ($isActive && !$offboardingActive): ?>
+                    <a class="btn btn-sm btn-outline" href="<?= url('offboarding?employee=' . (int) $employee['id']) ?>"><?= icon('plus') ?> Mulai Offboarding</a>
+                <?php endif; ?>
+            </div>
+            <div class="card__body" style="padding:0">
+                <?php if ($offboardingRequests): ?>
+                    <?php foreach (array_slice($offboardingRequests, 0, 4) as $row): ?>
+                        <?php
+                        $tones = \App\Models\OffboardingModel::STATUS_TONES;
+                        $labels = \App\Models\OffboardingModel::STATUSES;
+                        $types = \App\Models\OffboardingModel::TYPES;
+                        $isRunning = in_array($row['status'], \App\Models\OffboardingModel::ACTIVE_STATUSES, true);
+                        ?>
+                        <div class="list-row">
+                            <div class="list-row__body">
+                                <b><?= e($row['request_number']) ?> · <?= e($types[$row['type']] ?? $row['type']) ?></b>
+                                <span>Hari terakhir kerja <?= tanggal($row['last_working_date']) ?>
+                                    · diajukan <?= tanggal($row['submit_date'] ?? $row['created_at']) ?></span>
+                            </div>
+                            <span class="badge badge-<?= $tones[$row['status']] ?? 'slate' ?>"><?= e($labels[$row['status']] ?? $row['status']) ?></span>
+                            <a class="btn btn-sm btn-ghost" href="<?= url('offboarding/' . (int) $row['id']) ?>"><?= icon('arrow-right') ?></a>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <div class="small muted" style="padding:14px 16px">
+                        <?= $isActive
+                            ? 'Belum ada proses offboarding. Gunakan tombol "Mulai Offboarding" agar persetujuan atasan, checklist serah terima, dan exit interview tercatat rapi.'
+                            : 'Tidak ada riwayat offboarding tercatat untuk karyawan ini.' ?>
+                    </div>
                 <?php endif; ?>
             </div>
         </section>

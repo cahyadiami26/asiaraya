@@ -907,7 +907,8 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
   Pekerjaan**, **Aset & Perangkat**, **Dokumen**, **Keuangan**, **Akses
   Sistem**, **Lainnya**) dengan PIC (HR/atasan/Finance/IT) dan status
   *Belum Selesai / Selesai / Dikecualikan*. HR dapat menambah item, menandai
-  semua selesai, atau menghapus item.
+  semua selesai, atau menghapus item. **Finance** dapat membuka halaman detail
+  dan hanya menyelesaikan item berkategori *Keuangan* (item lain ditolak 403).
 * **Exit interview & penyelesaian akhir**: jadwal wawancara, pewawancara,
   rekomendasi (ya/mungkin/tidak), catatan wawancara, nominal + rincian
   penyelesaian (gaji prorata, sisa cuti, potongan).
@@ -926,6 +927,12 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
   MANAGER_APPROVED/IN_PROGRESS) — pengajuan kedua ditolak dengan pesan jelas.
 * Badge navigasi `offboarding` menampilkan jumlah pengajuan yang menunggu
   keputusan (atasan/HR).
+* Masa pemberitahuan resign dapat diatur HR di **Pengaturan → Laporan & Audit**
+  (`resign_notice_days`, 7–180 hari); nilainya dipakai form karyawan, form
+  offboarding HR, dan kartu statistik.
+* Halaman detail karyawan menampilkan kartu **Offboarding & Exit** berisi
+  riwayat pengajuan beserta tautan langsung ke prosesnya (tombol *Mulai
+  Offboarding* mengisi form HR otomatis untuk karyawan tersebut).
 * Notifikasi: karyawan (persetujuan/penolakan/penutupan), atasan (pengajuan baru,
   serah terima dimulai), HR (pengajuan baru & selesai), dan Finance (penyelesaian
   keuangan).
@@ -981,7 +988,7 @@ storage/                 # logs, cache, uploads, database preview
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
 | Rekrutmen & onboarding | ✅ lowongan, pipeline, pelamar, konversi karyawan | – | – |
-| Offboarding & exit | ✅ pengajuan, persetujuan, checklist serah terima, exit interview | – | ajukan pengunduran diri, umpan balik, setujui tim |
+| Offboarding & exit | ✅ pengajuan, persetujuan, checklist serah terima, exit interview | lihat proses + selesaikan item keuangan | ajukan pengunduran diri, umpan balik, setujui tim |
 | Laporan | ✅ | ✅ | – |
 | Log aktivitas | ✅ | – | – |
 
