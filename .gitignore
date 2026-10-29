@@ -1,0 +1,24 @@
+# Local environment / secrets
+app/config/env.php
+.env
+
+# Runtime storage
+storage/logs/*.log
+storage/cache/*
+storage/uploads/*
+storage/database.sqlite
+storage/*.sqlite
+storage/exports/*
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/uploads/.gitkeep
+!storage/exports/.gitkeep
+
+# Preview runtime (php-wasm, installed on demand)
+tools/preview/node_modules
+tools/preview/package-lock.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp

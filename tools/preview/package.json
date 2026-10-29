@@ -1,0 +1,14 @@
+{
+  "name": "asiaraya-hris-preview",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Sandbox preview runtime: PHP 8.4 (php-wasm) + SQLite bridge for the native PHP HRIS. Production deployment uses Apache/Nginx + PHP-FPM + MySQL and does not need Node.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@php-wasm/node": "3.1.54",
+    "@php-wasm/universal": "3.1.54"
+  }
+}

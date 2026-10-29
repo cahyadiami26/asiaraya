@@ -1,1 +1,168 @@
+# HRIS Enterprise — PT Asia Raya Group
 
+Sistem Informasi Sumber Daya Manusia terpadu: data kepegawaian, jadwal & shift,
+presensi geofence + selfie (PWA), lembur, cuti, komponen gaji, dan payroll
+multi-unit dengan slip gaji ber-QR.
+
+* **Backend** — PHP 8 (native, tanpa framework), arsitektur MVC ringan buatan sendiri
+* **Database** — MySQL 8 / MariaDB 10.4+
+* **PDF** — dompdf, dipasang **manual** di `vendor/dompdf` (bukan via Composer)
+* **QR code** — library online (`qrserver`) dengan fallback lokal `phpqrcode`
+* **UI** — CSS & JS tulisan sendiri, tanpa framework/CDN, responsif (mobile-first PWA)
+
+---
+
+## 1. Status pengembangan (batch)
+
+| Batch | Cakupan | Status |
+|-------|---------|--------|
+| **1** | Fondasi: autentikasi (username/password + Google), RBAC (HR/FIN/Karyawan), layout & design system, dashboard HR / Finance / Karyawan, profil, pencarian, notifikasi, mesin approval 2 tahap, installer | ✅ selesai |
+| 2 | Pengaturan perusahaan, unit organisasi (business unit, departemen, posisi, logo), format ID karyawan, CRUD data karyawan | ⏳ menunggu konfirmasi |
+| 3 | Shift & jadwal kerja, penjadwalan per unit/departemen/karyawan, request & approval perubahan jadwal | ⏳ |
+| 4 | Presensi PWA (GPS geofence, selfie compress), log & rekap, pengaturan denda keterlambatan & potongan cuti | ⏳ |
+| 5 | Lembur: pengajuan, approval, setting kompensasi & batas maksimum, lembur terjadwal | ⏳ |
+| 6 | Cuti: jenis & jatah, pengajuan, approval, saldo | ⏳ |
+| 7 | Komponen gaji (CRUD & assign), PPh, BPJS | ⏳ |
+| 8 | Payroll: periode per unit, kalkulasi, rekap per unit/departemen, slip gaji PDF ber-QR, alur HR → FIN → PAID | ⏳ |
+| 9 | Laporan & cetak (PDF Excel-ready), log aktivitas, pengaturan lanjutan | ⏳ |
+
+Modul yang belum aktif tetap dapat diklik dan menampilkan halaman "modul
+dijadwalkan" — tidak ada tautan mati. Skema database untuk seluruh modul sudah
+dipasang sejak batch 1 sehingga batch berikutnya tidak memerlukan migrasi besar.
+
+---
+
+## 2. Instalasi produksi (Apache/Nginx + PHP-FPM + MySQL)
+
+### 2.1 Kebutuhan server
+* PHP **8.0+** dengan ekstensi: `pdo_mysql`, `mbstring`, `gd`, `fileinfo`, `json`, `zip`
+  (opsional: `curl` untuk Google SSO, `dom` untuk dompdf)
+* MySQL 8 / MariaDB 10.4+
+* Web server Apache (mod_rewrite) atau Nginx
+
+### 2.2 Langkah
+1. Upload seluruh repository ke server, arahkan **document root** ke folder `public/`.
+2. Pasang dompdf secara manual (tanpa Composer):
+
+```bash
+cd vendor
+curl -L -o dompdf.zip https://github.com/dompdf/dompdf/releases/download/v3.1.6/dompdf-3.1.6.zip
+unzip dompdf.zip && mv dompdf-3.1.6 dompdf && rm dompdf.zip
+# dependensi wajib dompdf (juga manual):
+#   vendor/php-font-lib        -> dompdf/php-font-lib (tag 1.0.2)
+#   vendor/php-svg-lib         -> dompdf/php-svg-lib
+#   vendor/php-css-parser      -> sabberworm/php-css-parser
+#   vendor/html5               -> Masterminds/html5-php
+```
+
+   Autoloader di `app/bootstrap.php` sudah memetakan namespace
+   `Dompdf\`, `FontLib\`, `Svg\`, `Sabberworm\CSS\`, dan `Masterminds\` ke folder
+   tersebut sehingga dompdf langsung dapat dipakai tanpa Composer.
+
+3. QR code lokal (opsional, bila tidak ingin memakai API online):
+
+```bash
+cd vendor && curl -L -o qr.zip https://github.com/t0k4rt/phpqrcode/archive/refs/heads/master.zip
+unzip qr.zip && mv phpqrcode-master phpqrcode && rm qr.zip
+```
+
+4. Beri izin tulis pada `storage/`:
+
+```bash
+chmod -R 775 storage app/config
+```
+
+5. Buka `https://domain-anda/install.php`, isi kredensial MySQL, jalankan instalasi.
+   Atau salin `app/config/env.example.php` → `app/config/env.php` lalu import skema:
+
+```bash
+mysql -u user -p asiaraya_hris < database/schema.sql
+```
+
+6. **Hapus/rename `public/install.php`** setelah selesai.
+7. Login pertama: `hr@asiaraya.co.id` / `Password123!` (ganti kata sandi segera).
+
+### 2.3 Login dengan Google Workspace
+1. Buat OAuth Client (Web application) di Google Cloud Console.
+2. Authorized redirect URI: `https://domain-anda/login/google/callback`.
+3. Isi `google_client_id` & `google_client_secret` pada `app/config/env.php`
+   atau melalui halaman **Pengaturan HR & Payroll**.
+4. Pemetaan akun memakai **field email karyawan** — user Google hanya bisa masuk
+   bila emailnya terdaftar pada tabel `employees` dengan flag `ACTIVE`.
+   Domain Workspace perusahaan otomatis dibatasi melalui parameter `hd`.
+
+---
+
+## 3. Struktur proyek
+
+```
+app/
+  bootstrap.php          # autoloader, config, session, DB, settings, auth
+  config/config.php      # default + override env.php + environment variables
+  Core/                  # Database, Router, Auth, View, Session, Settings,
+                         # Validator, Schema, Audit, Nav, GoogleAuth, helpers
+  Controllers/           # Auth, Dashboard, Approval, Placeholder
+  Models/                # query/aggregation layer
+  Views/                 # layouts, partials, auth, dashboard, errors
+database/
+  schema.sql             # skema kanonik MySQL (portabel; dipakai SQLite preview)
+  seed.php               # data contoh PT Asia Raya Group
+public/
+  index.php              # front controller (semua route terdaftar di sini)
+  install.php            # wizard instalasi
+  assets/{css,js,img}    # design system, progressive enhancement, aset visual
+  manifest.webmanifest   # PWA
+  sw.js                  # service worker (offline shell aset)
+vendor/                  # dompdf & phpqrcode (manual, tidak via Composer)
+tools/preview/           # runtime pratinjau sandbox (bukan untuk produksi)
+storage/                 # logs, cache, uploads, database preview
+```
+
+---
+
+## 4. Matriks hak akses
+
+| Modul | HR | FIN | Karyawan |
+|-------|----|-----|----------|
+| Data karyawan (CRUD) | ✅ | baca | baca (diri sendiri) |
+| Unit organisasi, format ID, pengaturan perusahaan | ✅ | – | – |
+| Shift & jadwal + approval perubahan | ✅ | – | pengajuan |
+| Presensi (live, harian, rekap, setting) | ✅ | baca | presensi diri |
+| Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
+| Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
+| Komponen gaji & payroll | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
+| Laporan | ✅ | ✅ | – |
+| Log aktivitas | ✅ | – | – |
+
+Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
+payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani
+oleh HR dan FIN (nama + timestamp) serta disematkan QR validasi.
+
+---
+
+## 5. Pratinjau di sandbox (tanpa PHP/MySQL terpasang)
+
+Sandbox Arena tidak menyediakan binary PHP maupun server MySQL, sehingga repo
+menyertakan jembatan pratinjau berbasis **php-wasm (PHP 8.4)** + **SQLite**.
+Kode aplikasi tetap ditulis untuk MySQL; SQL dijaga pada subset portabel.
+
+```bash
+cd tools/preview
+npm install        # sekali saja
+PORT=8080 node server.mjs
+```
+
+Server akan otomatis membuat `app/config/env.php` (profil SQLite + demo) bila
+belum ada, memasang skema, dan mengisi data contoh. Folder ini **tidak**
+diperlukan pada server produksi dan aman untuk dihapus.
+
+---
+
+## 6. Catatan keamanan
+* Kata sandi: `password_hash()` bcrypt; CSRF token pada seluruh form POST.
+* Semua query memakai prepared statement (PDO), tanpa konkatenasi input.
+* Cookie sesi `HttpOnly`, `SameSite=Lax`, `Secure` otomatis pada HTTPS.
+* Audit trail: login, login gagal, approval, perubahan data.
+* Upload disimpan di `storage/uploads` (di luar document root) dan disajikan
+  melalui pemetaan `/media/*` di web server.
+* Matikan `demo_mode` dan hapus data contoh sebelum go-live.

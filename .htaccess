@@ -1,0 +1,7 @@
+# Redirect all traffic into /public (document root should point here or at /public).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(app|database|storage|tools|vendor)(/|$) - [F,L]
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

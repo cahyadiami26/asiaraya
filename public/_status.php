@@ -1,0 +1,1 @@
+<?php echo json_encode(["php"=>PHP_VERSION,"sapi"=>PHP_SAPI,"ext"=>get_loaded_extensions()]);
