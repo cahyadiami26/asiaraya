@@ -1,7 +1,7 @@
 <?php
 /**
  * Pengaturan presensi.
- * @var array $settings, $units, $leaveTypes, $sample, $errors, $old
+ * @var array $settings, $units, $leaveTypes, $sample, $tiers, $tierMode, $errors, $old
  */
 $val = static function (string $key, mixed $default = '') use ($old, $settings) {
     if (array_key_exists($key, $old)) {
@@ -11,6 +11,14 @@ $val = static function (string $key, mixed $default = '') use ($old, $settings) 
 };
 $on = static fn (string $key, bool $default = true): bool => (string) $val($key, $default ? '1' : '0') === '1';
 $type = (string) $val('attendance_late_deduction_type', 'PER_MINUTE');
+$mode = (string) $val('attendance_late_tier_mode', $tierMode ?? 'DAILY');
+$isProgressive = $type === 'PROGRESSIVE';
+$hours = static function (int $minutes): string {
+    if ($minutes === 0) { return '0'; }
+    $h = $minutes / 60;
+    $value = abs($h - round($h)) < 0.05 ? (int) round($h) : round($h, 1);
+    return rtrim(rtrim(number_format((float) $value, 1, ',', '.'), '0'), ',') . ' jam';
+};
 ?>
 <div class="page-head">
     <div>
@@ -109,34 +117,102 @@ $type = (string) $val('attendance_late_deduction_type', 'PER_MINUTE');
                         </div>
                         <div class="field">
                             <label>Perhitungan</label>
-                            <select class="select" name="attendance_late_deduction_type" id="deduction-type">
-                                <?php foreach (['PER_MINUTE' => 'Per menit terlambat', 'PER_DAY' => 'Per hari terlambat', 'FIXED' => 'Flat per kejadian', 'PERCENT' => 'Persentase gaji pokok'] as $key => $label): ?>
+                            <select class="select" name="attendance_late_deduction_type" id="deduction-type" data-deduction-type>
+                                <?php foreach ([
+                                    'PER_MINUTE'  => 'Per menit terlambat',
+                                    'PER_DAY'     => 'Per hari terlambat',
+                                    'FIXED'       => 'Flat per kejadian',
+                                    'PERCENT'     => 'Persentase gaji pokok',
+                                    'PROGRESSIVE' => 'Progresif bertingkat (0–1, 1–2, 2–3, >3 jam)',
+                                ] as $key => $label): ?>
                                     <option value="<?= $key ?>" <?= $type === $key ? 'selected' : '' ?>><?= e($label) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="field">
+                        <div class="field" data-plain-value <?= $isProgressive ? 'hidden' : '' ?>>
                             <label>Nilai Denda (Rp)</label>
-                            <input class="input" type="number" name="attendance_late_deduction_value" min="0" step="500" value="<?= e((float) $val('attendance_late_deduction_value', 2500)) ?>" required>
+                            <input class="input" type="number" name="attendance_late_deduction_value" min="0" step="500" value="<?= e((float) $val('attendance_late_deduction_value', 2500)) ?>">
                             <span class="hint">Untuk tipe persentase, isi angka persen (mis. 0.5).</span>
                         </div>
                     </div>
 
+                    <div class="tier-box" data-tier-box <?= $isProgressive ? '' : 'hidden' ?>>
+                        <div class="tier-box__head">
+                            <div>
+                                <b>Denda Progresif Bertingkat</b>
+                                <div class="small muted">Denda ditentukan oleh lamanya terlambat pada hari itu. Batas antar-tier mengikuti jam kerja nyata (60 menit = 1 jam).</div>
+                            </div>
+                            <div class="field" style="margin:0;min-width:210px">
+                                <label style="font-size:10px">Dasar perhitungan</label>
+                                <select class="select" name="attendance_late_tier_mode">
+                                    <option value="DAILY" <?= $mode === 'DAILY' ? 'selected' : '' ?>>Per hari terlambat</option>
+                                    <option value="MONTHLY" <?= $mode === 'MONTHLY' ? 'selected' : '' ?>>Akumulasi per bulan</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="tier-grid">
+                            <?php foreach (($tiers ?? []) as $index => $tier): ?>
+                                <?php $n = $index + 1; ?>
+                                <div class="tier-row">
+                                    <div class="tier-row__badge">T<?= $n ?></div>
+                                    <div class="tier-row__range">
+                                        <?php if ($tier['max'] === null): ?>
+                                            <?php $threshold = max(0, (int) $tier['min'] - 1); ?>
+                                            <b>&gt; <?= $threshold ?> menit</b>
+                                            <span>&gt; <?= e($hours($threshold)) ?></span>
+                                        <?php else: ?>
+                                            <b><?= (int) $tier['min'] ?>–<?= (int) $tier['max'] ?> menit</b>
+                                            <span><?= e($hours((int) $tier['min'])) ?>–<?= e($hours((int) $tier['max'])) ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if ($tier['max'] !== null): ?>
+                                        <div class="field" style="margin:0">
+                                            <label style="font-size:10px">Batas atas (menit)</label>
+                                            <input class="input" type="number" name="attendance_late_tier_<?= $n ?>_max" min="1" max="1800" step="1"
+                                                   value="<?= (int) $val('attendance_late_tier_' . $n . '_max', $tier['max']) ?>" data-tier-max="<?= $n ?>">
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="field" style="margin:0">
+                                            <label style="font-size:10px">Batas atas</label>
+                                            <input class="input" type="text" value="Tanpa batas" disabled>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div class="field" style="margin:0">
+                                        <label style="font-size:10px">Denda (Rp)</label>
+                                        <input class="input" type="number" name="attendance_late_tier_<?= $n ?>_amount" min="0" step="500"
+                                               value="<?= e((float) $val('attendance_late_tier_' . $n . '_amount', $tier['amount'])) ?>">
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <div class="small muted" style="margin-top:8px">
+                            <b>Per hari</b>: setiap hari terlambat dikenakan denda sesuai tier-nya lalu dijumlahkan.
+                            <b>Akumulasi per bulan</b>: total menit terlambat sebulan dipetakan ke satu tier dan dikenakan sekali.
+                        </div>
+                    </div>
+
                     <div class="divider"></div>
-                    <div class="small" style="font-weight:700;margin-bottom:8px">Simulasi denda — 3 hari terlambat</div>
+                    <div class="small" style="font-weight:700;margin-bottom:8px">
+                        Simulasi denda — 3 hari terlambat dengan durasi yang sama tiap hari
+                    </div>
                     <div class="table-wrap" style="border:1px solid var(--line);border-radius:10px">
                         <table class="data">
-                            <thead><tr><th>Akumulasi Keterlambatan</th><th class="num">Hari</th><th class="num">Denda</th></tr></thead>
+                            <thead><tr><th>Keterlambatan per hari</th><th class="num">Hari</th><th class="num">Total denda</th></tr></thead>
                             <tbody>
                             <?php foreach ($sample as $row): ?>
                                 <tr>
-                                    <td class="small"><?= number_id($row['minutes']) ?> menit</td>
+                                    <td class="small"><?= number_id($row['minutes']) ?> menit
+                                        <span class="muted">(<?= e($hours((int) $row['minutes'])) ?>)</span></td>
                                     <td class="num small"><?= (int) $row['days'] ?></td>
                                     <td class="num"><?= rupiah($row['amount']) ?></td>
                                 </tr>
                             <?php endforeach; ?>
                             </tbody>
                         </table>
+                    </div>
+                    <div class="small muted" style="margin-top:6px">
+                        Angka di atas mengikuti tipe perhitungan yang sedang <b>tersimpan</b>. Simpan pengaturan untuk memperbarui simulasi.
                     </div>
                 </div>
             </section>
@@ -239,3 +315,42 @@ $type = (string) $val('attendance_late_deduction_type', 'PER_MINUTE');
         </div>
     </div>
 </form>
+
+<script>
+(function () {
+    var type = document.querySelector('[data-deduction-type]');
+    var tierBox = document.querySelector('[data-tier-box]');
+    var plain = document.querySelector('[data-plain-value]');
+    if (!type) { return; }
+
+    var sync = function () {
+        var progressive = type.value === 'PROGRESSIVE';
+        if (tierBox) { tierBox.hidden = !progressive; }
+        // Field nilai tunggal disembunyikan (bukan dinonaktifkan) agar nilai lama tetap terkirim.
+        if (plain) { plain.hidden = progressive; }
+    };
+    type.addEventListener('change', sync);
+    sync();
+
+    /* Jaga agar batas tier tetap naik saat diisi. */
+    document.querySelectorAll('[data-tier-max]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            var order = Number(input.getAttribute('data-tier-max'));
+            var fields = Array.prototype.slice.call(document.querySelectorAll('[data-tier-max]'))
+                .sort(function (a, b) { return Number(a.getAttribute('data-tier-max')) - Number(b.getAttribute('data-tier-max')); });
+            var index = fields.indexOf(input);
+            var value = parseInt(input.value || '0', 10);
+            if (index > 0) {
+                var prev = parseInt(fields[index - 1].value || '0', 10);
+                if (value <= prev) { input.value = String(prev + 1); }
+            }
+            if (index < fields.length - 1) {
+                var next = fields[index + 1];
+                var now = parseInt(input.value || '0', 10);
+                if (parseInt(next.value || '0', 10) <= now) { next.value = String(now + 1); }
+            }
+            void order;
+        });
+    });
+})();
+</script>

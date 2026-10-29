@@ -40,10 +40,23 @@ final class AnnouncementModel
 
     public const AUDIENCES = [
         'ALL'        => 'Semua karyawan aktif',
-        'UNIT'       => 'Unit bisnis tertentu',
-        'DEPARTMENT' => 'Departemen tertentu',
-        'POSITION'   => 'Jabatan tertentu',
-        'ROLE'       => 'Peran sistem tertentu',
+        'UNIT'       => 'Unit bisnis',
+        'DEPARTMENT' => 'Departemen',
+        'POSITION'   => 'Jabatan',
+        'ROLE'       => 'Peran sistem',
+        'EMPLOYEE'   => 'Karyawan tertentu',
+        'MULTI'      => 'Kombinasi target',
+    ];
+
+    /** Tipe target yang boleh dipilih HR pada form (MULTI hanya ringkasan). */
+    public const TARGET_TYPES = ['UNIT', 'DEPARTMENT', 'POSITION', 'ROLE', 'EMPLOYEE'];
+
+    public const TARGET_LABELS = [
+        'UNIT'       => 'Unit bisnis',
+        'DEPARTMENT' => 'Departemen',
+        'POSITION'   => 'Jabatan',
+        'ROLE'       => 'Peran',
+        'EMPLOYEE'   => 'Karyawan',
     ];
 
     public const STATUSES = [
@@ -63,6 +76,11 @@ final class AnnouncementModel
     /**
      * Potongan SQL audiens yang berlaku untuk seorang karyawan + parameter.
      *
+     * Sumber kebenaran adalah tabel `announcement_targets` (boleh banyak baris,
+     * satu pengumuman bisa menyasar unit + departemen + karyawan sekaligus).
+     * Pengumuman lama yang belum punya baris target tetap dibaca dari kolom
+     * `announcements.audience` / `audience_value` (kompatibilitas mundur).
+     *
      * @return array{0:string,1:array}
      */
     private function audienceScope(array $user): array
@@ -74,29 +92,63 @@ final class AnnouncementModel
         $params = [$now, $now];
 
         // HR mengelola semua pengumuman, jadi feed-nya tidak dibatasi audiens.
-        if (($user['role'] ?? '') === 'HR') {
+        if (($user['role'] ?? '') === 'HR' || !Database::tableExists('announcement_targets')) {
             return [$sql, $params];
         }
 
-        $clauses = ["a.audience = 'ALL'"];
-        if (!empty($user['business_unit_id'])) {
-            $clauses[] = "(a.audience = 'UNIT' AND a.audience_value = ?)";
-            $params[] = (string) $user['business_unit_id'];
+        $matches = ["t.target_type = 'ALL'"];
+        $unitId = (string) ($user['business_unit_id'] ?? '');
+        if ($unitId !== '') {
+            $matches[] = "(t.target_type = 'UNIT' AND t.target_value = ?)";
+            $params[] = $unitId;
         }
-        if (!empty($user['department_id'])) {
-            $clauses[] = "(a.audience = 'DEPARTMENT' AND a.audience_value = ?)";
-            $params[] = (string) $user['department_id'];
+        $deptId = (string) ($user['department_id'] ?? '');
+        if ($deptId !== '') {
+            $matches[] = "(t.target_type = 'DEPARTMENT' AND t.target_value = ?)";
+            $params[] = $deptId;
         }
-        if (!empty($user['position_id'])) {
-            $clauses[] = "(a.audience = 'POSITION' AND a.audience_value = ?)";
-            $params[] = (string) $user['position_id'];
+        $posId = (string) ($user['position_id'] ?? '');
+        if ($posId !== '') {
+            $matches[] = "(t.target_type = 'POSITION' AND t.target_value = ?)";
+            $params[] = $posId;
         }
-        if (!empty($user['role'])) {
-            $clauses[] = "(a.audience = 'ROLE' AND a.audience_value = ?)";
-            $params[] = (string) $user['role'];
+        $role = (string) ($user['role'] ?? '');
+        if ($role !== '') {
+            $matches[] = "(t.target_type = 'ROLE' AND t.target_value = ?)";
+            $params[] = $role;
+        }
+        $employeeId = (string) ($user['id'] ?? '');
+        if ($employeeId !== '') {
+            $matches[] = "(t.target_type = 'EMPLOYEE' AND t.target_value = ?)";
+            $params[] = $employeeId;
         }
 
-        $sql .= ' AND (' . implode(' OR ', $clauses) . ')';
+        $viaTargets = 'EXISTS (SELECT 1 FROM announcement_targets t
+                        WHERE t.announcement_id = a.id AND (' . implode(' OR ', $matches) . '))';
+
+        // Pengumuman lama tanpa baris target: pakai kolom lama.
+        $legacyClauses = ["a.audience = 'ALL'"];
+        if ($unitId !== '') {
+            $legacyClauses[] = "(a.audience = 'UNIT' AND a.audience_value = ?)";
+            $params[] = $unitId;
+        }
+        if ($deptId !== '') {
+            $legacyClauses[] = "(a.audience = 'DEPARTMENT' AND a.audience_value = ?)";
+            $params[] = $deptId;
+        }
+        if ($posId !== '') {
+            $legacyClauses[] = "(a.audience = 'POSITION' AND a.audience_value = ?)";
+            $params[] = $posId;
+        }
+        if ($role !== '') {
+            $legacyClauses[] = "(a.audience = 'ROLE' AND a.audience_value = ?)";
+            $params[] = $role;
+        }
+
+        $legacy = '(NOT EXISTS (SELECT 1 FROM announcement_targets t9 WHERE t9.announcement_id = a.id)
+                    AND (' . implode(' OR ', $legacyClauses) . '))';
+
+        $sql .= ' AND (' . $viaTargets . ' OR ' . $legacy . ')';
 
         return [$sql, $params];
     }
@@ -224,6 +276,35 @@ final class AnnouncementModel
             return false;
         }
 
+        // Target berlapis (tabel announcement_targets) menjadi acuan utama.
+        $targets = $this->targetsOf((int) $announcement['id']);
+        if ($targets) {
+            foreach ($targets as $target) {
+                $type = (string) $target['target_type'];
+                $value = (string) $target['target_value'];
+                if ($type === 'ALL') {
+                    return true;
+                }
+                if ($type === 'UNIT' && (string) ($user['business_unit_id'] ?? '') === $value) {
+                    return true;
+                }
+                if ($type === 'DEPARTMENT' && (string) ($user['department_id'] ?? '') === $value) {
+                    return true;
+                }
+                if ($type === 'POSITION' && (string) ($user['position_id'] ?? '') === $value) {
+                    return true;
+                }
+                if ($type === 'ROLE' && (string) ($user['role'] ?? '') === $value) {
+                    return true;
+                }
+                if ($type === 'EMPLOYEE' && (string) ($user['id'] ?? '') === $value) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Fallback pengumuman lama (kolom audience/audience_value).
         return match ($announcement['audience']) {
             'ALL'        => true,
             'UNIT'       => (string) ($user['business_unit_id'] ?? '') === (string) $announcement['audience_value'],
@@ -435,30 +516,190 @@ final class AnnouncementModel
 
     /* ------------------------------------------------------ audiens & notif */
 
+    /* ------------------------------------------------------------- target */
+
+    /**
+     * Baris target mentah sebuah pengumuman.
+     *
+     * @return array<int,array{target_type:string,target_value:string}>
+     */
+    public function targetsOf(int $announcementId): array
+    {
+        if (!Database::tableExists('announcement_targets')) {
+            return [];
+        }
+
+        return Database::all(
+            'SELECT target_type, target_value FROM announcement_targets
+              WHERE announcement_id = ? ORDER BY id',
+            [$announcementId]
+        );
+    }
+
+    /**
+     * Target yang tersimpan dalam format siap pakai form: "UNIT:4", "EMPLOYEE:12".
+     *
+     * @return array<int,string>
+     */
+    public function targetKeys(int $announcementId): array
+    {
+        $keys = [];
+        foreach ($this->targetsOf($announcementId) as $row) {
+            $type = (string) $row['target_type'];
+            $value = (string) $row['target_value'];
+            $keys[] = $type === 'ALL' ? 'ALL' : $type . ':' . $value;
+        }
+        return $keys;
+    }
+
+    /**
+     * Ganti seluruh target sebuah pengumuman.
+     *
+     * @param array<int,array{type:string,value:string}> $targets
+     */
+    public function syncTargets(int $announcementId, array $targets): void
+    {
+        if (!Database::tableExists('announcement_targets')) {
+            return;
+        }
+
+        Database::delete('announcement_targets', 'announcement_id = ?', [$announcementId]);
+
+        $now = date('Y-m-d H:i:s');
+        foreach ($this->normalizeTargets($targets) as $target) {
+            Database::insert('announcement_targets', [
+                'announcement_id' => $announcementId,
+                'target_type'     => $target['type'],
+                'target_value'    => $target['value'],
+                'created_at'      => $now,
+            ]);
+        }
+    }
+
+    /**
+     * Bersihkan, validasi, dan buang duplikat daftar target.
+     *
+     * @param array<int,array{type:string,value:string}> $targets
+     * @return array<int,array{type:string,value:string}>
+     */
+    public function normalizeTargets(array $targets): array
+    {
+        $clean = [];
+        foreach ($targets as $target) {
+            $type = strtoupper(trim((string) ($target['type'] ?? '')));
+            $value = trim((string) ($target['value'] ?? ''));
+
+            if ($type === 'ALL') {
+                $clean['ALL'] = ['type' => 'ALL', 'value' => ''];
+                continue;
+            }
+            if (!in_array($type, self::TARGET_TYPES, true) || $value === '') {
+                continue;
+            }
+            if ($type === 'ROLE' && !in_array($value, ['HR', 'FIN', 'KARYAWAN'], true)) {
+                continue;
+            }
+            if (in_array($type, ['UNIT', 'DEPARTMENT', 'POSITION', 'EMPLOYEE'], true)) {
+                if ((int) $value <= 0) {
+                    continue;
+                }
+                $value = (string) (int) $value;
+            }
+            $key = $type . ':' . $value;
+            $clean[$key] = ['type' => $type, 'value' => $value];
+        }
+
+        // "Semua karyawan" tidak perlu digabung dengan target lain.
+        if (isset($clean['ALL'])) {
+            return [$clean['ALL']];
+        }
+
+        return array_values($clean);
+    }
+
+    /**
+     * Ringkasan audiens untuk disimpan di kolom `audience` (kompatibilitas).
+     *
+     * @param array<int,array{type:string,value:string}> $targets
+     */
+    public function audienceSummary(array $targets): array
+    {
+        $targets = $this->normalizeTargets($targets);
+        if (!$targets) {
+            return ['audience' => 'ALL', 'audience_value' => ''];
+        }
+        if (count($targets) === 1 && $targets[0]['type'] === 'ALL') {
+            return ['audience' => 'ALL', 'audience_value' => ''];
+        }
+        if (count($targets) === 1) {
+            return ['audience' => $targets[0]['type'], 'audience_value' => $targets[0]['value']];
+        }
+        return ['audience' => 'MULTI', 'audience_value' => ''];
+    }
+
     /** Daftar karyawan aktif yang menjadi target sebuah pengumuman. */
     public function audienceEmployees(array $announcement): array
     {
-        $sql = "SELECT id, full_name FROM employees WHERE flag = 'ACTIVE'";
-        $params = [];
+        $base = 'SELECT DISTINCT e.id, e.full_name FROM employees e WHERE e.flag = \'ACTIVE\'';
+        $targets = $this->targetsOf((int) ($announcement['id'] ?? 0));
 
-        $audience = $announcement['audience'] ?? 'ALL';
-        $value = (string) ($announcement['audience_value'] ?? '');
-
-        if ($audience === 'UNIT' && $value !== '') {
-            $sql .= ' AND business_unit_id = ?';
-            $params[] = (int) $value;
-        } elseif ($audience === 'DEPARTMENT' && $value !== '') {
-            $sql .= ' AND department_id = ?';
-            $params[] = (int) $value;
-        } elseif ($audience === 'POSITION' && $value !== '') {
-            $sql .= ' AND position_id = ?';
-            $params[] = (int) $value;
-        } elseif ($audience === 'ROLE' && $value !== '') {
-            $sql .= ' AND role = ?';
-            $params[] = $value;
+        if (!$targets) {
+            // Fallback pengumuman lama (kolom audience/audience_value).
+            $audience = $announcement['audience'] ?? 'ALL';
+            $value = (string) ($announcement['audience_value'] ?? '');
+            if ($audience === 'UNIT' && $value !== '') {
+                return Database::all($base . ' AND e.business_unit_id = ?', [(int) $value]);
+            }
+            if ($audience === 'DEPARTMENT' && $value !== '') {
+                return Database::all($base . ' AND e.department_id = ?', [(int) $value]);
+            }
+            if ($audience === 'POSITION' && $value !== '') {
+                return Database::all($base . ' AND e.position_id = ?', [(int) $value]);
+            }
+            if ($audience === 'ROLE' && $value !== '') {
+                return Database::all($base . ' AND e.role = ?', [$value]);
+            }
+            return Database::all($base, []);
         }
 
-        return Database::all($sql, $params);
+        $groups = [];
+        foreach ($targets as $target) {
+            $type = (string) $target['target_type'];
+            $value = (string) $target['target_value'];
+            if ($type === 'ALL') {
+                return Database::all($base, []);
+            }
+            $groups[$type][] = $value;
+        }
+
+        $column = [
+            'UNIT'       => 'e.business_unit_id',
+            'DEPARTMENT' => 'e.department_id',
+            'POSITION'   => 'e.position_id',
+            'EMPLOYEE'   => 'e.id',
+            'ROLE'       => 'e.role',
+        ];
+
+        $clauses = [];
+        $params = [];
+        foreach ($groups as $type => $values) {
+            if (!isset($column[$type])) {
+                continue;
+            }
+            $placeholders = implode(', ', array_fill(0, count($values), '?'));
+            $clauses[] = $column[$type] . ' IN (' . $placeholders . ')';
+            foreach ($values as $value) {
+                $params[] = in_array($type, ['EMPLOYEE', 'UNIT', 'DEPARTMENT', 'POSITION'], true)
+                    ? (int) $value
+                    : $value;
+            }
+        }
+
+        if (!$clauses) {
+            return Database::all($base, []);
+        }
+
+        return Database::all($base . ' AND (' . implode(' OR ', $clauses) . ')', $params);
     }
 
     public function audienceSize(array $announcement): int
@@ -525,22 +766,96 @@ final class AnnouncementModel
         ];
     }
 
-    /** Label audiens yang siap ditampilkan. */
-    public static function audienceLabel(array $announcement): string
+    /**
+     * Rincian target siap tampil: satu baris per kelompok.
+     *
+     * @return array<int,array{type:string,label:string,names:array<int,string>}>
+     */
+    public function audienceBreakdown(array $announcement): array
     {
-        $audience = $announcement['audience'] ?? 'ALL';
-        $value = (string) ($announcement['audience_value'] ?? '');
+        $id = (int) ($announcement['id'] ?? 0);
+        $targets = $this->targetsOf($id);
 
-        if ($audience === 'ALL' || $value === '') {
-            return self::AUDIENCES['ALL'];
+        if (!$targets) {
+            // Pengumuman lama: satu kelompok dari kolom audience.
+            $audience = (string) ($announcement['audience'] ?? 'ALL');
+            $value = (string) ($announcement['audience_value'] ?? '');
+            if ($audience === 'ALL' || $value === '') {
+                return [['type' => 'ALL', 'label' => 'Semua karyawan', 'names' => []]];
+            }
+            return [[
+                'type'  => $audience,
+                'label' => self::TARGET_LABELS[$audience] ?? 'Audiens',
+                'names' => [self::targetName($audience, $value)],
+            ]];
         }
 
-        return match ($audience) {
+        $groups = [];
+        foreach ($targets as $target) {
+            $type = (string) $target['target_type'];
+            $value = (string) $target['target_value'];
+            if ($type === 'ALL') {
+                return [['type' => 'ALL', 'label' => 'Semua karyawan', 'names' => []]];
+            }
+            $groups[$type][] = self::targetName($type, $value);
+        }
+
+        $order = ['UNIT', 'DEPARTMENT', 'POSITION', 'ROLE', 'EMPLOYEE'];
+        $out = [];
+        foreach ($order as $type) {
+            if (empty($groups[$type])) {
+                continue;
+            }
+            $out[] = [
+                'type'  => $type,
+                'label' => self::TARGET_LABELS[$type] ?? $type,
+                'names' => $groups[$type],
+            ];
+        }
+
+        return $out;
+    }
+
+    /** Nama tampil satu nilai target. */
+    private static function targetName(string $type, string $value): string
+    {
+        return match ($type) {
             'UNIT'       => (string) Database::value('SELECT name FROM business_units WHERE id = ?', [(int) $value], 'Unit #' . $value),
             'DEPARTMENT' => (string) Database::value('SELECT name FROM departments WHERE id = ?', [(int) $value], 'Departemen #' . $value),
             'POSITION'   => (string) Database::value('SELECT name FROM positions WHERE id = ?', [(int) $value], 'Jabatan #' . $value),
+            'EMPLOYEE'   => (string) Database::value('SELECT full_name FROM employees WHERE id = ?', [(int) $value], 'Karyawan #' . $value),
             'ROLE'       => role_label($value),
-            default      => self::AUDIENCES['ALL'],
+            default      => $value,
         };
+    }
+
+    /** Label audiens ringkas untuk daftar/tabel. */
+    public static function audienceLabel(array $announcement): string
+    {
+        $audience = (string) ($announcement['audience'] ?? 'ALL');
+        $value = (string) ($announcement['audience_value'] ?? '');
+
+        if ($audience === 'ALL' || ($value === '' && $audience !== 'MULTI')) {
+            if ($audience === 'ALL') {
+                return self::AUDIENCES['ALL'];
+            }
+        }
+
+        // Pengumuman ber-target banyak: tampilkan ringkasannya.
+        $model = new self();
+        $breakdown = $model->audienceBreakdown($announcement);
+        if (count($breakdown) === 1 && $breakdown[0]['type'] === 'ALL') {
+            return self::AUDIENCES['ALL'];
+        }
+
+        $parts = [];
+        foreach ($breakdown as $group) {
+            $count = count($group['names']);
+            $parts[] = $count === 1
+                ? $group['names'][0]
+                : $group['label'] . ' (' . $count . ')';
+        }
+
+        return implode(' · ', $parts);
     }
 }

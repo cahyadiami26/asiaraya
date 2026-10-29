@@ -4,6 +4,7 @@
  * @var array $item, $categories, $tones, $statuses, $readStats, $user
  * @var string $audienceLabel
  * @var int $audienceSize
+ * @var array $audienceBreakdown
  * @var bool $isHR
  */
 use App\Models\AnnouncementModel;
@@ -127,6 +128,15 @@ $renderBody = static function (string $body): string {
                     <div><span>Kategori</span><b><?= e($categories[$item['category']] ?? $item['category']) ?></b></div>
                     <div><span>Audiens</span><b><?= e($audienceLabel) ?></b></div>
                     <div><span>Jumlah penerima</span><b><?= number_id($audienceSize) ?> karyawan</b></div>
+                    <?php foreach (($audienceBreakdown ?? []) as $group): ?>
+                        <?php if ($group['type'] === 'ALL' || !$group['names']): continue; endif; ?>
+                        <div>
+                            <span><?= e($group['label']) ?></span>
+                            <b style="font-weight:600;text-align:right">
+                                <?= e(implode(', ', array_slice($group['names'], 0, 4))) ?><?= count($group['names']) > 4 ? ' +' . (count($group['names']) - 4) . ' lagi' : '' ?>
+                            </b>
+                        </div>
+                    <?php endforeach; ?>
                     <div><span>Terbit</span><b><?= $item['publish_at'] ? tanggal($item['publish_at'], 'd M Y H:i') : '—' ?></b></div>
                     <div><span>Berakhir</span><b><?= $item['expires_at'] ? tanggal($item['expires_at'], 'd M Y H:i') : 'Tanpa batas' ?></b></div>
                     <div><span>Terakhir diubah</span><b><?= tanggal($item['updated_at'] ?? $item['created_at'], 'd M Y H:i') ?></b></div>

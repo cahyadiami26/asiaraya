@@ -302,7 +302,13 @@ final class PayrollModel
                 $pphAmount = round((float) $pph['monthly'], 2);
 
                 $lateDeduction = $lateEnabled
-                    ? round($this->attendance->lateDeduction((int) $attendance['late_minutes'], (int) $attendance['late_days'], $lateType, $lateValue), 2)
+                    ? round($this->attendance->lateDeduction(
+                        (int) $attendance['late_minutes'],
+                        (int) $attendance['late_days'],
+                        $lateType,
+                        $lateValue,
+                        (array) ($attendance['late_per_day'] ?? [])
+                    ), 2)
                     : 0.0;
                 $absentDeduction = $absentEnabled ? round($daily * (int) $attendance['absent_days'], 2) : 0.0;
                 $leaveDeduction = round($daily * $unpaidDays, 2);
@@ -481,12 +487,20 @@ final class PayrollModel
             [$employeeId, $start, $end]
         ) ?? [];
 
+        $perDay = Database::all(
+            'SELECT late_minutes FROM attendance
+              WHERE employee_id = ? AND work_date BETWEEN ? AND ? AND late_minutes > 0
+              ORDER BY work_date',
+            [$employeeId, $start, $end]
+        );
+
         return [
             'present_days' => (int) ($row['present_days'] ?? 0),
             'absent_days'  => (int) ($row['absent_days'] ?? 0),
             'late_days'    => (int) ($row['late_days'] ?? 0),
             'late_minutes' => (int) ($row['late_minutes'] ?? 0),
             'leave_days'   => (int) ($row['leave_days'] ?? 0),
+            'late_per_day' => array_map(static fn (array $r): int => (int) $r['late_minutes'], $perDay),
         ];
     }
 

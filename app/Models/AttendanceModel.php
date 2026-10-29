@@ -13,7 +13,8 @@ use App\Core\Settings;
  * Aturan yang dipakai konsisten di seluruh aplikasi:
  *   status   PRESENT | LATE | ABSENT | LEAVE | WFH (operational_type)
  *   toleransi attendance_late_tolerance (menit) dari jam masuk shift
- *   denda    attendance_late_deduction_type PER_MINUTE | PER_DAY | FIXED
+ *   denda    attendance_late_deduction_type PER_MINUTE | PER_DAY | FIXED |
+ *            PERCENT | PROGRESSIVE (tier 0–1 jam, 1–2 jam, 2–3 jam, >3 jam)
  */
 final class AttendanceModel
 {
@@ -584,17 +585,45 @@ final class AttendanceModel
         $lateValue = (float) Settings::get('attendance_late_deduction_value', 2500);
         $lateType = (string) Settings::get('attendance_late_deduction_type', 'PER_MINUTE');
         $deductionEnabled = (bool) Settings::get('attendance_late_deduction_enabled', true);
+        $tiers = $this->lateTiers();
+        $tierMode = $this->lateTierMode();
 
         foreach ($rows as &$row) {
             $row['attendance_rate'] = $this->rate((int) $row['present_days'], (int) $row['absent_days'], (int) $row['leave_days']);
             $row['work_hours'] = round(((int) $row['work_minutes']) / 60, 1);
-            $row['late_deduction'] = $deductionEnabled
-                ? round($this->lateDeduction((int) $row['late_minutes'], (int) $row['late_days'], $lateType, $lateValue), 2)
-                : 0.0;
+
+            if (!$deductionEnabled) {
+                $row['late_deduction'] = 0.0;
+                continue;
+            }
+
+            $perDay = [];
+            if ($lateType === 'PROGRESSIVE') {
+                $perDay = $this->lateMinutesPerDay((int) $row['id'], $start, $end);
+                $row['late_day_detail'] = implode(', ', array_map(
+                    static fn (int $m): string => $m . ' mnt',
+                    $perDay
+                ));
+                $row['late_tier_label'] = $perDay
+                    ? $this->tierFor(max($perDay), $tiers)['label']
+                    : '';
+            }
+
+            $row['late_deduction'] = round(
+                $this->lateDeduction((int) $row['late_minutes'], (int) $row['late_days'], $lateType, $lateValue, $perDay),
+                2
+            );
         }
         unset($row);
 
-        return ['rows' => $rows, 'total' => $this->countRekap($filters), 'start' => $start, 'end' => $end];
+        return [
+            'rows'     => $rows,
+            'total'    => $this->countRekap($filters),
+            'start'    => $start,
+            'end'      => $end,
+            'tiers'    => $tiers,
+            'tierMode' => $tierMode,
+        ];
     }
 
     public function countRekap(array $filters): int
@@ -629,15 +658,171 @@ final class AttendanceModel
         return $base > 0 ? round(($present / $base) * 100, 1) : 0.0;
     }
 
-    /** Late deduction for one employee in a period. */
-    public function lateDeduction(int $lateMinutes, int $lateDays, string $type, float $value): float
+    /* ------------------------------------------------- denda progresif */
+
+    /**
+     * Daftar tingkatan (tier) denda keterlambatan dari Settings.
+     *
+     * Tier 1..3 punya batas atas menit; tier 4 adalah "di atas tier 3" sehingga
+     * batas atasnya null. Contoh default: 0–60, 61–120, 121–180, >180 menit
+     * (0–1 jam, 1–2 jam, 2–3 jam, lebih dari 3 jam).
+     *
+     * @return array<int,array{min:int,max:?int,amount:float,label:string}>
+     */
+    public function lateTiers(): array
     {
+        $bounds = [
+            (int) Settings::int('attendance_late_tier_1_max', 60),
+            (int) Settings::int('attendance_late_tier_2_max', 120),
+            (int) Settings::int('attendance_late_tier_3_max', 180),
+        ];
+        // Pastikan batas selalu naik walau pengaturan pernah disimpan keliru.
+        $bounds[1] = max($bounds[1], $bounds[0] + 1);
+        $bounds[2] = max($bounds[2], $bounds[1] + 1);
+
+        $amounts = [
+            (float) Settings::float('attendance_late_tier_1_amount', 25000),
+            (float) Settings::float('attendance_late_tier_2_amount', 50000),
+            (float) Settings::float('attendance_late_tier_3_amount', 75000),
+            (float) Settings::float('attendance_late_tier_4_amount', 125000),
+        ];
+
+        $tiers = [];
+        $min = 0;
+        foreach ($bounds as $index => $max) {
+            $tiers[] = [
+                'min'    => $min,
+                'max'    => $max,
+                'amount' => max(0, $amounts[$index]),
+                'label'  => $this->tierLabel($min, $max),
+            ];
+            $min = $max + 1;
+        }
+        $tiers[] = [
+            'min'    => $min,
+            'max'    => null,
+            'amount' => max(0, $amounts[3]),
+            'label'  => $this->tierLabel($min, null),
+        ];
+
+        return $tiers;
+    }
+
+    /** Label rentang, mis. "0–60 menit (0–1 jam)" dan "> 180 menit (> 3 jam)". */
+    public function tierLabel(int $min, ?int $max): string
+    {
+        if ($max === null) {
+            $threshold = max(0, $min - 1);
+            return '> ' . $threshold . ' menit (' . $this->hourRange($threshold) . ')';
+        }
+        return $min . '–' . $max . ' menit (' . $this->hourRange($min) . '–' . $this->hourRange($max) . ')';
+    }
+
+    private function hourRange(int $minutes): string
+    {
+        if ($minutes === 0) {
+            return '0';
+        }
+        $hours = $minutes / 60;
+        $value = abs($hours - round($hours)) < 0.05 ? (int) round($hours) : round($hours, 1);
+        return rtrim(rtrim(number_format((float) $value, 1, ',', '.'), '0'), ',') . ' jam';
+    }
+
+    /** Tier yang berlaku untuk sejumlah menit terlambat. */
+    public function tierFor(int $minutes, array $tiers): array
+    {
+        foreach ($tiers as $tier) {
+            if ($tier['max'] === null || $minutes <= $tier['max']) {
+                return $tier;
+            }
+        }
+        return $tiers[count($tiers) - 1];
+    }
+
+    /** Mode progresif: DAILY (per hari) atau MONTHLY (akumulasi sebulan). */
+    public function lateTierMode(): string
+    {
+        return strtoupper((string) Settings::get('attendance_late_tier_mode', 'DAILY')) === 'MONTHLY'
+            ? 'MONTHLY'
+            : 'DAILY';
+    }
+
+    /** Tipe denda aktif (PER_MINUTE|PER_DAY|FIXED|PERCENT|PROGRESSIVE). */
+    public function lateDeductionType(): string
+    {
+        return strtoupper((string) Settings::get('attendance_late_deduction_type', 'PER_MINUTE'));
+    }
+
+    /**
+     * Denda progresif dari sebaran menit terlambat per hari.
+     *
+     * @param array<int,int> $minutesPerDay daftar menit terlambat untuk setiap hari yang terlambat
+     */
+    public function progressiveDeduction(array $minutesPerDay, ?array $tiers = null, ?string $mode = null): float
+    {
+        $tiers = $tiers ?? $this->lateTiers();
+        $mode = $mode ?? $this->lateTierMode();
+        $minutes = array_values(array_filter(array_map('intval', $minutesPerDay), static fn (int $m): bool => $m > 0));
+
+        if (!$minutes) {
+            return 0.0;
+        }
+
+        if ($mode === 'MONTHLY') {
+            return round((float) $this->tierFor(array_sum($minutes), $tiers)['amount'], 2);
+        }
+
+        $total = 0.0;
+        foreach ($minutes as $value) {
+            $total += (float) $this->tierFor($value, $tiers)['amount'];
+        }
+        return round($total, 2);
+    }
+
+    /**
+     * Denda keterlambatan untuk satu karyawan dalam satu periode.
+     *
+     * @param array<int,int> $minutesPerDay dipakai tipe PROGRESSIVE
+     */
+    public function lateDeduction(
+        int $lateMinutes,
+        int $lateDays,
+        string $type,
+        float $value,
+        array $minutesPerDay = []
+    ): float {
+        if (strtoupper($type) === 'PROGRESSIVE') {
+            if (!$minutesPerDay && $lateDays > 0) {
+                // Tanpa rincian harian, pakai rata-rata agar tetap masuk akal.
+                $average = (int) ceil($lateMinutes / max(1, $lateDays));
+                $minutesPerDay = array_fill(0, max(1, $lateDays), $average);
+            }
+            return $this->progressiveDeduction($minutesPerDay);
+        }
+
         return match (strtoupper($type)) {
             'PER_DAY'  => $lateDays * $value,
             'FIXED'    => $lateDays > 0 ? $value : 0.0,
             'PERCENT'  => 0.0, // handled at payroll level (percentage of basic salary)
             default    => $lateMinutes * $value,
         };
+    }
+
+    /**
+     * Rincian menit terlambat per hari untuk satu karyawan pada rentang tanggal.
+     *
+     * @return array<int,int>
+     */
+    public function lateMinutesPerDay(int $employeeId, string $start, string $end): array
+    {
+        $rows = Database::all(
+            'SELECT late_minutes FROM attendance
+              WHERE employee_id = ? AND work_date BETWEEN ? AND ? AND late_minutes > 0
+              ORDER BY work_date',
+            [$employeeId, $start, $end]
+        );
+
+        return array_map(static fn (array $row): int => (int) $row['late_minutes'], $rows);
     }
 
     /** @return array{0:string,1:string} */
@@ -813,6 +998,10 @@ final class AttendanceModel
             'attendance_work_start', 'attendance_work_end', 'attendance_late_tolerance',
             'attendance_selfie_required', 'attendance_geofence_required', 'attendance_wfh_bypass_geofence',
             'attendance_late_deduction_enabled', 'attendance_late_deduction_type', 'attendance_late_deduction_value',
+            'attendance_late_tier_mode',
+            'attendance_late_tier_1_max', 'attendance_late_tier_2_max', 'attendance_late_tier_3_max',
+            'attendance_late_tier_1_amount', 'attendance_late_tier_2_amount',
+            'attendance_late_tier_3_amount', 'attendance_late_tier_4_amount',
             'attendance_absent_deduction_enabled', 'attendance_absent_deduct_salary',
             'attendance_absent_leave_type_id', 'attendance_absent_leave_days',
             'attendance_photo_max_width', 'attendance_photo_quality',

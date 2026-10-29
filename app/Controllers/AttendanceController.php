@@ -241,6 +241,8 @@ final class AttendanceController extends Controller
                 'type'    => (string) Settings::get('attendance_late_deduction_type', 'PER_MINUTE'),
                 'value'   => (float) Settings::get('attendance_late_deduction_value', 2500),
                 'tolerance' => (int) Settings::get('attendance_late_tolerance', 15),
+                'tiers'   => $this->attendance->lateTiers(),
+                'tierMode' => $this->attendance->lateTierMode(),
             ],
             'badges'      => $this->dashboard->badges($this->employee() ?? []),
         ] + $this->withInput());
@@ -261,6 +263,8 @@ final class AttendanceController extends Controller
             'leaveTypes' => $leaveTypes,
             'badges'     => $this->dashboard->badges($this->employee() ?? []),
             'sample'     => $this->deductionSamples(),
+            'tiers'      => $this->attendance->lateTiers(),
+            'tierMode'   => $this->attendance->lateTierMode(),
         ] + $this->withInput());
     }
 
@@ -273,7 +277,14 @@ final class AttendanceController extends Controller
               ->numeric('attendance_late_deduction_value', 'Nilai denda')
               ->numeric('attendance_photo_max_width', 'Lebar maksimum foto')
               ->numeric('attendance_photo_quality', 'Kualitas foto')
-              ->in('attendance_late_deduction_type', 'Tipe denda', ['PER_MINUTE', 'PER_DAY', 'FIXED', 'PERCENT']);
+              ->in('attendance_late_deduction_type', 'Tipe denda', ['PER_MINUTE', 'PER_DAY', 'FIXED', 'PERCENT', 'PROGRESSIVE'])
+              ->numeric('attendance_late_tier_1_max', 'Batas tier 1')
+              ->numeric('attendance_late_tier_2_max', 'Batas tier 2')
+              ->numeric('attendance_late_tier_3_max', 'Batas tier 3')
+              ->numeric('attendance_late_tier_1_amount', 'Denda tier 1')
+              ->numeric('attendance_late_tier_2_amount', 'Denda tier 2')
+              ->numeric('attendance_late_tier_3_amount', 'Denda tier 3')
+              ->numeric('attendance_late_tier_4_amount', 'Denda tier 4');
         }, '/attendance/settings');
 
         if (($data['attendance_work_start'] ?? '') === ($data['attendance_work_end'] ?? '')) {
@@ -284,6 +295,15 @@ final class AttendanceController extends Controller
         $quality = max(40, min(90, (int) $data['attendance_photo_quality']));
         $width = max(240, min(1600, (int) $data['attendance_photo_max_width']));
 
+        // Batas tier harus naik: 0 < t1 < t2 < t3, minimal selisih 1 menit.
+        $tier1 = max(1, min(600, (int) ($data['attendance_late_tier_1_max'] ?? 60)));
+        $tier2 = max($tier1 + 1, min(1200, (int) ($data['attendance_late_tier_2_max'] ?? 120)));
+        $tier3 = max($tier2 + 1, min(1800, (int) ($data['attendance_late_tier_3_max'] ?? 180)));
+        $tierMode = strtoupper((string) ($data['attendance_late_tier_mode'] ?? 'DAILY'));
+        if (!in_array($tierMode, ['DAILY', 'MONTHLY'], true)) {
+            $tierMode = 'DAILY';
+        }
+
         Settings::many([
             'attendance_work_start'             => substr((string) $data['attendance_work_start'], 0, 5),
             'attendance_work_end'               => substr((string) $data['attendance_work_end'], 0, 5),
@@ -293,7 +313,15 @@ final class AttendanceController extends Controller
             'attendance_wfh_bypass_geofence'    => isset($data['attendance_wfh_bypass_geofence']) ? '1' : '0',
             'attendance_late_deduction_enabled' => isset($data['attendance_late_deduction_enabled']) ? '1' : '0',
             'attendance_late_deduction_type'    => (string) $data['attendance_late_deduction_type'],
-            'attendance_late_deduction_value'   => (string) max(0, (float) $data['attendance_late_deduction_value']),
+            'attendance_late_deduction_value'   => (string) max(0, (float) ($data['attendance_late_deduction_value'] ?? 0)),
+            'attendance_late_tier_mode'         => $tierMode,
+            'attendance_late_tier_1_max'        => (string) $tier1,
+            'attendance_late_tier_2_max'        => (string) $tier2,
+            'attendance_late_tier_3_max'        => (string) $tier3,
+            'attendance_late_tier_1_amount'     => (string) max(0, (float) ($data['attendance_late_tier_1_amount'] ?? 25000)),
+            'attendance_late_tier_2_amount'     => (string) max(0, (float) ($data['attendance_late_tier_2_amount'] ?? 50000)),
+            'attendance_late_tier_3_amount'     => (string) max(0, (float) ($data['attendance_late_tier_3_amount'] ?? 75000)),
+            'attendance_late_tier_4_amount'     => (string) max(0, (float) ($data['attendance_late_tier_4_amount'] ?? 125000)),
             'attendance_absent_deduction_enabled' => isset($data['attendance_absent_deduction_enabled']) ? '1' : '0',
             'attendance_absent_deduct_salary'   => isset($data['attendance_absent_deduct_salary']) ? '1' : '0',
             'attendance_absent_leave_type_id'   => (string) (int) ($data['attendance_absent_leave_type_id'] ?? 0),
@@ -393,8 +421,12 @@ final class AttendanceController extends Controller
         $model = $this->attendance;
 
         $samples = [];
-        foreach ([5, 15, 30, 60] as $minutes) {
-            $samples[] = ['minutes' => $minutes, 'days' => 3, 'amount' => $model->lateDeduction($minutes * 3, 3, $type, $value)];
+        foreach ([5, 15, 30, 60, 120, 240] as $minutes) {
+            $samples[] = [
+                'minutes' => $minutes,
+                'days'    => 3,
+                'amount'  => $model->lateDeduction($minutes * 3, 3, $type, $value, [$minutes, $minutes, $minutes]),
+            ];
         }
         return $samples;
     }

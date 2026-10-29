@@ -770,6 +770,21 @@ CREATE TABLE IF NOT EXISTS offboarding_stages (
 );
 
 -- ---------------------------------------------------------------------------
+-- Batch 17.1 — Target pengumuman berlapis (unit, departemen, jabatan, peran,
+-- karyawan tertentu, atau kombinasi beberapa sekaligus)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS announcement_targets (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    announcement_id INT UNSIGNED NOT NULL,
+    target_type VARCHAR(20) NOT NULL DEFAULT 'ALL',
+    target_value VARCHAR(64) NOT NULL DEFAULT '',
+    created_at DATETIME NULL,
+    UNIQUE KEY uq_announcement_target (announcement_id, target_type, target_value),
+    KEY idx_ann_target_ann (announcement_id),
+    KEY idx_ann_target_type (target_type, target_value)
+);
+
+-- ---------------------------------------------------------------------------
 -- Batch 17 — Register aset offboarding & BAST (berita acara serah terima)
 -- ---------------------------------------------------------------------------
 

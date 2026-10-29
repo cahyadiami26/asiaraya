@@ -2,7 +2,7 @@
 /**
  * Form tulis/ubah pengumuman.
  * @var array|null $item
- * @var array $categories, $audiences, $targets, $roles, $errors, $old
+ * @var array $categories, $audiences, $targets, $roles, $statuses, $errors, $old
  */
 $val = static function (string $key, string $default = '') use ($old, $item): string {
     if (array_key_exists($key, $old)) {
@@ -14,12 +14,19 @@ $val = static function (string $key, string $default = '') use ($old, $item): st
     return $default;
 };
 
-$currentTarget = $val('audience_target', '');
-if ($currentTarget === '' && $item !== null) {
-    $currentTarget = ($item['audience'] ?? 'ALL') === 'ALL'
-        ? 'ALL'
-        : ($item['audience'] . ':' . $item['audience_value']);
+// Target terpilih: dari input lama (validasi gagal) atau dari database.
+$savedTargets = $targets['saved'] ?? [];
+$oldTargets = $old['audience_targets'] ?? null;
+$selectedTargets = is_array($oldTargets) ? array_map('strval', $oldTargets) : $savedTargets;
+
+$isAll = in_array('ALL', $selectedTargets, true) || !$selectedTargets;
+$employeeTargets = [];
+foreach ($selectedTargets as $key) {
+    if (str_starts_with($key, 'EMPLOYEE:')) {
+        $employeeTargets[] = (int) substr($key, 9);
+    }
 }
+$hasEmployeeTargets = $employeeTargets !== [];
 
 $when = $val('publish_when', $item === null ? 'now' : (($item['status'] ?? 'DRAFT') === 'PUBLISHED' ? 'keep' : 'draft'));
 $toLocal = static function (?string $datetime): string {
@@ -53,48 +60,95 @@ $action = $isEdit ? url('announcements/' . (int) $item['id']) : url('announcemen
                         <input class="input" type="text" name="title" maxlength="180" required
                                value="<?= e($val('title')) ?>" placeholder="Contoh: Perubahan jam kerja selama bulan Ramadan">
                     </div>
-                    <div class="form-grid two">
-                        <div class="field">
-                            <label>Kategori <span class="req">*</span></label>
-                            <select class="select" name="category" required>
-                                <?php foreach ($categories as $key => $label): ?>
-                                    <option value="<?= e($key) ?>" <?= $val('category', 'INFO') === $key ? 'selected' : '' ?>><?= e($label) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                    <div class="field">
+                        <label>Kategori <span class="req">*</span></label>
+                        <select class="select" name="category" required style="max-width:280px">
+                            <?php foreach ($categories as $key => $label): ?>
+                                <option value="<?= e($key) ?>" <?= $val('category', 'INFO') === $key ? 'selected' : '' ?>><?= e($label) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <?php
+                    $picked = static fn (string $key): bool => in_array($key, $selectedTargets, true);
+                    $groups = [
+                        ['key' => 'UNIT', 'title' => 'Unit bisnis', 'icon' => 'building',
+                         'items' => array_map(static fn ($u) => ['value' => (string) (int) $u['id'], 'label' => $u['name'], 'sub' => $u['code'] ?? ''], $targets['units'] ?? [])],
+                        ['key' => 'DEPARTMENT', 'title' => 'Departemen', 'icon' => 'layers',
+                         'items' => array_map(static fn ($d) => ['value' => (string) (int) $d['id'], 'label' => $d['name'], 'sub' => $d['code'] ?? ''], $targets['departments'] ?? [])],
+                        ['key' => 'POSITION', 'title' => 'Jabatan', 'icon' => 'briefcase',
+                         'items' => array_map(static fn ($o) => ['value' => (string) (int) $o['id'], 'label' => $o['name'], 'sub' => $o['code'] ?? ''], $targets['positions'] ?? [])],
+                        ['key' => 'ROLE', 'title' => 'Peran sistem', 'icon' => 'shield',
+                         'items' => array_map(static fn ($k) => ['value' => $k, 'label' => $roles[$k] ?? $k, 'sub' => ''], array_keys($roles))],
+                        ['key' => 'EMPLOYEE', 'title' => 'Karyawan tertentu', 'icon' => 'user', 'search' => true,
+                         'items' => array_map(static fn ($e) => ['value' => (string) (int) $e['id'], 'label' => $e['full_name'], 'sub' => $e['employee_code'] ?? ''], $targets['employees'] ?? [])],
+                    ];
+                    ?>
+
+                    <div class="field">
+                        <label>Audiens <span class="req">*</span></label>
+                        <div class="audience-mode" data-audience-mode>
+                            <label class="audience-mode__opt">
+                                <input type="radio" name="audience_mode" value="all" <?= $isAll ? 'checked' : '' ?>>
+                                <span><?= icon('users') ?><b>Semua karyawan aktif</b>
+                                    <i>Seluruh karyawan, termasuk yang bergabung kemudian.</i></span>
+                            </label>
+                            <label class="audience-mode__opt">
+                                <input type="radio" name="audience_mode" value="targeted" <?= $isAll ? '' : 'checked' ?>>
+                                <span><?= icon('filter') ?><b>Target tertentu</b>
+                                    <i>Pilih unit, departemen, jabatan, peran, dan/atau karyawan. Bisa dikombinasikan.</i></span>
+                            </label>
                         </div>
-                        <div class="field">
-                            <label>Audiens <span class="req">*</span></label>
-                            <select class="select" name="audience_target" required>
-                                <option value="ALL" <?= $currentTarget === 'ALL' ? 'selected' : '' ?>>Semua karyawan aktif</option>
-                                <?php if ($targets['units']): ?>
-                                    <optgroup label="Unit bisnis">
-                                        <?php foreach ($targets['units'] as $unit): $value = 'UNIT:' . (int) $unit['id']; ?>
-                                            <option value="<?= $value ?>" <?= $currentTarget === $value ? 'selected' : '' ?>><?= e($unit['name']) ?></option>
-                                        <?php endforeach; ?>
-                                    </optgroup>
-                                <?php endif; ?>
-                                <?php if ($targets['departments']): ?>
-                                    <optgroup label="Departemen">
-                                        <?php foreach ($targets['departments'] as $dept): $value = 'DEPARTMENT:' . (int) $dept['id']; ?>
-                                            <option value="<?= $value ?>" <?= $currentTarget === $value ? 'selected' : '' ?>><?= e($dept['name']) ?></option>
-                                        <?php endforeach; ?>
-                                    </optgroup>
-                                <?php endif; ?>
-                                <?php if ($targets['positions']): ?>
-                                    <optgroup label="Jabatan">
-                                        <?php foreach ($targets['positions'] as $pos): $value = 'POSITION:' . (int) $pos['id']; ?>
-                                            <option value="<?= $value ?>" <?= $currentTarget === $value ? 'selected' : '' ?>><?= e($pos['name']) ?></option>
-                                        <?php endforeach; ?>
-                                    </optgroup>
-                                <?php endif; ?>
-                                <optgroup label="Peran sistem">
-                                    <?php foreach ($roles as $roleKey => $roleLabel): $value = 'ROLE:' . $roleKey; ?>
-                                        <option value="<?= $value ?>" <?= $currentTarget === $value ? 'selected' : '' ?>><?= e($roleLabel) ?></option>
-                                    <?php endforeach; ?>
-                                </optgroup>
-                            </select>
+
+                        <div class="audience-panel" data-audience-panel <?= $isAll ? 'hidden' : '' ?>>
+                            <?php foreach ($groups as $group): ?>
+                                <?php
+                                $groupPicked = 0;
+                                foreach ($group['items'] as $option) {
+                                    if ($picked($group['key'] . ':' . $option['value'])) {
+                                        $groupPicked++;
+                                    }
+                                }
+                                $open = $groupPicked > 0;
+                                ?>
+                                <details class="target-group" <?= $open ? 'open' : '' ?>>
+                                    <summary>
+                                        <span class="target-group__icon"><?= icon($group['icon']) ?></span>
+                                        <span class="target-group__title"><?= e($group['title']) ?></span>
+                                        <span class="target-group__count" data-count><?= $groupPicked > 0 ? $groupPicked . ' dipilih' : count($group['items']) . ' tersedia' ?></span>
+                                    </summary>
+                                    <div class="target-group__body">
+                                        <?php if (!empty($group['search'])): ?>
+                                            <input class="input" type="search" data-target-search placeholder="Cari nama atau NIK…"
+                                                   style="margin-bottom:8px" aria-label="Cari <?= e($group['title']) ?>">
+                                        <?php endif; ?>
+                                        <div class="target-list">
+                                            <?php foreach ($group['items'] as $option): ?>
+                                                <?php $value = $group['key'] . ':' . $option['value']; ?>
+                                                <label class="target-item" data-name="<?= e(mb_strtolower($option['label'] . ' ' . $option['sub'])) ?>">
+                                                    <input type="checkbox" name="audience_targets[]" value="<?= e($value) ?>"
+                                                           <?= $picked($value) ? 'checked' : '' ?>>
+                                                    <span>
+                                                        <b><?= e($option['label']) ?></b>
+                                                        <?php if ($option['sub'] !== ''): ?><i class="mono"><?= e($option['sub']) ?></i><?php endif; ?>
+                                                    </span>
+                                                </label>
+                                            <?php endforeach; ?>
+                                            <?php if (!$group['items']): ?>
+                                                <div class="small muted" style="padding:6px 2px">Belum ada data.</div>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                </details>
+                            <?php endforeach; ?>
+
+                            <div class="small muted" style="margin-top:6px">
+                                Penerima akhir adalah gabungan seluruh pilihan di atas (tidak duplikat).
+                                Kosongkan semua pilihan untuk memakai “Semua karyawan aktif”.
+                            </div>
                         </div>
                     </div>
+
                     <div class="field">
                         <label>Isi <span class="req">*</span></label>
                         <textarea class="textarea" name="body" rows="14" required
@@ -177,7 +231,7 @@ $action = $isEdit ? url('announcements/' . (int) $item['id']) : url('announcemen
                         <div class="meta-list">
                             <div><span>Dibuat</span><b><?= tanggal($item['created_at'], 'd M Y H:i') ?></b></div>
                             <div><span>Terakhir diubah</span><b><?= tanggal($item['updated_at'] ?? $item['created_at'], 'd M Y H:i') ?></b></div>
-                            <div><span>Status</span><b><?= e(\App\Models\AnnouncementModel::STATUSES[$item['status']] ?? $item['status']) ?></b></div>
+                            <div><span>Status</span><b><?= e($statuses[$item['status']] ?? $item['status']) ?></b></div>
                         </div>
                     </div>
                 </section>
@@ -190,9 +244,60 @@ $action = $isEdit ? url('announcements/' . (int) $item['id']) : url('announcemen
 (function () {
     var select = document.querySelector('[data-publish-when]');
     var box = document.querySelector('[data-publish-at]');
-    if (!select || !box) { return; }
-    var sync = function () { box.hidden = select.value !== 'schedule'; };
-    select.addEventListener('change', sync);
-    sync();
+    if (select && box) {
+        var syncWhen = function () { box.hidden = select.value !== 'schedule'; };
+        select.addEventListener('change', syncWhen);
+        syncWhen();
+    }
+
+    /* ---------- audiens: mode semua vs target tertentu ---------- */
+    var mode = document.querySelector('[data-audience-mode]');
+    var panel = document.querySelector('[data-audience-panel]');
+    var syncMode = function () {
+        if (!mode || !panel) { return; }
+        var picked = mode.querySelector('input[name="audience_mode"]:checked');
+        var isTargeted = !!picked && picked.value === 'targeted';
+        panel.hidden = !isTargeted;
+        panel.querySelectorAll('input[name="audience_targets[]"]').forEach(function (box) {
+            box.disabled = !isTargeted;
+        });
+    };
+    if (mode) {
+        mode.addEventListener('change', syncMode);
+        syncMode();
+    }
+
+    /* ---------- hitung jumlah terpilih per kelompok ---------- */
+    var refreshCounts = function (group) {
+        var label = group.querySelector('[data-count]');
+        if (!label) { return; }
+        var boxes = group.querySelectorAll('input[name="audience_targets[]"]');
+        var checked = 0;
+        boxes.forEach(function (b) { if (b.checked) { checked++; } });
+        label.textContent = checked > 0
+            ? checked + ' dipilih'
+            : (boxes.length + ' tersedia');
+        label.classList.toggle('is-on', checked > 0);
+    };
+
+    document.querySelectorAll('.target-group').forEach(function (group) {
+        refreshCounts(group);
+        group.addEventListener('change', function (e) {
+            if (e.target.matches('input[name="audience_targets[]"]')) { refreshCounts(group); }
+        });
+    });
+
+    /* ---------- pencarian karyawan ---------- */
+    document.querySelectorAll('[data-target-search]').forEach(function (input) {
+        var group = input.closest('.target-group');
+        if (!group) { return; }
+        input.addEventListener('input', function () {
+            var term = input.value.trim().toLowerCase();
+            group.querySelectorAll('.target-item').forEach(function (item) {
+                var name = item.getAttribute('data-name') || '';
+                item.hidden = term !== '' && name.indexOf(term) === -1;
+            });
+        });
+    });
 })();
 </script>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\Database;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Paginator;
@@ -93,6 +94,9 @@ final class AnnouncementController extends Controller
             'statuses'   => AnnouncementModel::STATUSES,
             'audienceLabel' => AnnouncementModel::audienceLabel($announcement),
             'audienceSize'  => $this->announcements->audienceSize($announcement),
+            'audienceBreakdown' => ($isHR || Auth::hasRole('FIN'))
+                ? $this->announcements->audienceBreakdown($announcement)
+                : [],
             'readStats'  => $isHR || Auth::hasRole('FIN') ? $this->announcements->readStats($announcement) : null,
             'isHR'       => $isHR,
         ]);
@@ -172,6 +176,7 @@ final class AnnouncementController extends Controller
             'audiences'  => AnnouncementModel::AUDIENCES,
             'targets'    => $this->targets(),
             'roles'      => ['HR' => 'HR Administrator', 'FIN' => 'Finance', 'KARYAWAN' => 'Karyawan'],
+            'statuses'   => AnnouncementModel::STATUSES,
         ] + $this->withInput());
     }
 
@@ -190,8 +195,9 @@ final class AnnouncementController extends Controller
             'item'       => $item,
             'categories' => AnnouncementModel::CATEGORIES,
             'audiences'  => AnnouncementModel::AUDIENCES,
-            'targets'    => $this->targets(),
+            'targets'    => $this->targets((int) $item['id']),
             'roles'      => ['HR' => 'HR Administrator', 'FIN' => 'Finance', 'KARYAWAN' => 'Karyawan'],
+            'statuses'   => AnnouncementModel::STATUSES,
         ] + $this->withInput());
     }
 
@@ -220,9 +226,12 @@ final class AnnouncementController extends Controller
             'attachment'     => $upload['path'],
         ], $this->employeeId());
 
+        $this->announcements->syncTargets($id, $data['targets']);
+
         Audit::log('announcement.create', 'announcement', $id, [
-            'title'  => $data['title'],
-            'status' => $data['status'],
+            'title'   => $data['title'],
+            'status'  => $data['status'],
+            'targets' => count($data['targets']),
         ]);
 
         $this->afterSave($id, $data, $upload['path']);
@@ -274,7 +283,11 @@ final class AnnouncementController extends Controller
         }
 
         $this->announcements->update((int) $id, $payload, $this->employeeId());
-        Audit::log('announcement.update', 'announcement', (int) $id, ['title' => $data['title']]);
+        $this->announcements->syncTargets((int) $id, $data['targets']);
+        Audit::log('announcement.update', 'announcement', (int) $id, [
+            'title'   => $data['title'],
+            'targets' => count($data['targets']),
+        ]);
 
         $this->afterSave((int) $id, $data, $payload['attachment'] ?? ($existing['attachment'] ?? null), (string) $existing['status']);
 
@@ -343,21 +356,55 @@ final class AnnouncementController extends Controller
               ->in('category', 'Kategori', array_keys(AnnouncementModel::CATEGORIES));
         }, '/announcements/manage');
 
-        // Target audiens dikirim sebagai satu nilai: ALL | UNIT:1 | DEPARTMENT:2 | POSITION:3 | ROLE:HR
-        $target = (string) input('audience_target', 'ALL');
-        $audience = 'ALL';
-        $audienceValue = '';
-        if ($target !== '' && $target !== 'ALL') {
-            [$audience, $audienceValue] = array_pad(explode(':', $target, 2), 2, '');
+        // Target audiens dikirim sebagai array nilai "TYPE:VALUE" sehingga satu
+        // pengumuman bisa menyasar beberapa unit/departemen/karyawan sekaligus.
+        $rawTargets = $_POST['audience_targets'] ?? [];
+        if (!is_array($rawTargets)) {
+            $rawTargets = [(string) $rawTargets];
         }
-        if (!isset(AnnouncementModel::AUDIENCES[$audience])) {
-            flash('error', 'Audiens pengumuman tidak valid.');
+        if (input('audience_mode', 'all') === 'all') {
+            $rawTargets = ['ALL'];
+        }
+
+        $targets = [];
+        foreach ($rawTargets as $raw) {
+            $raw = trim((string) $raw);
+            if ($raw === '') {
+                continue;
+            }
+            if (strtoupper($raw) === 'ALL') {
+                $targets[] = ['type' => 'ALL', 'value' => ''];
+                continue;
+            }
+            [$type, $value] = array_pad(explode(':', $raw, 2), 2, '');
+            $targets[] = ['type' => strtoupper($type), 'value' => trim($value)];
+        }
+        $targets = $this->announcements->normalizeTargets($targets);
+
+        if (!$targets) {
+            flash('error', 'Pilih minimal satu target audiens (unit, departemen, jabatan, peran, atau karyawan).');
             back('/announcements/manage');
         }
-        if ($audience !== 'ALL' && $audienceValue === '') {
-            flash('error', 'Pilih target audiens terlebih dahulu.');
-            back('/announcements/manage');
+        if (in_array('EMPLOYEE', array_column($targets, 'type'), true)) {
+            $ids = array_values(array_map(
+                static fn (array $t): int => (int) $t['value'],
+                array_filter($targets, static fn (array $t): bool => $t['type'] === 'EMPLOYEE')
+            ));
+            $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+            $found = (int) Database::value(
+                "SELECT COUNT(*) FROM employees WHERE flag = 'ACTIVE' AND id IN ($placeholders)",
+                $ids,
+                0
+            );
+            if ($found !== count($ids)) {
+                flash('error', 'Sebagian karyawan target tidak ditemukan atau sudah tidak aktif.');
+                back('/announcements/manage');
+            }
         }
+
+        $summary = $this->announcements->audienceSummary($targets);
+        $audience = $summary['audience'];
+        $audienceValue = $summary['audience_value'];
 
         $when = (string) input('publish_when', 'now'); // now | schedule | draft
         $publishAt = null;
@@ -392,6 +439,7 @@ final class AnnouncementController extends Controller
             'body'           => trim((string) input('body', '')),
             'audience'       => $audience,
             'audience_value' => $audienceValue,
+            'targets'        => $targets,
             'is_pinned'      => (int) input('is_pinned', 0) === 1 ? 1 : 0,
             'notify'         => (int) input('notify', 0) === 1 ? 1 : 0,
             'status'         => $status,
@@ -417,12 +465,19 @@ final class AnnouncementController extends Controller
     }
 
     /** Pilihan target audiens: unit, departemen, posisi. */
-    private function targets(): array
+    private function targets(?int $announcementId = null): array
     {
+        $employees = Database::all(
+            "SELECT id, full_name, employee_code FROM employees
+              WHERE flag = 'ACTIVE' ORDER BY full_name LIMIT 2000"
+        );
+
         return [
             'units'       => $this->org->units(),
             'departments' => $this->org->departments(),
             'positions'   => $this->org->positions(),
+            'employees'   => $employees,
+            'saved'       => $announcementId ? $this->announcements->targetKeys($announcementId) : [],
         ];
     }
 }

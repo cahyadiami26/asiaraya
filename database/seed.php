@@ -384,7 +384,19 @@ return static function (): array {
             } elseif ($roll <= 6) {
                 $status = 'LEAVE';
             } else {
-                $arrival = mt_rand(-14, 28); // minutes vs shift start
+                // Sebagian keterlambatan sengaja panjang agar tier denda
+                // progresif (0–1, 1–2, 2–3, >3 jam) terlihat pada rekap.
+                $arrival = mt_rand(-14, 28);
+                $lateRoll = mt_rand(1, 100);
+                if ($lateRoll <= 5) {
+                    $arrival = mt_rand(181, 260);
+                } elseif ($lateRoll <= 14) {
+                    $arrival = mt_rand(121, 180);
+                } elseif ($lateRoll <= 28) {
+                    $arrival = mt_rand(61, 120);
+                } elseif ($lateRoll <= 45) {
+                    $arrival = mt_rand(29, 60);
+                }
                 $startTs = strtotime($date . ' ' . $shift['check_in_time']);
                 $checkInTs = $startTs + ($arrival * 60);
                 if ($arrival > (int) $shift['late_tolerance_minutes']) {
@@ -590,8 +602,16 @@ return static function (): array {
         ['attendance_geofence_required', '1', 'attendance'],
         ['attendance_wfh_bypass_geofence', '1', 'attendance'],
         ['attendance_late_deduction_enabled', '1', 'attendance'],
-        ['attendance_late_deduction_type', 'PER_MINUTE', 'attendance'],
+        ['attendance_late_deduction_type', 'PROGRESSIVE', 'attendance'],
         ['attendance_late_deduction_value', '2500', 'attendance'],
+        ['attendance_late_tier_mode', 'DAILY', 'attendance'],
+        ['attendance_late_tier_1_max', '60', 'attendance'],
+        ['attendance_late_tier_2_max', '120', 'attendance'],
+        ['attendance_late_tier_3_max', '180', 'attendance'],
+        ['attendance_late_tier_1_amount', '25000', 'attendance'],
+        ['attendance_late_tier_2_amount', '50000', 'attendance'],
+        ['attendance_late_tier_3_amount', '75000', 'attendance'],
+        ['attendance_late_tier_4_amount', '125000', 'attendance'],
         ['attendance_absent_deduction_enabled', '1', 'attendance'],
         ['attendance_absent_deduct_salary', '0', 'attendance'],
         ['attendance_absent_leave_type_id', (string) ($leaveTypeIds['CT'] ?? ''), 'attendance'],
@@ -717,6 +737,11 @@ return static function (): array {
     /* ---------------- Pengumuman & notifikasi (Batch 12) ---------------- */
     $hrAuthor = (int) Database::value("SELECT id FROM employees WHERE role = 'HR' AND flag = 'ACTIVE' ORDER BY id LIMIT 1");
     $surabayaId = (int) Database::value("SELECT id FROM business_units WHERE name LIKE '%Surabaya%' ORDER BY id LIMIT 1");
+    $produksiId = (int) Database::value("SELECT id FROM departments WHERE name LIKE '%Produksi%' ORDER BY id LIMIT 1");
+    $k3PicId = (int) Database::value(
+        "SELECT id FROM employees WHERE flag = 'ACTIVE' AND department_id = ? ORDER BY id LIMIT 1",
+        [$produksiId ?: 0]
+    );
     $now = time();
 
     $announcementSeed = [
@@ -756,6 +781,11 @@ return static function (): array {
             'category' => 'EVENT',
             'audience' => 'UNIT',
             'value'    => $surabayaId ?: null,
+            'targets'  => array_values(array_filter([
+                ['type' => 'UNIT', 'value' => (string) $surabayaId],
+                ['type' => 'DEPARTMENT', 'value' => (string) $produksiId],
+                ['type' => 'EMPLOYEE', 'value' => (string) $k3PicId],
+            ], static fn (array $t): bool => $t['value'] !== '' && $t['value'] !== '0')),
             'pinned'   => 0,
             'status'   => 'PUBLISHED',
             'days'     => -2,
@@ -798,6 +828,7 @@ return static function (): array {
         "SELECT id, role, business_unit_id, department_id, position_id
            FROM employees WHERE flag = 'ACTIVE' ORDER BY id"
     );
+    $hasTargetTable = Database::tableExists('announcement_targets');
     $announcementIds = [];
     foreach ($announcementSeed as $index => $row) {
         $publishedAt = date('Y-m-d H:i:s', strtotime(($row['days'] >= 0 ? '+' : '') . $row['days'] . ' days', $now));
@@ -820,18 +851,56 @@ return static function (): array {
         ]);
         $announcementIds[$index] = $id;
 
+        // Target berlapis (batch 17.1): satu pengumuman bisa menyasar beberapa
+        // unit/departemen/karyawan sekaligus.
+        $rowTargets = $row['targets'] ?? [[
+            'type'  => $row['audience'],
+            'value' => $row['value'] !== null ? (string) $row['value'] : '',
+        ]];
+
+        if ($hasTargetTable) {
+            foreach ($rowTargets as $target) {
+                try {
+                    Database::insert('announcement_targets', [
+                        'announcement_id' => $id,
+                        'target_type'     => (string) $target['type'],
+                        'target_value'    => $target['type'] === 'ALL' ? '' : (string) $target['value'],
+                        'created_at'      => $publishedAt,
+                    ]);
+                } catch (\Throwable) {
+                    // duplikat diabaikan
+                }
+            }
+        }
+
         if ($row['status'] !== 'PUBLISHED') {
             continue;
         }
 
         // Hanya karyawan dalam audiens yang tercatat membaca.
-        $targets = match ($row['audience']) {
-            'UNIT'       => array_filter($audienceEmployees, static fn ($e) => (string) $e['business_unit_id'] === (string) $row['value']),
-            'DEPARTMENT' => array_filter($audienceEmployees, static fn ($e) => (string) $e['department_id'] === (string) $row['value']),
-            'POSITION'   => array_filter($audienceEmployees, static fn ($e) => (string) $e['position_id'] === (string) $row['value']),
-            'ROLE'       => array_filter($audienceEmployees, static fn ($e) => (string) $e['role'] === (string) $row['value']),
-            default      => $audienceEmployees,
-        };
+        $targets = $audienceEmployees;
+        if (!in_array('ALL', array_column($rowTargets, 'type'), true)) {
+            $targets = array_values(array_filter(
+                $audienceEmployees,
+                static function (array $employee) use ($rowTargets): bool {
+                    foreach ($rowTargets as $target) {
+                        $value = (string) $target['value'];
+                        $match = match ($target['type']) {
+                            'UNIT'       => (string) $employee['business_unit_id'] === $value,
+                            'DEPARTMENT' => (string) $employee['department_id'] === $value,
+                            'POSITION'   => (string) $employee['position_id'] === $value,
+                            'ROLE'       => (string) $employee['role'] === $value,
+                            'EMPLOYEE'   => (string) $employee['id'] === $value,
+                            default      => false,
+                        };
+                        if ($match) {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            ));
+        }
 
         // Rasio keterbacaan berbeda-beda agar statistik terasa nyata.
         $ratio = [1 => 0.82, 2 => 0.55, 3 => 0.4, 4 => 0.7][$index + 1] ?? 0.5;

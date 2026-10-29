@@ -34,8 +34,9 @@ dengan slip gaji ber-QR.
 | **15** | Rekrutmen & onboarding (ATS): lowongan multi-unit dengan kuota & status, pipeline pelamar APPLIED → SCREENING → INTERVIEW → OFFER, jadwal & pewawancara, rating, CV, konversi otomatis pelamar diterima menjadi karyawan (NIK, akun, notifikasi), export CSV | ✅ selesai |
 | **16** | Offboarding & exit: pengunduran diri mandiri, PHK/akhir kontrak/pensiun oleh HR, persetujuan atasan → HR, checklist serah terima (aset, dokumen, akses, keuangan), exit interview + penyelesaian akhir, penonaktifan karyawan otomatis, export CSV | ✅ selesai |
 | **17** | Register aset & BAST offboarding: daftar aset/inventaris yang dipegang karyawan (kode, qty, kondisi), status pengembalian per item, **BAST PDF** bertanda tangan, blokir penutupan offboarding bila aset belum kembali, serta halaman **Reset Sistem** (bersihkan data uji, akun admin dipertahankan) | ✅ selesai |
+| **17.1** | Penyempurnaan: **target pengumuman berlapis** (unit bisnis, departemen, jabatan, peran, dan karyawan tertentu — bisa dikombinasikan) serta **denda keterlambatan progresif** berbasis tier 0–1 jam, 1–2 jam, 2–3 jam, dan >3 jam dengan batas & nominal yang dapat diatur | ✅ selesai |
 
-Seluruh tujuh belas batch sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh tujuh belas batch (plus penyempurnaan 17.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -95,7 +96,7 @@ mysql -u user -p asiaraya_hris < database/schema.sql
   (`HRIS_DB_HOST`, `HRIS_DB_DATABASE`, `HRIS_DB_USERNAME`, `HRIS_DB_PASSWORD`,
   `HRIS_GOOGLE_CLIENT_SECRET`, dst.). Daftar kunci lengkap ada di
   `app/config/env.example.php`.
-* `database/demo-data.sql` — **dump data demo** (6.335 baris pada 38 tabel,
+* `database/demo-data.sql` — **dump data demo** (6.356 baris pada 39 tabel,
   `INSERT` saja) untuk MySQL/MariaDB, dibuat dari database pratinjau:
 
 ```bash
@@ -227,8 +228,10 @@ cp database/demo-preview.sqlite storage/database.sqlite
 ### Pengaturan Presensi (`/attendance/settings`)
 * Jam kerja standar & toleransi (dipakai bila karyawan tanpa jadwal shift).
 * Validasi: wajib selfie, wajib radius geofence, bypass untuk WFH/kerja lapangan.
-* Denda keterlambatan: `PER_MINUTE`, `PER_DAY`, `FIXED`, atau `PERCENT`, lengkap
-  dengan tabel simulasi; serta penanganan alpha (potong cuti/gaji).
+* Denda keterlambatan: `PER_MINUTE`, `PER_DAY`, `FIXED`, `PERCENT`, atau
+  **`PROGRESSIVE`** (tier 0–1 jam, 1–2 jam, 2–3 jam, >3 jam — batas & nominal
+  dapat diubah, dasar per hari atau akumulasi bulanan), lengkap dengan tabel
+  simulasi; serta penanganan alpha (potong cuti/gaji). Rincian pada §2.20.
 * Kualitas foto: lebar maksimum dan kualitas JPEG.
 * Rincian radius tiap unit ditampilkan di sini; perubahan koordinat dilakukan pada
   halaman Unit Organisasi.
@@ -640,8 +643,9 @@ pembayaran. Akses dibatasi untuk pemilik, atasan langsungnya, HR, dan Finance.
 ## 2.14 Modul Batch 12 — Pengumuman & Notifikasi In-App
 
 ### Papan pengumuman (`/announcements`) — semua peran
-* Feed kartu berisi pengumuman yang **sesuai audiens** karyawan: semua karyawan,
-  unit bisnis, departemen, jabatan, atau peran sistem. HR melihat seluruh
+* Feed kartu berisi pengumuman yang **sesuai audiens** karyawan. Sejak 17.1
+  target dapat berupa **kombinasi** beberapa unit bisnis, departemen, jabatan,
+  peran sistem, dan karyawan tertentu (lihat §2.20). HR melihat seluruh
   pengumuman yang sudah terbit.
 * Kategori: Informasi, Kebijakan, Acara & Kegiatan, Darurat, Payroll & Benefit —
   masing-masing dengan warna dan ikon sendiri.
@@ -658,10 +662,12 @@ pembayaran. Akses dibatasi untuk pemilik, atasan langsungnya, HR, dan Finance.
 * Statistik: terbit, draf, terjadwal, diarsipkan, total dibaca, rata-rata dibaca.
 * Tabel pengumuman dengan filter status/kategori/pencarian, aksi cepat
   terbitkan, ubah, dan hapus (menghapus juga lampiran + riwayat baca).
-* Formulir tulis/ubah: judul, kategori, **audiens tunggal**
-  (`ALL` / `UNIT:{id}` / `DEPARTMENT:{id}` / `POSITION:{id}` / `ROLE:{kode}`),
-  isi, lampiran (PDF/JPG/PNG maks 5 MB), penanda penting, dan pilihan publikasi:
-  **terbit sekarang**, **jadwalkan** (tanggal + jam), atau **simpan draf**.
+* Formulir tulis/ubah: judul, kategori, **audiens berlapis** — mode *semua
+  karyawan* atau *target tertentu* dengan pilihan ganda unit bisnis, departemen,
+  jabatan, peran, dan karyawan tertentu (dikirim sebagai `audience_targets[]`
+  berisi `TYPE:VALUE`), isi, lampiran (PDF/JPG/PNG maks 5 MB), penanda penting,
+  dan pilihan publikasi: **terbit sekarang**, **jadwalkan** (tanggal + jam),
+  atau **simpan draf**.
 * Masa berlaku opsional (`expires_at`) — setelah tanggal tersebut pengumuman
   hilang dari feed karyawan.
 * Saat terbit, notifikasi lonceng dikirim ke seluruh karyawan aktif pada audiens
@@ -1039,6 +1045,72 @@ hanya menilai karyawan berstatus `ACTIVE` pada unit bisnis periode tersebut
 
 ---
 
+## 2.20 Penyempurnaan 17.1 — Target Pengumuman Berlapis & Denda Progresif
+
+### Target pengumuman berlapis (`/announcements/create`)
+* Form pengumuman kini punya dua mode audiens: **Semua karyawan aktif** atau
+  **Target tertentu**.
+* Mode *target* menyediakan lima kelompok pilihan yang dapat **dikombinasikan
+  sekaligus**:
+  1. **Unit bisnis** (boleh lebih dari satu)
+  2. **Departemen** (boleh lebih dari satu)
+  3. **Jabatan**
+  4. **Peran sistem** (HR / Finance / Karyawan)
+  5. **Karyawan tertentu** — dicari berdasarkan nama atau NIK
+* Penerima akhir adalah **gabungan (union)** seluruh pilihan tanpa duplikat;
+  setiap kelompok menampilkan jumlah pilihan aktif dan bisa dilipat.
+* Contoh: pengumuman K3 dikirim ke **Unit Surabaya Plant + Departemen Produksi +
+  Rina Kusuma** — karyawan unit lain tidak melihatnya walau beda departemen.
+* Penerapan aturan: feed karyawan, halaman detail, penanda "sudah dibaca",
+  pencarian, dan **notifikasi lonceng** semuanya memakai daftar target yang sama,
+  sehingga jumlah penerima pada statistik keterbacaan akurat.
+* Penyimpanan: tabel baru `announcement_targets`
+  (`announcement_id`, `target_type`, `target_value`, unik per kombinasi).
+  Kolom lama `announcements.audience`/`audience_value` tetap diisi sebagai
+  ringkasan (`ALL`, tipe tunggal, atau `MULTI`) agar data lama dan laporan tetap
+  kompatibel — pengumuman lama tanpa baris target dibaca dengan aturan lama.
+
+### Denda keterlambatan progresif (`/attendance/settings`)
+* Tipe perhitungan baru **PROGRESSIVE** di samping `PER_MINUTE`, `PER_DAY`,
+  `FIXED`, dan `PERCENT`.
+* Empat tier dengan batas menit dan nominal yang dapat diubah:
+
+  | Tier | Rentang default | Denda default |
+  |------|-----------------|---------------|
+  | T1 | 0–60 menit (0–1 jam) | Rp 25.000 |
+  | T2 | 61–120 menit (1–2 jam) | Rp 50.000 |
+  | T3 | 121–180 menit (2–3 jam) | Rp 75.000 |
+  | T4 | > 180 menit (> 3 jam) | Rp 125.000 |
+
+* Dua dasar perhitungan:
+  * **Per hari terlambat (DAILY)** — setiap hari terlambat dikenakan denda sesuai
+    tier-nya lalu dijumlahkan dalam satu periode payroll.
+  * **Akumulasi per bulan (MONTHLY)** — total menit terlambat sebulan dipetakan
+    ke satu tier dan dikenakan sekali.
+* Perhitungan memakai **rincian menit per hari** dari tabel `attendance`
+  (bukan rata-rata), sehingga hari 15 menit dan hari 200 menit dihitung pada
+  tier berbeda.
+* Batas tier divalidasi otomatis (harus naik: `0 < T1 < T2 < T3`) baik di server
+  maupun di form, dan berlaku sama pada **rekap presensi bulanan** serta
+  **kalkulasi payroll** (kolom `late_deduction` pada slip).
+* Rekap menampilkan tier tertinggi yang terkena beserta tooltip rincian menit
+  per hari; halaman pengaturan menampilkan simulasi denda untuk 3 hari
+  terlambat pada berbagai durasi.
+
+### Catatan teknis
+* Versi skema naik ke **18** (`announcement_targets` + indeks unik).
+* `AnnouncementModel` menambah `targetsOf()`, `targetKeys()`, `syncTargets()`,
+  `normalizeTargets()`, `audienceSummary()`, dan `audienceBreakdown()`;
+  `audienceScope()`/`audienceEmployees()`/`canView()` memakai target berlapis
+  dengan fallback ke kolom lama.
+* `AttendanceModel` menambah `lateTiers()`, `tierFor()`, `progressiveDeduction()`,
+  dan `lateMinutesPerDay()`; `lateDeduction()` menerima parameter keempat berupa
+  rincian menit per hari (opsional, kompatibel dengan pemanggil lama).
+* Setelan baru: `attendance_late_tier_mode`, `attendance_late_tier_{1..3}_max`,
+  `attendance_late_tier_{1..4}_amount`.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1074,13 +1146,13 @@ storage/                 # logs, cache, uploads, database preview
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
 | Approval perubahan jadwal | ✅ | – | pengajuan + persetujuan atasan |
-| Presensi (live monitoring, harian, rekap, pengaturan) | ✅ | – | presensi diri (PWA) |
+| Presensi (live monitoring, harian, rekap, pengaturan termasuk denda progresif) | ✅ | – | presensi diri (PWA) |
 | Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
 | Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
 | Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
-| Pengumuman | ✅ tulis, terbitkan, arsipkan | baca (sesuai audiens) | baca (sesuai audiens) |
+| Pengumuman | ✅ tulis, terbitkan, arsipkan, target berlapis (unit/departemen/jabatan/peran/karyawan) | baca (sesuai audiens) | baca (sesuai audiens) |
 | Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |

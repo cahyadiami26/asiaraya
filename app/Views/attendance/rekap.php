@@ -13,11 +13,13 @@ $query = array_filter([
 $link = static fn (int $page): string => url('attendance/rekap') . '?' . http_build_query($query + ['page' => $page]);
 $maxPresent = max(1, ...array_map(static fn ($d) => (int) $d['present'], $trend ?: [['present' => 1]]));
 $policyLabel = match (strtoupper($latePolicy['type'])) {
-    'PER_DAY' => 'per hari terlambat',
-    'FIXED'   => 'flat per kejadian',
-    'PERCENT' => '% dari gaji pokok',
-    default   => 'per menit',
+    'PER_DAY'     => 'per hari terlambat',
+    'FIXED'       => 'flat per kejadian',
+    'PERCENT'     => '% dari gaji pokok',
+    'PROGRESSIVE' => 'progresif per tier keterlambatan',
+    default       => 'per menit',
 };
+$isProgressive = strtoupper($latePolicy['type']) === 'PROGRESSIVE';
 ?>
 <div class="page-head">
     <div>
@@ -80,7 +82,23 @@ $policyLabel = match (strtoupper($latePolicy['type'])) {
             <span><span class="dot" style="background:var(--teal-500)"></span> Hadir</span>
             <span><span class="dot" style="background:#e2e8f0"></span> Tanpa catatan</span>
             <span><span class="dot" style="background:var(--slate-50)"></span> Akhir pekan</span>
-            <span style="margin-left:auto">Kebijakan denda: <?= rupiah($latePolicy['value']) ?> <?= e($policyLabel) ?> · toleransi <?= (int) $latePolicy['tolerance'] ?> menit</span>
+            <span style="margin-left:auto">
+                Kebijakan denda:
+                <?php if ($isProgressive): ?>
+                    <?= e($policyLabel) ?>
+                    <?php if (!empty($latePolicy['tiers'])): ?>
+                        (<?= e(implode(' · ', array_map(
+                            static fn (array $t): string => $t['max'] === null
+                                ? '>' . max(0, (int) $t['min'] - 1) . 'm ' . rupiah($t['amount'])
+                                : (int) $t['min'] . '–' . (int) $t['max'] . 'm ' . rupiah($t['amount']),
+                            $latePolicy['tiers']
+                        ))) ?>)
+                    <?php endif; ?>
+                <?php else: ?>
+                    <?= rupiah($latePolicy['value']) ?> <?= e($policyLabel) ?>
+                <?php endif; ?>
+                · toleransi <?= (int) $latePolicy['tolerance'] ?> menit
+            </span>
         </div>
     </div>
 </section>
@@ -151,7 +169,18 @@ $policyLabel = match (strtoupper($latePolicy['type'])) {
                             <span style="width:<?= min(100, $rate) ?>%;background:<?= $rate >= 95 ? 'var(--teal-500)' : ($rate >= 85 ? 'var(--amber-500)' : 'var(--rose-500)') ?>"></span>
                         </div>
                     </td>
-                    <td class="num small"><?= $row['late_deduction'] > 0 ? rupiah($row['late_deduction']) : '—' ?></td>
+                    <td class="num small">
+                        <?php if ($row['late_deduction'] > 0): ?>
+                            <span <?= !empty($row['late_day_detail']) ? 'title="Rincian keterlambatan: ' . e($row['late_day_detail']) . '"' : '' ?>>
+                                <?= rupiah($row['late_deduction']) ?>
+                            </span>
+                            <?php if (!empty($row['late_tier_label'])): ?>
+                                <div class="muted" style="font-size:9.4px;font-weight:400"><?= e($row['late_tier_label']) ?></div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            —
+                        <?php endif; ?>
+                    </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (!$rows): ?>
