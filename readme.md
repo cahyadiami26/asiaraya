@@ -1617,6 +1617,7 @@ public/
 vendor/                  # dompdf 3.1.6 + font/svg/html5 libs & phpqrcode (manual, tanpa Composer)
 docs/
   openapi.yaml           # spesifikasi REST API /api/v1 (OpenAPI 3.1)
+  android-app-prompt.md  # brief siap pakai untuk membangun aplikasi Android (Kotlin)
 tools/preview/           # runtime pratinjau sandbox (bukan untuk produksi)
 storage/                 # logs, cache, uploads, database preview
 ```
