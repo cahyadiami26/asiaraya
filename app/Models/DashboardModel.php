@@ -521,12 +521,45 @@ final class DashboardModel
 
     public function badges(array $user): array
     {
-        $counts = $this->pendingApprovals()['counts'];
+        $role = (string) ($user['role'] ?? '');
+        $selfId = (int) ($user['id'] ?? 0);
+        $staff = in_array($role, ['HR', 'FIN'], true);
+
+        // Badge antrean perusahaan hanya untuk HR/Finance. Karyawan biasa
+        // melihat jumlah pengajuan miliknya sendiri agar tidak menampilkan
+        // (maupun membocorkan) data pengajuan orang lain.
+        if ($staff) {
+            $counts = $this->pendingApprovals()['counts'];
+        } else {
+            $counts = ['overtime' => 0, 'leave' => 0, 'shift' => 0];
+            foreach ([
+                'overtime' => 'overtime_requests',
+                'leave'    => 'leave_requests',
+                'shift'    => 'shift_change_requests',
+            ] as $key => $table) {
+                try {
+                    $counts[$key] = (int) Database::value(
+                        "SELECT COUNT(*) FROM {$table} WHERE employee_id = ? AND status IN ('PENDING','MANAGER_APPROVED')",
+                        [$selfId],
+                        0
+                    );
+                } catch (\Throwable) {
+                    // tabel belum ada pada basis data lama
+                }
+            }
+        }
+
         $claims = 0;
         try {
-            $claims = (int) Database::value(
-                "SELECT COUNT(*) FROM expense_claims WHERE status IN ('PENDING','MANAGER_APPROVED')"
-            );
+            $claims = $staff
+                ? (int) Database::value(
+                    "SELECT COUNT(*) FROM expense_claims WHERE status IN ('PENDING','MANAGER_APPROVED')"
+                )
+                : (int) Database::value(
+                    "SELECT COUNT(*) FROM expense_claims WHERE employee_id = ? AND status IN ('PENDING','MANAGER_APPROVED')",
+                    [$selfId],
+                    0
+                );
         } catch (\Throwable) {
             // tabel klaim belum ada pada basis data lama
         }

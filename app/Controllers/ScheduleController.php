@@ -213,6 +213,15 @@ final class ScheduleController extends Controller
      |===================================================================*/
     public function requests(): void
     {
+        $user = $this->employee() ?? [];
+        $isHr = ($user['role'] ?? '') === 'HR';
+
+        // Karyawan tanpa bawahan hanya melihat pengajuan perubahannya sendiri
+        // (tersedia di halaman Jadwal Saya), bukan antrean milik orang lain.
+        if (!$isHr && !Auth::hasReports((int) ($user['id'] ?? 0))) {
+            redirect('/me/schedule');
+        }
+
         $status = (string) ($_GET['status'] ?? 'OPEN');
         $filters = [
             'status' => in_array($status, ['OPEN', 'PENDING', 'MANAGER_APPROVED', 'APPROVED', 'REJECTED', 'ALL'], true) ? $status : 'OPEN',
@@ -222,12 +231,17 @@ final class ScheduleController extends Controller
         if ($filters['status'] === 'ALL') {
             $filters['status'] = '';
         }
+        // Atasan langsung: batasi ke anggota timnya sendiri.
+        if (!$isHr) {
+            $filters['manager'] = (int) ($user['id'] ?? 0);
+        }
 
         $this->view('schedules/requests', [
             'title'      => 'Persetujuan Perubahan Jadwal',
             'pageTitle'  => 'Perubahan Jadwal',
+            'isHr'       => $isHr,
             'requests'   => $this->schedules->requests($filters, 60),
-            'stats'      => $this->schedules->requestStats(),
+            'stats'      => $this->schedules->requestStats($isHr ? null : (int) ($user['id'] ?? 0)),
             'filters'    => $filters,
             'units'      => $this->org->units(),
             'badges'     => $this->dashboard->badges($this->employee() ?? []),

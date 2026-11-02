@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
 use App\Core\Paginator;
@@ -32,6 +33,12 @@ final class LeaveController extends Controller
     {
         $user = $this->employee() ?? [];
         $isHr = ($user['role'] ?? '') === 'HR';
+
+        // Karyawan tanpa bawahan langsung tidak boleh membuka kotak persetujuan
+        // tim — mereka diarahkan ke halaman cuti pribadi (status pengajuan sendiri).
+        if (!$isHr && !Auth::hasReports((int) ($user['id'] ?? 0))) {
+            redirect('/me/leave');
+        }
 
         $filters = $this->filters();
         $filters['year'] = (int) ($_GET['year'] ?? date('Y'));
@@ -80,7 +87,7 @@ final class LeaveController extends Controller
         $status = (string) $request['status'];
         $employeeId = (int) $request['employee_id'];
 
-        if ($status === 'PENDING' && \App\Core\Auth::isManagerOf($employeeId)) {
+        if ($status === 'PENDING' && Auth::isManagerOf($employeeId)) {
             return true;
         }
 

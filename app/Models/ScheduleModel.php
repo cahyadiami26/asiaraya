@@ -566,6 +566,11 @@ final class ScheduleModel
             $clauses[] = 'e.business_unit_id = ?';
             $params[] = (int) $filters['unit'];
         }
+        // Atasan langsung: hanya pengajuan anggota timnya (privasi data tim).
+        if (!empty($filters['manager'])) {
+            $clauses[] = 'e.direct_manager_id = ?';
+            $params[] = (int) $filters['manager'];
+        }
         if (!empty($filters['q'])) {
             $clauses[] = '(e.full_name LIKE ? OR e.employee_code LIKE ?)';
             $params[] = Database::like((string) $filters['q']);
@@ -614,6 +619,10 @@ final class ScheduleModel
             $clauses[] = 'e.business_unit_id = ?';
             $params[] = (int) $filters['unit'];
         }
+        if (!empty($filters['manager'])) {
+            $clauses[] = 'e.direct_manager_id = ?';
+            $params[] = (int) $filters['manager'];
+        }
         if (!empty($filters['q'])) {
             $clauses[] = '(e.full_name LIKE ? OR e.employee_code LIKE ?)';
             $params[] = Database::like((string) $filters['q']);
@@ -625,14 +634,35 @@ final class ScheduleModel
         );
     }
 
-    public function requestStats(): array
+    /**
+     * Ringkasan status pengajuan perubahan jadwal.
+     *
+     * `$managerId` diisi untuk atasan langsung, sehingga angka yang tampil
+     * hanya mencakup anggota timnya (bukan seluruh perusahaan).
+     */
+    public function requestStats(?int $managerId = null): array
     {
+        $sql = "SELECT r.status, COUNT(*) AS total
+                  FROM shift_change_requests r
+                  JOIN employees e ON e.id = r.employee_id";
+        $params = [];
+        if ($managerId !== null && $managerId > 0) {
+            $sql .= ' WHERE e.direct_manager_id = ?';
+            $params[] = $managerId;
+        }
+        $sql .= ' GROUP BY r.status';
+
+        $counts = ['PENDING' => 0, 'MANAGER_APPROVED' => 0, 'APPROVED' => 0, 'REJECTED' => 0];
+        foreach (Database::all($sql, $params) as $row) {
+            $counts[(string) $row['status']] = (int) $row['total'];
+        }
+
         return [
-            'pending'         => (int) Database::value("SELECT COUNT(*) FROM shift_change_requests WHERE status = 'PENDING'"),
-            'manager'         => (int) Database::value("SELECT COUNT(*) FROM shift_change_requests WHERE status = 'PENDING'"),
-            'awaiting_hr'     => (int) Database::value("SELECT COUNT(*) FROM shift_change_requests WHERE status = 'MANAGER_APPROVED'"),
-            'approved'        => (int) Database::value("SELECT COUNT(*) FROM shift_change_requests WHERE status = 'APPROVED'"),
-            'rejected'        => (int) Database::value("SELECT COUNT(*) FROM shift_change_requests WHERE status = 'REJECTED'"),
+            'pending'     => $counts['PENDING'],
+            'manager'     => $counts['PENDING'],
+            'awaiting_hr' => $counts['MANAGER_APPROVED'],
+            'approved'    => $counts['APPROVED'],
+            'rejected'    => $counts['REJECTED'],
         ];
     }
 

@@ -15,6 +15,9 @@ final class Auth
     private static ?array $user = null;
     private static bool $resolved = false;
 
+    /** @var array<int,bool> cache hasil pengecekan bawahan langsung per karyawan */
+    private static array $hasReports = [];
+
     /** Nama cookie "ingat saya" + masa berlakunya (hari). */
     public const REMEMBER_COOKIE = 'ASRAYA_REMEMBER';
     public const REMEMBER_DAYS = 30;
@@ -423,5 +426,30 @@ final class Auth
     public static function isSelf(int $employeeId): bool
     {
         return self::id() === $employeeId;
+    }
+
+    /**
+     * Apakah karyawan ini punya bawahan langsung yang aktif?
+     *
+     * Dipakai untuk menentukan akses kotak persetujuan tim: karyawan yang
+     * tidak membawahi siapa pun hanya boleh melihat pengajuannya sendiri
+     * (cuti, lembur, perubahan jadwal), sedangkan atasan langsung tetap dapat
+     * memproses pengajuan anggota timnya.
+     */
+    public static function hasReports(?int $employeeId = null): bool
+    {
+        $id = $employeeId ?? self::id();
+        if (!$id) {
+            return false;
+        }
+        if (array_key_exists($id, self::$hasReports)) {
+            return self::$hasReports[$id];
+        }
+
+        return self::$hasReports[$id] = (int) Database::value(
+            'SELECT COUNT(*) FROM employees WHERE direct_manager_id = ? AND flag = ?',
+            [$id, 'ACTIVE'],
+            0
+        ) > 0;
     }
 }

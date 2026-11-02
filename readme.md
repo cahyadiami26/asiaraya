@@ -41,8 +41,9 @@ dengan slip gaji ber-QR.
 | **20.1** | Konfigurasi tampilan menu: berkas `app/config/menu.php` untuk meng-enable/disable setiap item & grup menu, plus tab **Pengaturan → Menu Navigasi** untuk mengaturnya dari aplikasi (per item/grup, item terkunci selalu tampil, tombol “Tampilkan Semua” & “Bawaan Config”) | ✅ selesai |
 | **21** | **REST API `/api/v1` untuk aplikasi Android karyawan**: login token perangkat (bearer + refresh 30 hari, dapat dicabut), pengumuman, jadwal & pengajuan tukar shift, presensi online (geofence + selfie, `Idempotency-Key`), data presensi bulanan, lembur, cuti, slip gaji & bukti potong 1721-A1 (PDF via token atau URL bertanda tangan), klaim biaya, notifikasi, serta **kotak masuk persetujuan** (cuti/lembur/jadwal/klaim) untuk atasan langsung, HR, dan Finance — dilengkapi `docs/openapi.yaml` | ✅ selesai |
 | **21.1** | Perbaikan: **dropdown departemen** pada tambah/ubah karyawan kini mengikuti unit bisnis yang dipilih (sebelumnya kosong karena atribut unit tidak ikut terkirim), plus **informasi shift pada presensi harian** diambil dari jadwal sehingga tidak lagi “Tanpa shift” sebelum karyawan check-in | ✅ selesai |
+| **21.2** | Perbaikan privasi: pemberitahuan akun demo dihapus dari form login, dan data pengajuan (lembur, cuti, perubahan jadwal) hanya terlihat oleh pemiliknya — antrean persetujuan hanya untuk atasan langsung yang punya bawahan dan HR | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1 & 21.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1 & 21.2) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1476,7 +1477,7 @@ curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…
 ### Format balasan
 
 ```json
-{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.1" } }
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.2" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
 
@@ -1656,6 +1657,76 @@ Dua keluhan operasional yang diperbaiki tanpa perubahan skema
 
 ---
 
+## 2.27 Perbaikan 21.2 — Privasi Pengajuan & Login Tanpa Akun Demo
+
+Fokus batch ini adalah **privasi data pengajuan** dan kebersihan halaman masuk.
+Tidak ada perubahan skema (`Schema::VERSION` tetap **22**) maupun kontrak API.
+
+### 1. Pemberitahuan akun demo dihapus dari form login
+
+* Kotak “Akun demo untuk pengujian” beserta tombol isi-otomatis (email +
+  kata sandi) dihapus dari `app/Views/auth/login.php`, termasuk metode
+  `AuthController::demoAccounts()` dan CSS `.demo-cred` yang menjadi mati.
+* Kredensial demo tetap tersedia di dokumentasi (readme §1 dan seeder) untuk
+  kebutuhan pengujian internal, tetapi **tidak pernah lagi dirender** di
+  halaman publik. Halaman login kini hanya berisi formulir, tombol Google,
+  dan kontak bantuan.
+
+### 2. Setiap pengguna hanya melihat pengajuannya sendiri
+
+Aturan yang berlaku sekarang:
+
+| Peran | Lembur | Cuti | Perubahan jadwal |
+|---|---|---|---|
+| **Karyawan (tanpa bawahan)** | `Lembur Saya` — hanya miliknya | `Cuti Saya` — hanya miliknya | `Jadwal Saya` — hanya pengajuannya |
+| **Atasan langsung (punya bawahan)** | pengajuannya sendiri | antrean **anggota timnya saja** | antrean **anggota timnya saja** |
+| **HR** | seluruh perusahaan | seluruh perusahaan | seluruh perusahaan |
+| **FIN** | — (tanpa menu) | — (tanpa menu) | — (tanpa menu) |
+
+Yang diubah:
+
+* **Guard URL** — `LeaveController::index()` dan
+  `ScheduleController::requests()` mengarahkan karyawan **tanpa bawahan**
+  ke halaman pribadinya (`/me/leave`, `/me/schedule`). Sebelumnya halaman
+  `/schedules/requests` terbuka untuk semua peran karyawan dan menampilkan
+  **seluruh pengajuan perubahan jadwal perusahaan** (nama, ID, divisi, dan
+  alasan) — sekarang hanya tim sendiri, atau dialihkan bila tidak punya tim.
+* **Filter tim di query** — `ScheduleModel::requests()`,
+  `countRequests()`, dan `requestStats()` menerima filter `manager`
+  (`e.direct_manager_id = ?`) sehingga angka statistik dan daftar mengikuti
+  cakupan tim, bukan total perusahaan.
+* **Menu** — item “Persetujuan Cuti Tim” dan “Perubahan Jadwal” memakai
+  penanda `requires_reports` di `app/Core/Nav.php`, sehingga hanya tampil
+  bila pengguna benar-benar membawahi karyawan aktif (HR selalu melihatnya).
+  Tombol “Status Pengajuan” di `/me/schedule` diganti “Persetujuan Tim” dan
+  hanya tampil untuk atasan.
+* **Badge angka** — `DashboardModel::badges()` menghitung antrean perusahaan
+  hanya untuk HR/Finance. Karyawan biasa melihat jumlah pengajuan
+  **miliknya sendiri**, jadi angka di sidebar tidak lagi membocorkan volume
+  pengajuan orang lain.
+* **Pemeriksaan IDOR** (sudah benar, ditambah uji regresi): `GET
+  /api/v1/leaves/{id}`, `POST /api/v1/leaves/{id}/cancel`, dan `POST
+  /api/v1/overtimes/{id}/cancel` mengembalikan `404 NOT_FOUND` untuk
+  pengajuan milik orang lain; `POST /leave/{id}/decide` menolak pengguna yang
+  bukan atasan/HR dan tidak mengubah status apa pun.
+
+### Catatan teknis
+
+* Berkas berubah: `app/Core/Auth.php` (helper `hasReports()`),
+  `app/Core/Nav.php`, `app/Controllers/AuthController.php`,
+  `app/Controllers/LeaveController.php`, `app/Controllers/ScheduleController.php`,
+  `app/Models/DashboardModel.php`, `app/Models/ScheduleModel.php`,
+  `app/Views/auth/login.php`, `app/Views/schedules/{mine,requests}.php`,
+  `public/assets/css/app.css`, `app/bootstrap.php` (versi **2.17.2**).
+* Verifikasi: halaman login tidak lagi memuat email/kata sandi demo;
+  karyawan tanpa bawahan → `/leave` & `/schedules/requests` dialihkan (302);
+  atasan 73 bawahan hanya melihat pengajuan timnya (uji 2 pengajuan
+  perubahan jadwal: milik tim tampil, milik karyawan lain tidak);
+  HR melihat seluruh data; `/me/leave`, `/me/overtime`, `/me/schedule` tetap
+  menampilkan data pribadi; API karyawan mengembalikan 404 untuk ID asing.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1701,10 +1772,10 @@ storage/                 # logs, cache, uploads, database preview
 | Data karyawan (CRUD, kontrak, foto, resign) | ✅ | – | baca (diri sendiri) |
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
-| Approval perubahan jadwal | ✅ | – | pengajuan + persetujuan atasan |
+| Approval perubahan jadwal | ✅ | – | pengajuan sendiri (status di Jadwal Saya) + persetujuan atasan |
 | Presensi (live monitoring, harian, rekap, pengaturan termasuk denda progresif) | ✅ | – | presensi diri (PWA) |
-| Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan |
-| Cuti (approval, jenis & jatah) | ✅ | – | pengajuan |
+| Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan & status sendiri |
+| Cuti (approval, jenis & jatah) | ✅ | – | pengajuan & status sendiri |
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
 | Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
@@ -1723,10 +1794,12 @@ storage/                 # logs, cache, uploads, database preview
 | Riwayat jabatan & mutasi | ✅ catat, ubah data karyawan otomatis | – | lihat linimasa sendiri |
 | PPh 21 & bukti potong 1721-A1 | ✅ rekap, terbitkan/tarik, cetak, export e-SPT | ✅ rekap, cetak, export | unduh bukti potong sendiri |
 | Rekap BPJS (Kesehatan & Ketenagakerjaan) | ✅ semua program, cetak PDF/CSV | ✅ semua program, cetak PDF/CSV | – |
-| REST API `/api/v1` (aplikasi Android) | ✅ semua endpoint + persetujuan akhir | ✅ slip/klaim/BPJS + persetujuan klaim | ✅ data & pengajuan sendiri + persetujuan tim |
+| REST API `/api/v1` (aplikasi Android) | ✅ semua endpoint + persetujuan akhir | ✅ slip/klaim/BPJS + persetujuan klaim | ✅ data & pengajuan sendiri + persetujuan tim (hanya bila punya bawahan) |
 
-Alur approval berjenjang: **Direct Manager → HR**. Finance hanya menerima data
-payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani
+Alur approval berjenjang: **Direct Manager → HR**. Kotak persetujuan tim
+(cuti, lembur, perubahan jadwal) hanya dibuka untuk atasan yang benar-benar
+punya bawahan aktif; karyawan lain hanya melihat pengajuannya sendiri. Finance
+hanya menerima data payroll final, menandai pembayaran, dan mencetak laporan. Slip gaji ditandatangani
 oleh HR dan FIN (nama + timestamp) serta disematkan QR validasi.
 
 ---
