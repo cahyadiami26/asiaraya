@@ -113,7 +113,7 @@ $router->add('POST|DELETE', '/shifts/{id}/delete', [ShiftController::class, 'des
 $router->get('/schedules', [ScheduleController::class, 'index'], ['roles' => ['HR'], 'name' => 'schedules.index']);
 $router->post('/schedules/assign', [ScheduleController::class, 'assign'], ['roles' => ['HR'], 'name' => 'schedules.assign']);
 $router->add('POST|DELETE', '/schedules/{id}/delete', [ScheduleController::class, 'removeAssignment'], ['roles' => ['HR'], 'name' => 'schedules.delete']);
-$router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.requests']);
+$router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'schedules.requests']);
 $router->get('/me/schedule', [ScheduleController::class, 'mine'], ['name' => 'me.schedule']);
 $router->post('/me/schedule/request', [ScheduleController::class, 'storeRequest'], ['name' => 'me.schedule.request']);
 
@@ -128,7 +128,7 @@ $router->get('/attendance/settings', [AttendanceController::class, 'settings'], 
 $router->post('/attendance/settings', [AttendanceController::class, 'saveSettings'], ['roles' => ['HR'], 'name' => 'attendance.settings.save']);
 
 /* ------------------------------------------------- Batch 5: lembur & terjadwal */
-$router->get('/overtime', [OvertimeController::class, 'index'], ['roles' => ['HR'], 'name' => 'overtime.index']);
+$router->get('/overtime', [OvertimeController::class, 'index'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'overtime.index']);
 $router->post('/overtime', [OvertimeController::class, 'store'], ['roles' => ['HR'], 'name' => 'overtime.store']);
 $router->get('/overtime/schedules', [OvertimeController::class, 'schedules'], ['roles' => ['HR'], 'name' => 'overtime.schedules']);
 $router->post('/overtime/schedules', [OvertimeController::class, 'storeScheduled'], ['roles' => ['HR'], 'name' => 'overtime.schedules.store']);
@@ -143,7 +143,7 @@ $router->post('/me/overtime', [OvertimeController::class, 'request'], ['name' =>
 $router->post('/me/overtime/{id}/cancel', [OvertimeController::class, 'myCancel'], ['name' => 'me.overtime.cancel']);
 
 /* ------------------------------------------------------- Batch 6: cuti & saldo */
-$router->get('/leave', [LeaveController::class, 'index'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.index']);
+$router->get('/leave', [LeaveController::class, 'index'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'leave.index']);
 $router->get('/leave/export', [LeaveController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'leave.export']);
 $router->get('/leave/types', [LeaveController::class, 'types'], ['roles' => ['HR'], 'name' => 'leave.types']);
 $router->post('/leave/types', [LeaveController::class, 'storeType'], ['roles' => ['HR'], 'name' => 'leave.types.store']);
@@ -195,9 +195,9 @@ $router->get('/verify/slip/{id}/{token}', [PayrollController::class, 'verify'], 
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
 /* --------------------------------------------------- Approval engine */
-$router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOvertime'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'overtime.decide']);
-$router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.decide']);
-$router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'decideShiftChange'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.decide']);
+$router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOvertime'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'overtime.decide']);
+$router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'leave.decide']);
+$router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'decideShiftChange'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'schedules.decide']);
 
 
 /* ---------------------------------------- Batch 9: laporan & log aktivitas */

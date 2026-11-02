@@ -265,6 +265,12 @@ final class OvertimeModel
             $clauses[] = 'o.employee_id = ?';
             $params[] = (int) $filters['employee'];
         }
+        // Atasan langsung: hanya pengajuan anggota timnya (dipakai halaman
+        // persetujuan lembur tim — tidak boleh melihat lembur karyawan lain).
+        if (!empty($filters['manager'])) {
+            $clauses[] = 'e.direct_manager_id = ?';
+            $params[] = (int) $filters['manager'];
+        }
         if (!empty($filters['from'])) {
             $clauses[] = 'o.work_date >= ?';
             $params[] = (string) $filters['from'];

@@ -42,8 +42,9 @@ dengan slip gaji ber-QR.
 | **21** | **REST API `/api/v1` untuk aplikasi Android karyawan**: login token perangkat (bearer + refresh 30 hari, dapat dicabut), pengumuman, jadwal & pengajuan tukar shift, presensi online (geofence + selfie, `Idempotency-Key`), data presensi bulanan, lembur, cuti, slip gaji & bukti potong 1721-A1 (PDF via token atau URL bertanda tangan), klaim biaya, notifikasi, serta **kotak masuk persetujuan** (cuti/lembur/jadwal/klaim) untuk atasan langsung, HR, dan Finance — dilengkapi `docs/openapi.yaml` | ✅ selesai |
 | **21.1** | Perbaikan: **dropdown departemen** pada tambah/ubah karyawan kini mengikuti unit bisnis yang dipilih (sebelumnya kosong karena atribut unit tidak ikut terkirim), plus **informasi shift pada presensi harian** diambil dari jadwal sehingga tidak lagi “Tanpa shift” sebelum karyawan check-in | ✅ selesai |
 | **21.2** | Perbaikan privasi: pemberitahuan akun demo dihapus dari form login, dan data pengajuan (lembur, cuti, perubahan jadwal) hanya terlihat oleh pemiliknya — antrean persetujuan hanya untuk atasan langsung yang punya bawahan dan HR | ✅ selesai |
+| **21.3** | Perbaikan: notifikasi persetujuan lembur ke atasan langsung tidak lagi berujung **403** — halaman `/overtime` kini bisa dibuka atasan (cakupan tim, tombol HR disembunyikan), begitu juga `/leave` dan `/schedules/requests` untuk atasan ber-peran FIN | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1 & 21.2) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2 & 21.3) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1477,7 +1478,7 @@ curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…
 ### Format balasan
 
 ```json
-{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.2" } }
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.3" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
 
@@ -1727,6 +1728,91 @@ Yang diubah:
 
 ---
 
+## 2.28 Perbaikan 21.3 — Notifikasi Persetujuan ke Atasan (403 Akses Ditolak)
+
+### Gejala
+
+Staf mengajukan lembur → atasan langsung menerima notifikasi
+“Pengajuan lembur baru — Menunggu persetujuan Anda sebagai atasan langsung.”
+Begitu notifikasi diklik, halaman tujuan menampilkan **403 Akses Ditolak**.
+
+### Penyebab
+
+1. Notifikasi menyimpan tautan `/overtime?status=OPEN`, sedangkan rute
+   `/overtime` hanya dibuka untuk peran **HR**. Atasan yang berperan
+   `KARYAWAN` (atau `FIN`) selalu ditolak router sebelum sampai ke controller.
+2. Lebih dalam lagi: **tidak ada halaman persetujuan lembur untuk atasan**.
+   Satu-satunya halaman lembur adalah milik HR, sehingga tautan itu memang
+   tidak punya tujuan yang sah bagi atasan.
+3. Masalah serupa ditemukan pada pemeriksaan menyeluruh:
+   * `/leave` dan `/schedules/requests` juga hanya dibuka untuk
+     `HR` + `KARYAWAN`. **Atasan langsung yang berperan FIN** (mis. Finance
+     Manager dengan 3 bawahan) kena 403 pada notifikasi cuti & perubahan
+     jadwal, padahal ia justru approver tahap 1.
+   * Endpoint `POST /overtime/{id}/decide`, `/leave/{id}/decide`, dan
+     `/schedules/requests/{id}/decide` menolak peran FIN dengan alasan yang
+     sama.
+
+### Perbaikan
+
+* **Halaman persetujuan lembur tim** — `/overtime` kini dibuka untuk semua
+  peran yang menjadi atasan langsung (`HR`, `KARYAWAN`, `FIN`). Bila pengguna
+  bukan HR:
+  * data dibatasi lewat filter baru `OvertimeModel::where(['manager' => id])`
+    (`e.direct_manager_id`), termasuk angka KPI dan statistik;
+  * status bawaan menjadi *Perlu Tindakan*;
+  * seluruh kontrol HR disembunyikan — tambah lembur manual, bulk decide,
+    input jam aktual, pembatalan, grafik sebaran jam, kebijakan (termasuk
+    form ubah), rekap per unit, jam terbanyak, dan export CSV;
+  * tombol setujui/tolak tetap ada dan memanggil `ApprovalEngine` yang sama
+    (atasan → `MANAGER_APPROVED`, HR → final).
+* **Karyawan tanpa bawahan** yang membuka `/overtime`, `/leave`, atau
+  `/schedules/requests` dialihkan (302) ke halaman pribadinya
+  (`/me/overtime`, `/me/leave`, `/me/schedule`) — tidak ada lagi 403.
+* **Role FIN** ditambahkan pada rute `/leave`, `/overtime`,
+  `/schedules/requests`, dan ketiga endpoint keputusan, sehingga atasan
+  berperan FIN dapat memproses pengajuan timnya.
+* **Menu** — item baru “Persetujuan Lembur Tim” (grup portal, penanda
+  `requires_reports`), dan grup portal tidak lagi hilang total untuk peran
+  non-karyawan: bila yang lolos filter hanya menu persetujuan, label grupnya
+  menjadi “Persetujuan Tim”. Menu hanya tampil untuk pengguna yang benar-benar
+  membawahi karyawan aktif.
+
+### Hasil pemeriksaan tautan notifikasi
+
+| Notifikasi | Penerima | Tautan | Sebelum | Sesudah |
+|---|---|---|---|---|
+| Pengajuan lembur baru | Atasan langsung | `/overtime?status=OPEN` | **403** | 200 (halaman tim) |
+| Pengajuan cuti baru | Atasan langsung | `/leave?status=OPEN` | 403 bila atasan berperan FIN | 200 (halaman tim) |
+| Pengajuan perubahan jadwal | Atasan langsung | `/schedules/requests` | 403 bila atasan berperan FIN | 200 (halaman tim) |
+| Status lembur/cuti/klaim untuk pemohon | Karyawan | `/me/overtime`, `/me/leave`, `/claims/{id}` | 200 | 200 |
+| Klaim biaya menunggu persetujuan | Atasan langsung | `/claims/{id}` | 200 (controller mengizinkan atasan) | 200 |
+| Offboarding menunggu persetujuan | Atasan langsung | `/offboarding/{id}` | 200 | 200 |
+| Penilaian kinerja menunggu Anda | Atasan langsung | `/performance/team/{id}` | 200 | 200 |
+| Pengumuman, kontrak, dokumen, pelatihan, slip | Karyawan | `/me/*`, `/announcements/{id}` | 200 | 200 |
+
+### Catatan teknis
+
+* Berkas berubah: `app/Controllers/OvertimeController.php`,
+  `app/Models/OvertimeModel.php`, `app/Views/overtime/index.php`,
+  `app/Core/Nav.php`, `public/index.php`, `app/bootstrap.php`
+  (versi **2.17.3**).
+* Tidak ada perubahan skema (`Schema::VERSION` tetap **22**) maupun kontrak
+  REST API.
+* Verifikasi end-to-end: pengajuan lembur karyawan → notifikasi atasan →
+  klik → halaman 200 (bukan 403) → setujui → status `MANAGER_APPROVED` dengan
+  `manager_id` atasan; alur yang sama diuji untuk cuti dan perubahan jadwal;
+  atasan berperan FIN dapat membuka ketiga halaman dan memutus pengajuan
+  (status berubah, bukan 403); karyawan tanpa bawahan selalu dialihkan ke
+  halaman pribadi; halaman HR tetap lengkap (bulk decide, grafik, kebijakan,
+  rekap unit, export).
+* Temuan terpisah yang **belum diubah**: notifikasi rekrutmen ke
+  *hiring manager* non-HR masih menautkan `/recruitment/candidates/{id}` yang
+  khusus HR (akan 403 bila hiring manager berperan FIN/Karyawan). Perlu
+  keputusan apakah halaman pelamar dibuka mode baca untuk hiring manager.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1772,10 +1858,10 @@ storage/                 # logs, cache, uploads, database preview
 | Data karyawan (CRUD, kontrak, foto, resign) | ✅ | – | baca (diri sendiri) |
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
-| Approval perubahan jadwal | ✅ | – | pengajuan sendiri (status di Jadwal Saya) + persetujuan atasan |
+| Approval perubahan jadwal | ✅ | – | pengajuan sendiri (status di Jadwal Saya) + persetujuan atasan langsung |
 | Presensi (live monitoring, harian, rekap, pengaturan termasuk denda progresif) | ✅ | – | presensi diri (PWA) |
-| Lembur (approval, setting, terjadwal) | ✅ | – | pengajuan & status sendiri |
-| Cuti (approval, jenis & jatah) | ✅ | – | pengajuan & status sendiri |
+| Lembur (approval, setting, terjadwal) | ✅ semua | – | pengajuan & status sendiri; persetujuan tim bila jadi atasan langsung |
+| Cuti (approval, jenis & jatah) | ✅ semua | – | pengajuan & status sendiri; persetujuan tim bila jadi atasan langsung |
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
 | Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |

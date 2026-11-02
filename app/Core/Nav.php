@@ -69,7 +69,7 @@ final class Nav
                 'items' => [
                     ['route' => 'shifts.index', 'label' => 'Jadwal Kerja & Shift', 'icon' => 'calendar', 'roles' => ['HR']],
                     ['route' => 'schedules.index', 'label' => 'Penjadwalan Karyawan', 'icon' => 'calendar-check', 'roles' => ['HR']],
-                    ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN'], 'badge_key' => 'shift', 'requires_reports' => true],
+                    ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN', 'FIN'], 'badge_key' => 'shift', 'requires_reports' => true],
                     ['route' => 'attendance.live', 'label' => 'Presensi & GPS Live Log', 'icon' => 'map-pin', 'roles' => ['HR'], 'live' => true],
                     ['route' => 'attendance.daily', 'label' => 'Presensi Harian', 'icon' => 'list', 'roles' => ['HR']],
                     ['route' => 'attendance.rekap', 'label' => 'Rekap Presensi Bulanan', 'icon' => 'receipt', 'roles' => ['HR']],
@@ -153,7 +153,8 @@ final class Nav
                     ['route' => 'me.schedule', 'label' => 'Jadwal Saya', 'icon' => 'calendar', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.overtime', 'label' => 'Lembur Saya', 'icon' => 'clock', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.leave', 'label' => 'Cuti Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
-                    ['route' => 'leave.index', 'key' => 'leave.approvals', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN'], 'requires_reports' => true],
+                    ['route' => 'leave.index', 'key' => 'leave.approvals', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN', 'FIN'], 'requires_reports' => true],
+                    ['route' => 'overtime.index', 'key' => 'overtime.approvals', 'label' => 'Persetujuan Lembur Tim', 'icon' => 'clock', 'roles' => ['KARYAWAN', 'FIN'], 'requires_reports' => true],
                     ['route' => 'me.claims', 'label' => 'Klaim Saya', 'icon' => 'wallet', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
                     ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
@@ -468,11 +469,14 @@ final class Nav
             if (!$items) {
                 continue;
             }
-            // Portal karyawan hanya untuk peran KARYAWAN (item lain sudah difilter peran).
+            // Grup portal diisi menu pribadi karyawan. Untuk peran lain (mis. FIN
+            // yang juga atasan langsung) hanya item persetujuan tim yang lolos
+            // filter peran, sehingga grupnya diberi label netral.
+            $label = $group['label'];
             if (self::groupKey($group) === 'portal' && $role !== 'KARYAWAN') {
-                continue;
+                $label = 'Persetujuan Tim';
             }
-            $groups[] = ['label' => $group['label'], 'items' => $items];
+            $groups[] = ['label' => $label, 'items' => $items];
         }
 
         return $groups;

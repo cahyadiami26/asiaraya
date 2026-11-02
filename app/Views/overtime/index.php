@@ -3,6 +3,7 @@
  * Manajemen lembur (HR).
  * @var array $rows, $stats, $filters, $units, $departments, $employees, $daily, $top, $byUnit, $policy, $preview, $paginator
  * @var string $month, $monthLabel, $prevMonth, $nextMonth
+ * @var bool $isHr  false = halaman persetujuan tim untuk atasan langsung
  */
 use App\Models\OvertimeModel;
 
@@ -37,13 +38,21 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
 ?>
 <div class="page-head">
     <div>
-        <h1>Manajemen Lembur</h1>
-        <div class="sub">Pengajuan karyawan, persetujuan dua tahap, penjadwalan massal, dan kompensasi lembur.</div>
+        <h1><?= $isHr ? 'Manajemen Lembur' : 'Persetujuan Lembur Tim' ?></h1>
+        <div class="sub">
+            <?= $isHr
+                ? 'Pengajuan karyawan, persetujuan dua tahap, penjadwalan massal, dan kompensasi lembur.'
+                : 'Pengajuan lembur anggota tim Anda yang menunggu keputusan atasan langsung.' ?>
+        </div>
     </div>
     <div class="page-head__actions">
-        <a class="btn btn-outline" href="<?= url('overtime/schedules') ?>"><?= icon('calendar-check') ?> Lembur Terjadwal</a>
-        <a class="btn btn-soft" href="#ot-form" data-open-form><?= icon('plus') ?> Tambah Lembur</a>
-        <a class="btn btn-primary" href="<?= e($csv()) ?>"><?= icon('download') ?> Export CSV</a>
+        <?php if ($isHr): ?>
+            <a class="btn btn-outline" href="<?= url('overtime/schedules') ?>"><?= icon('calendar-check') ?> Lembur Terjadwal</a>
+            <a class="btn btn-soft" href="#ot-form" data-open-form><?= icon('plus') ?> Tambah Lembur</a>
+            <a class="btn btn-primary" href="<?= e($csv()) ?>"><?= icon('download') ?> Export CSV</a>
+        <?php else: ?>
+            <a class="btn btn-outline" href="<?= url('me/overtime') ?>"><?= icon('clock') ?> Lembur Saya</a>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -77,6 +86,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
     </div>
 </div>
 
+<?php if ($isHr): ?>
 <details class="form-panel" id="ot-form" <?= ($old || !empty($_GET['tambah'])) ? 'open' : '' ?>>
     <summary>
         <span class="form-panel__title"><?= icon('plus', 'ico') ?> Tambah Lembur Manual</span>
@@ -131,7 +141,9 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
         </div>
     </form>
 </details>
+<?php endif; ?>
 
+<?php if ($isHr): ?>
 <section class="card" style="margin-bottom:16px">
     <div class="card__head">
         <div><h2>Sebaran Jam Lembur</h2>
@@ -160,6 +172,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
         </div>
     </div>
 </section>
+<?php endif; ?>
 
 <div class="split-grid wide-left">
     <section class="card">
@@ -170,18 +183,20 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                     <a class="<?= $current === $key ? 'active' : '' ?>" href="<?= url('overtime') . '?' . http_build_query($tabQuery) ?>"><?= e($label) ?></a>
                 <?php endforeach; ?>
             </div>
-            <select class="select" name="unit" data-auto-submit style="min-width:150px">
-                <option value="">Semua unit</option>
-                <?php foreach ($units as $unit): ?>
-                    <option value="<?= (int) $unit['id'] ?>" <?= (int) $filters['unit'] === (int) $unit['id'] ? 'selected' : '' ?>><?= e($unit['name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <select class="select" name="department" data-auto-submit style="min-width:150px">
-                <option value="">Semua departemen</option>
-                <?php foreach ($departments as $dept): ?>
-                    <option value="<?= (int) $dept['id'] ?>" <?= (int) $filters['department'] === (int) $dept['id'] ? 'selected' : '' ?>><?= e($dept['name']) ?></option>
-                <?php endforeach; ?>
-            </select>
+            <?php if ($isHr): ?>
+                <select class="select" name="unit" data-auto-submit style="min-width:150px">
+                    <option value="">Semua unit</option>
+                    <?php foreach ($units as $unit): ?>
+                        <option value="<?= (int) $unit['id'] ?>" <?= (int) $filters['unit'] === (int) $unit['id'] ? 'selected' : '' ?>><?= e($unit['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <select class="select" name="department" data-auto-submit style="min-width:150px">
+                    <option value="">Semua departemen</option>
+                    <?php foreach ($departments as $dept): ?>
+                        <option value="<?= (int) $dept['id'] ?>" <?= (int) $filters['department'] === (int) $dept['id'] ? 'selected' : '' ?>><?= e($dept['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            <?php endif; ?>
             <input class="input" type="month" name="month" value="<?= e($month) ?>" style="width:150px" data-auto-submit>
             <select class="select" name="type" data-auto-submit style="min-width:130px">
                 <option value="">Semua jenis</option>
@@ -196,24 +211,28 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
             <button class="btn btn-sm btn-outline" type="submit"><?= icon('filter') ?> Terapkan</button>
         </form>
 
-        <form id="bulk-decide" method="post" action="<?= url('overtime/bulk-decide') ?>">
-            <?= csrf_field() ?>
-            <div class="filter-bar" style="border-top:0;background:#fff;border-bottom:1px solid var(--line)">
-                <span class="small muted"><b><?= number_id($paginator->total) ?></b> pengajuan pada filter ini</span>
-                <span class="spacer"></span>
-                <input class="input" type="text" name="note" placeholder="Catatan keputusan (opsional)" style="max-width:230px;height:32px">
-                <button class="btn btn-sm btn-teal" type="submit" name="decision" value="APPROVED"><?= icon('check') ?> Setujui Terpilih</button>
-                <button class="btn btn-sm btn-danger" type="submit" name="decision" value="REJECTED"><?= icon('x') ?> Tolak Terpilih</button>
-            </div>
-        </form>
+        <?php if ($isHr): ?>
+            <form id="bulk-decide" method="post" action="<?= url('overtime/bulk-decide') ?>">
+                <?= csrf_field() ?>
+                <div class="filter-bar" style="border-top:0;background:#fff;border-bottom:1px solid var(--line)">
+                    <span class="small muted"><b><?= number_id($paginator->total) ?></b> pengajuan pada filter ini</span>
+                    <span class="spacer"></span>
+                    <input class="input" type="text" name="note" placeholder="Catatan keputusan (opsional)" style="max-width:230px;height:32px">
+                    <button class="btn btn-sm btn-teal" type="submit" name="decision" value="APPROVED"><?= icon('check') ?> Setujui Terpilih</button>
+                    <button class="btn btn-sm btn-danger" type="submit" name="decision" value="REJECTED"><?= icon('x') ?> Tolak Terpilih</button>
+                </div>
+            </form>
+        <?php endif; ?>
 
         <div class="table-wrap">
             <table class="data">
                 <thead>
                 <tr>
-                    <th style="width:30px">
-                        <input type="checkbox" id="check-all" form="bulk-decide" title="Pilih semua yang bisa diputus">
-                    </th>
+                    <?php if ($isHr): ?>
+                        <th style="width:30px">
+                            <input type="checkbox" id="check-all" form="bulk-decide" title="Pilih semua yang bisa diputus">
+                        </th>
+                    <?php endif; ?>
                     <th>Karyawan</th>
                     <th>Tanggal &amp; Jam</th>
                     <th class="num">Rencana</th>
@@ -230,11 +249,13 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                     $isApproved = (string) $row['status'] === 'APPROVED';
                     ?>
                     <tr>
-                        <td>
-                            <?php if ($isOpen): ?>
-                                <input type="checkbox" name="ids[]" value="<?= (int) $row['id'] ?>" form="bulk-decide" class="row-check">
-                            <?php endif; ?>
-                        </td>
+                        <?php if ($isHr): ?>
+                            <td>
+                                <?php if ($isOpen): ?>
+                                    <input type="checkbox" name="ids[]" value="<?= (int) $row['id'] ?>" form="bulk-decide" class="row-check">
+                                <?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                         <td>
                             <div class="name-cell">
                                 <?php if (!empty($row['photo'])): ?>
@@ -311,7 +332,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/decide') ?>">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="decision" value="APPROVED">
-                                        <button class="btn btn-sm btn-teal" type="submit" title="Setujui (final HR)"><?= icon('check') ?></button>
+                                        <button class="btn btn-sm btn-teal" type="submit" title="<?= $isHr ? 'Setujui (final HR)' : 'Setujui sebagai atasan' ?>"><?= icon('check') ?></button>
                                     </form>
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/decide') ?>">
                                         <?= csrf_field() ?>
@@ -320,7 +341,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                                     </form>
                                 <?php endif; ?>
 
-                                <?php if ($row['status'] !== 'CANCELLED'): ?>
+                                <?php if ($isHr && $row['status'] !== 'CANCELLED'): ?>
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/actual') ?>">
                                         <?= csrf_field() ?>
                                         <input class="input js-actual" type="number" name="actual_hours" min="0" max="12" step="0.25"
@@ -333,7 +354,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                                     </form>
                                 <?php endif; ?>
 
-                                <?php if (in_array((string) $row['status'], ['APPROVED', 'REJECTED', 'PENDING', 'MANAGER_APPROVED'], true)): ?>
+                                <?php if ($isHr && in_array((string) $row['status'], ['APPROVED', 'REJECTED', 'PENDING', 'MANAGER_APPROVED'], true)): ?>
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/cancel') ?>"
                                           data-confirm="Batalkan lembur <?= e($row['full_name']) ?> pada <?= tanggal($row['work_date']) ?>?">
                                         <?= csrf_field() ?>
@@ -345,7 +366,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                     </tr>
                 <?php endforeach; ?>
                 <?php if (!$rows): ?>
-                    <tr><td colspan="8">
+                    <tr><td colspan="<?= $isHr ? 8 : 7 ?>">
                         <div class="empty-state">
                             <div class="empty-icon"><?= icon('clock') ?></div>
                             <h3>Belum ada pengajuan lembur</h3>
@@ -379,7 +400,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
         <section class="card">
             <div class="card__head">
                 <div><h2>Kebijakan Lembur</h2>
-                    <div class="sub">Approver HR menentukan batas jam &amp; kompensasi maksimum.</div></div>
+                    <div class="sub"><?= $isHr ? 'Approver HR menentukan batas jam &amp; kompensasi maksimum.' : 'Batas jam &amp; kompensasi yang berlaku untuk pengajuan tim Anda.' ?></div></div>
                 <span class="badge badge-<?= $policy['enabled'] ? 'teal' : 'rose' ?>"><?= $policy['enabled'] ? 'Aktif' : 'Nonaktif' ?></span>
             </div>
             <div class="card__body">
@@ -425,6 +446,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                     </table>
                 </div>
 
+                <?php if ($isHr): ?>
                 <details class="policy-edit" style="margin-top:12px">
                     <summary><?= icon('sliders', 'ico') ?> Ubah batas &amp; multiplier</summary>
                     <form method="post" action="<?= url('overtime/policy') ?>" class="policy-edit__body">
@@ -484,9 +506,11 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                         <button class="btn btn-primary btn-sm" type="submit" style="margin-top:10px"><?= icon('check') ?> Simpan Kebijakan</button>
                     </form>
                 </details>
+                <?php endif; ?>
             </div>
         </section>
 
+        <?php if ($isHr): ?>
         <section class="card">
             <div class="card__head"><div><h2>Lembur per Unit</h2>
                 <div class="sub"><?= e($monthLabel) ?> · status disetujui</div></div></div>
@@ -526,6 +550,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                 <?php endif; ?>
             </div>
         </section>
+        <?php endif; ?>
     </div>
 </div>
 
