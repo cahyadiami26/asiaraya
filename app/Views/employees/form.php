@@ -142,6 +142,10 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <span class="hint" id="department-hint" hidden>
+                                Belum ada departemen untuk unit ini — daftar menampilkan semua departemen.
+                                Lengkapi pemetaan unit di <a href="<?= url('organisation') ?>">Unit Organisasi</a>.
+                            </span>
                         </div>
                         <div class="field">
                             <label>Posisi / Jabatan</label>
@@ -157,6 +161,9 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                                 <?php endforeach; ?>
                             </select>
                             <span class="hint">Memilih posisi akan mengisi gaji pokok standar.</span>
+                            <span class="hint" id="position-hint" hidden>
+                                Belum ada posisi untuk departemen ini — daftar menampilkan semua posisi.
+                            </span>
                         </div>
                         <div class="field">
                             <label>Atasan Langsung</label>
@@ -332,37 +339,48 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
     var dept = document.getElementById('field-department');
     var position = document.getElementById('field-position');
     var salary = document.getElementById('field-salary');
+    var deptHint = document.getElementById('department-hint');
+    var posHint = document.getElementById('position-hint');
     if (!unit || !dept) { return; }
 
-    function filterDepartments() {
-        var selected = unit.value;
-        var current = dept.value;
-        var stillVisible = false;
-        Array.prototype.forEach.call(dept.options, function (opt) {
-            if (!opt.value) { return; }
-            var match = !selected || opt.dataset.unit === selected;
-            opt.hidden = !match;
-            opt.disabled = !match;
-            if (opt.selected && match) { stillVisible = true; }
+    /**
+     * Saring opsi <select> berdasarkan atribut data-*.
+     * Bila tidak ada satu pun opsi yang cocok (data pemetaan belum lengkap),
+     * semua opsi ditampilkan lagi + petunjuk, supaya formulir tidak buntu.
+     */
+    function applyFilter(select, attr, selected, includeUnmapped) {
+        if (!select) { return false; }
+        var options = Array.prototype.slice.call(select.options).filter(function (opt) { return opt.value; });
+        var matches = options.filter(function (opt) {
+            return !selected || (opt.dataset[attr] || '0') === selected || includeUnmapped === true && (opt.dataset[attr] || '0') === '0';
         });
-        if (!stillVisible) { dept.value = ''; }
+
+        var fallback = selected !== '' && options.length > 0 && matches.length === 0;
+        var visible = fallback ? options : matches;
+
+        options.forEach(function (opt) {
+            var show = visible.indexOf(opt) !== -1;
+            opt.hidden = !show;
+            opt.disabled = !show;
+        });
+
+        if (select.value) {
+            var current = select.options[select.selectedIndex];
+            if (!current || current.hidden || current.disabled) { select.value = ''; }
+        }
+
+        return fallback;
+    }
+
+    function filterDepartments() {
+        if (deptHint) { deptHint.hidden = !applyFilter(dept, 'unit', unit.value, false); }
         filterPositions();
     }
 
     function filterPositions() {
         if (!position) { return; }
-        var selected = dept.value;
-        var current = position.value;
-        var stillVisible = false;
-        Array.prototype.forEach.call(position.options, function (opt) {
-            if (!opt.value) { return; }
-            var optDept = opt.dataset.department || '0';
-            var match = !selected || optDept === selected || optDept === '0';
-            opt.hidden = !match;
-            opt.disabled = !match;
-            if (opt.selected && match) { stillVisible = true; }
-        });
-        if (!stillVisible) { position.value = ''; }
+        var fallback = applyFilter(position, 'department', dept.value, true);
+        if (posHint) { posHint.hidden = !fallback; }
     }
 
     unit.addEventListener('change', filterDepartments);

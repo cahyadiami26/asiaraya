@@ -40,8 +40,9 @@ dengan slip gaji ber-QR.
 | **20** | Pajak & jaminan sosial: rekap PPh 21 setahun (biaya jabatan, PTKP, PKP, lapisan UU HPP), **bukti potong 1721-A1 PDF ber-QR** dengan verifikasi publik, penerbitan massal + penarikan, **export CSV siap olah e-SPT (1721-I)**, serta **rekap BPJS** Kesehatan & Ketenagakerjaan per program (KES, JHT, JP, JKK, JKM — porsi karyawan vs perusahaan), tren bulanan, kelengkapan nomor peserta, dan cetak PDF/CSV | ✅ selesai |
 | **20.1** | Konfigurasi tampilan menu: berkas `app/config/menu.php` untuk meng-enable/disable setiap item & grup menu, plus tab **Pengaturan → Menu Navigasi** untuk mengaturnya dari aplikasi (per item/grup, item terkunci selalu tampil, tombol “Tampilkan Semua” & “Bawaan Config”) | ✅ selesai |
 | **21** | **REST API `/api/v1` untuk aplikasi Android karyawan**: login token perangkat (bearer + refresh 30 hari, dapat dicabut), pengumuman, jadwal & pengajuan tukar shift, presensi online (geofence + selfie, `Idempotency-Key`), data presensi bulanan, lembur, cuti, slip gaji & bukti potong 1721-A1 (PDF via token atau URL bertanda tangan), klaim biaya, notifikasi, serta **kotak masuk persetujuan** (cuti/lembur/jadwal/klaim) untuk atasan langsung, HR, dan Finance — dilengkapi `docs/openapi.yaml` | ✅ selesai |
+| **21.1** | Perbaikan: **dropdown departemen** pada tambah/ubah karyawan kini mengikuti unit bisnis yang dipilih (sebelumnya kosong karena atribut unit tidak ikut terkirim), plus **informasi shift pada presensi harian** diambil dari jadwal sehingga tidak lagi “Tanpa shift” sebelum karyawan check-in | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1 & 20.1) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1 & 21.1) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1475,7 +1476,7 @@ curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…
 ### Format balasan
 
 ```json
-{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.0" } }
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.1" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
 
@@ -1583,6 +1584,75 @@ bisa memutus pengajuannya sendiri.
   404 pada `/api/*` selalu JSON.
 * Tidak ada CORS: klien native tidak memerlukannya, dan cookie sesi tidak
   dipakai pada jalur API.
+
+---
+
+## 2.26 Perbaikan 21.1 — Dropdown Departemen & Shift Presensi Harian
+
+Dua keluhan operasional yang diperbaiki tanpa perubahan skema
+(`Schema::VERSION` tetap **22**).
+
+### 1. Dropdown departemen kosong pada tambah/ubah karyawan
+
+* **Gejala** — memilih Business Unit (atau membuka form ubah karyawan yang
+  unitnya sudah terisi) membuat daftar **Departemen** kosong, sehingga
+  karyawan tidak bisa diberi departemen.
+* **Penyebab** — `EmployeeModel::departmentsOf()` hanya mengambil
+  `id, name, code`. Formulir mengandalkan atribut `data-unit` pada setiap
+  `<option>` untuk menyaring departemen sesuai unit; karena kolom
+  `business_unit_id` tidak ikut di-query, semua opsi ber-`data-unit="0"`
+  dan skrip penyaring menyembunyikan seluruhnya.
+* **Perbaikan**
+  * `departmentsOf()` mengembalikan `business_unit_id`; `positionsOf()`
+    mengembalikan `department_id` dan `basic_salary` (sebelumnya kosong pada
+    mode tanpa filter, sehingga penyaringan posisi per departemen dan
+    pengisian gaji pokok otomatis tidak berjalan).
+  * Penyaring di `employees/form.php` ditulis ulang (`applyFilter()`): tetap
+    menyaring per unit/departemen, tetapi bila **belum ada pemetaan** (unit
+    belum punya departemen, atau departemen belum punya posisi) semua opsi
+    ditampilkan kembali disertai petunjuk “Belum ada departemen untuk unit
+    ini — daftar menampilkan semua departemen. Lengkapi pemetaan unit di Unit
+    Organisasi.” Formulir tidak lagi buntu karena data master belum lengkap.
+  * Pilihan yang sudah tersimpan tetap terpilih saat halaman ubah dibuka.
+
+### 2. Presensi harian menampilkan “Tanpa shift”
+
+* **Gejala** — karyawan sudah dijadwalkan shift, tetapi kolom **Shift** pada
+  `/attendance/daily` tetap “Tanpa shift” sampai ia melakukan check-in.
+* **Penyebab** — kolom `attendance.shift_id` baru diisi saat check-in
+  (`AttendanceModel::checkIn`), sedangkan daftar harian hanya membaca
+  `work_shifts` lewat `a.shift_id`. Baris tanpa check-in (belum presensi) dan
+  baris ALPA lama karena itu kehilangan informasi shift.
+* **Perbaikan**
+  * `AttendanceModel::daily()` melengkapi baris tanpa `shift_id` dari tabel
+    `schedules` untuk tanggal yang sedang dilihat — satu query batch
+    (dipecah per 500 karyawan) agar tetap ringan, aturan pemilihan shift sama
+    dengan `shiftOn()` yang dipakai saat check-in. Kolom shift, jam masuk/
+    keluar, dan toleransi kini tampil sejak sebelum presensi.
+  * `dailyStats()` tidak menjalankan pencarian tambahan karena hanya
+    membutuhkan status dan durasi.
+  * Riwayat presensi karyawan (`/me/attendance`) kini punya **kolom Shift**
+    (nama + jam masuk–keluar) dan endpoint
+    `GET /api/v1/attendance/history` juga memakai jadwal sebagai cadangan,
+    sehingga hari ALPA/izin tetap menampilkan shift yang seharusnya.
+  * `markAbsent()` menyimpan `shift_id` + `operational_type` dari jadwal saat
+    membuat baris ALPA, jadi data presensi baru konsisten sejak awal.
+
+### Catatan teknis
+
+* Berkas berubah: `app/Models/EmployeeModel.php`,
+  `app/Models/AttendanceModel.php`, `app/Views/employees/form.php`,
+  `app/Views/attendance/mine.php`, `app/bootstrap.php`
+  (versi **2.17.1**, build `2026.11.02`).
+* Tidak ada perubahan API/kontrak: bentuk JSON tetap sama; endpoint riwayat
+  presensi hanya kini lebih sering mengisi `shift_name`.
+* Verifikasi: 12 departemen tampil dan tersaring per unit (unit 1 → 5, unit 2
+  → 3, unit 3 → 2, unit 4 → 2), edit karyawan tetap memilih departemen
+  tersimpan; presensi harian
+  tanpa baris presensi menampilkan “Shift Pagi 08:00–17:00”, baris ALPA
+  lama juga, `mark-absent` massal menulis shift untuk 111 baris, riwayat
+  karyawan menampilkan kolom Shift, halaman harian/live/rekap/export serta
+  `/me/attendance` dan API tetap 200.
 
 ---
 

@@ -456,13 +456,15 @@ final class AttendanceModel
     /* =====================================================================
      | Presensi harian
      |===================================================================*/
-    public function daily(string $date, array $filters, int $limit = 60, int $offset = 0): array
+    public function daily(string $date, array $filters, int $limit = 60, int $offset = 0, bool $withScheduledShift = true): array
     {
         [$where, $params] = $this->dailyWhere($filters);
+        // Shift diambil dari baris presensi bila sudah ada (diisi saat check-in).
+        // Bila belum check-in, shift terjadwal dilengkapi pada applyScheduledShift().
         $rows = Database::all(
             "SELECT e.id, e.full_name, e.employee_code, e.email, e.photo, e.business_unit_id, e.department_id,
                     bu.name AS unit_name, d.name AS department_name, p.name AS position_name,
-                    a.id AS attendance_id, a.check_in_at, a.check_out_at, a.check_in_lat, a.check_in_lng,
+                    a.id AS attendance_id, a.shift_id, a.check_in_at, a.check_out_at, a.check_in_lat, a.check_in_lng,
                     a.check_in_photo, a.check_in_distance, a.check_in_status, a.late_minutes,
                     a.work_minutes, a.early_leave_minutes, a.status, a.source, a.operational_type,
                     s.name AS shift_name, s.check_in_time, s.check_out_time, s.late_tolerance_minutes
@@ -478,7 +480,77 @@ final class AttendanceModel
             array_merge([$date], $params)
         );
 
+        if ($withScheduledShift) {
+            $rows = $this->applyScheduledShift($rows, $date);
+        }
+
         return ['rows' => $rows, 'total' => $this->countDaily($filters)];
+    }
+
+    /**
+     * Lengkapi shift terjadwal untuk baris harian yang belum punya shift presensi
+     * (belum check-in atau baris ALPA lama). Dipakai satu query batch, bukan
+     * subquery per baris, agar halaman tetap ringan untuk ratusan karyawan.
+     *
+     * @param array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function applyScheduledShift(array $rows, string $date): array
+    {
+        if (!$rows) {
+            return $rows;
+        }
+
+        $missing = [];
+        foreach ($rows as $row) {
+            if (empty($row['shift_id'])) {
+                $missing[(int) $row['id']] = true;
+            }
+        }
+        if (!$missing) {
+            return $rows;
+        }
+
+        $map = [];
+        foreach (array_chunk(array_keys($missing), 500) as $chunk) {
+            $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+            $schedules = Database::all(
+                'SELECT sc.employee_id, sc.shift_id, s.name AS shift_name,
+                        s.check_in_time, s.check_out_time, s.late_tolerance_minutes, s.operational_type
+                   FROM schedules sc
+                   JOIN work_shifts s ON s.id = sc.shift_id
+                  WHERE sc.start_date <= ? AND sc.end_date >= ?
+                    AND sc.employee_id IN (' . $placeholders . ')
+                  ORDER BY sc.start_date DESC, sc.id DESC',
+                array_merge([$date, $date], $chunk)
+            );
+
+            // Baris pertama per karyawan = jadwal dengan start_date terbaru (sama seperti shiftOn()).
+            foreach ($schedules as $schedule) {
+                $employeeId = (int) $schedule['employee_id'];
+                if (!isset($map[$employeeId])) {
+                    $map[$employeeId] = $schedule;
+                }
+            }
+        }
+
+        foreach ($rows as &$row) {
+            $employeeId = (int) $row['id'];
+            if (!empty($row['shift_id']) || !isset($map[$employeeId])) {
+                continue;
+            }
+            $row['shift_id']               = $map[$employeeId]['shift_id'];
+            $row['shift_name']             = $map[$employeeId]['shift_name'];
+            $row['check_in_time']          = $map[$employeeId]['check_in_time'];
+            $row['check_out_time']         = $map[$employeeId]['check_out_time'];
+            $row['late_tolerance_minutes'] = $map[$employeeId]['late_tolerance_minutes'];
+            if (empty($row['operational_type'])) {
+                $row['operational_type'] = $map[$employeeId]['operational_type'];
+            }
+        }
+        unset($row);
+
+        return $rows;
     }
 
     public function countDaily(array $filters): int
@@ -526,7 +598,8 @@ final class AttendanceModel
     public function dailyStats(string $date, array $filters = []): array
     {
         $filters['date'] = $date;
-        $rows = $this->daily($date, $filters, 5000, 0)['rows'];
+        // Statistik hanya butuh status/jam, jadi pencarian shift terjadwal dilewati.
+        $rows = $this->daily($date, $filters, 5000, 0, false)['rows'];
 
         $stats = ['total' => count($rows), 'present' => 0, 'late' => 0, 'absent' => 0, 'leave' => 0, 'none' => 0,
                   'on_site' => 0, 'late_minutes' => 0, 'work_minutes' => 0];
@@ -933,10 +1006,15 @@ final class AttendanceModel
     public function mine(int $employeeId, int $year, int $month): array
     {
         [$start, $end] = $this->monthBounds($year, $month);
+        // Hari tanpa check-in (mis. ALPA/izin) tetap menampilkan shift terjadwal.
         $rows = Database::all(
             'SELECT a.*, s.name AS shift_name, s.check_in_time, s.check_out_time
              FROM attendance a
-             LEFT JOIN work_shifts s ON s.id = a.shift_id
+             LEFT JOIN schedules sc ON sc.id = (
+                    SELECT sc2.id FROM schedules sc2
+                     WHERE sc2.employee_id = a.employee_id AND sc2.start_date <= a.work_date AND sc2.end_date >= a.work_date
+                     ORDER BY sc2.start_date DESC, sc2.id DESC LIMIT 1)
+             LEFT JOIN work_shifts s ON s.id = COALESCE(a.shift_id, sc.shift_id)
              WHERE a.employee_id = ? AND a.work_date BETWEEN ? AND ?
              ORDER BY a.work_date DESC',
             [$employeeId, $start, $end]
@@ -1038,13 +1116,25 @@ final class AttendanceModel
 
         $count = 0;
         foreach ($employees as $employee) {
+            // Simpan shift terjadwal agar baris ALPA tidak kehilangan informasi shift.
+            $schedule = Database::one(
+                'SELECT sc.shift_id, s.operational_type
+                   FROM schedules sc
+                   JOIN work_shifts s ON s.id = sc.shift_id
+                  WHERE sc.employee_id = ? AND sc.start_date <= ? AND sc.end_date >= ?
+                  ORDER BY sc.start_date DESC, sc.id DESC LIMIT 1',
+                [(int) $employee['id'], $date, $date]
+            );
+
             Database::insert('attendance', [
-                'employee_id' => (int) $employee['id'],
-                'work_date'   => $date,
-                'status'      => 'ABSENT',
-                'source'      => 'SYSTEM',
-                'created_at'  => date('Y-m-d H:i:s'),
-                'updated_at'  => date('Y-m-d H:i:s'),
+                'employee_id'      => (int) $employee['id'],
+                'work_date'        => $date,
+                'shift_id'         => $schedule['shift_id'] ?? null,
+                'operational_type' => $schedule['operational_type'] ?? 'NORMAL',
+                'status'           => 'ABSENT',
+                'source'           => 'SYSTEM',
+                'created_at'       => date('Y-m-d H:i:s'),
+                'updated_at'       => date('Y-m-d H:i:s'),
             ]);
             $count++;
         }

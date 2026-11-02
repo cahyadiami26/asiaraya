@@ -435,7 +435,7 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
 ### 8.1 Amplop & error
 
 ```json
-{ "success": true,  "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.0" } }
+{ "success": true,  "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.1" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.",
   "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
@@ -552,7 +552,7 @@ disimpan untuk tampilan offline; beri label “data tersimpan”.
 - Normalisasi: buang spasi, tambahkan `https://` bila tanpa skema, buang
   trailing `/`, tolak path `/api/v1` ganda.
 - Ganti server saat sesi aktif → konfirmasi → logout → buka Login.
-- Tampilkan di Pengaturan: “Tersambung: https://… · HRIS v2.17.0”.
+- Tampilkan di Pengaturan: “Tersambung: https://… · HRIS v2.17.1”.
 
 ---
 
@@ -652,7 +652,7 @@ font scale 1.3, dan mode pesawat (banner offline).
 ## 15. Build, signing, rilis
 
 - `versionName = "1.0.0"`, `versionCode = 1` (naikkan tiap rilis; samakan
-  penomoran rilis dengan versi backend yang didukung, mis. catat “API 2.17.0”).
+  penomoran rilis dengan versi backend yang didukung, mis. catat “API 2.17.1”).
 - Signing: `keystore.properties` (gitignored) dengan `storeFile`, `storePassword`,
   `keyAlias`, `keyPassword`; blok `signingConfigs` hanya di `release`.
 - `release`: `isMinifyEnabled = true`, `isShrinkResources = true`; ProGuard/R8
@@ -744,7 +744,7 @@ POST   /approvals/{type}/{id}/decide  {decision:"APPROVED"|"REJECTED",note?}
               "email":"dimas.aditya@asiaraya.co.id","role":"KARYAWAN","position":"Software Engineer",
               "department":"IT","business_unit":"Jakarta HQ (Pusat)",
               "manager":{"id":2,"name":"Budi Santoso"},"photo_url":null}},
- "meta":{"request_id":"req_…","server_time":"2026-10-30T06:33:56+07:00","version":"2.17.0"}}
+ "meta":{"request_id":"req_…","server_time":"2026-10-30T06:33:56+07:00","version":"2.17.1"}}
 ```
 
 **Presensi hari ini (200)**
