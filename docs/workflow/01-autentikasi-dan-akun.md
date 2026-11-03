@@ -67,10 +67,13 @@ pesan netral (tanpa bocor data)         email berisi tautan /reset-password?toke
 
 ### 3.4 Ganti kata sandi & profil
 
-1. Pengguna membuka `/me/profile`.
+1. Pengguna membuka `/me/profile` (web) — data yang sama juga dibaca aplikasi
+   Android lewat `GET /api/v1/me/profile`, lihat [19](19-rest-api-android.md).
 2. Perubahan profil disimpan ke data karyawan; unggah foto dibatasi ukuran dan
    diperkecil otomatis.
 3. Ganti kata sandi wajib menyertakan kata sandi lama dan minimal 8 karakter.
+   Email perusahaan **tidak** dapat diubah sendiri — harus lewat HR, baik di
+   web maupun di aplikasi.
 
 ## 4. Status & kondisi
 
@@ -90,7 +93,8 @@ pesan netral (tanpa bocor data)         email berisi tautan /reset-password?toke
 | `GET/POST /forgot-password` | `AuthController@showForgot/sendReset` | Permintaan reset |
 | `GET/POST /reset-password` | `AuthController@showReset/resetPassword` | Set sandi baru |
 | `POST /logout` | `AuthController@logout` | Akhiri sesi |
-| `GET/POST /me/profile` | `DashboardController@profile/updateProfile` | Profil pribadi |
+| `GET/POST /me/profile` | `DashboardController@profile/updateProfile` | Profil pribadi (web) |
+| `GET /api/v1/me/profile` | `Api\V1\ProfileApiController@show` | Profil lengkap untuk aplikasi Android (baca saja) |
 
 Berkas pendukung: `app/Core/Auth.php`, `app/Core/GoogleAuth.php`,
 `app/Models/EmployeeModel.php`, `app/Views/auth/*`.

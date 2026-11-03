@@ -25,6 +25,7 @@ security:
   - bearerAuth: []
 tags:
   - name: Auth
+  - name: Profil
   - name: Konfigurasi
   - name: Pengumuman
   - name: Jadwal
