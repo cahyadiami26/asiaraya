@@ -46,7 +46,8 @@
 1. Validasi: kategori aktif, nominal > 0, tidak melebihi plafon, bukti wajib
    bila diminta.
 2. Atasan memutus tahap 1; HR **atau** Finance dapat memutus tahap final
-   (termasuk mengambil alih bila atasan belum memutus).
+   (termasuk mengambil alih bila atasan belum memutus). Khusus klaim milik
+   HR/Finance sendiri, persetujuan atasan langsung sudah **final** (lihat 3.1).
 3. Klaim `APPROVED` otomatis ditautkan ke slip saat payroll periode dihitung.
 4. Finance dapat langsung menandai klaim dibayar di luar payroll
    (`POST /claims/{id}/pay`) — status menjadi `PAID`.
