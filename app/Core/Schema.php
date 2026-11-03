@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 22;
+    public const VERSION = 23;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -38,6 +38,7 @@ final class Schema
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_payroll_period ON payroll_periods (business_unit_id, period_year, period_month)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_day ON attendance (employee_id, work_date)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_code ON employees (employee_code)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_id_sequences_scope ON id_sequences (scope_key)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_setting_key ON settings (setting_key)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_balance ON leave_balances (employee_id, leave_type_id, period_year)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_component_code ON salary_components (code)',

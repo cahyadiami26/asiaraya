@@ -20,6 +20,10 @@ $err = static fn (string $key): string => isset($errors[$key])
     ? '<span class="err">' . e($errors[$key]) . '</span>'
     : '';
 $unitId = (int) $val('business_unit_id', 0);
+if (!$isEdit && $unitId === 0) {
+    // Samakan pilihan unit dengan unit yang dipakai untuk preview ID.
+    $unitId = (int) ($defaultUnitId ?? 0);
+}
 $deptId = (int) $val('department_id', 0);
 $positionId = (int) $val('position_id', 0);
 $photo = $isEdit ? ($employee['photo'] ?? null) : null;
@@ -49,7 +53,7 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                 <div class="card__head">
                     <div><h2>Identitas Karyawan</h2>
                         <div class="sub">Data ini tercetak pada slip gaji dan dokumen kepegawaian.</div></div>
-                    <span class="tag-soft mono"><?= e($isEdit ? $employee['employee_code'] : $nextCode) ?></span>
+                    <span class="tag-soft mono" id="code-preview-badge"><?= e($isEdit ? $employee['employee_code'] : $nextCode) ?></span>
                 </div>
                 <div class="card__body">
                     <div class="form-grid">
@@ -64,8 +68,11 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                         </div>
                         <div class="field">
                             <label>ID Karyawan</label>
-                            <input class="input mono" name="employee_code" value="<?= e($isEdit ? $employee['employee_code'] : $nextCode) ?>" maxlength="30">
-                            <span class="hint"><?= $isEdit ? 'Ubah hanya jika diperlukan.' : 'Dibuat otomatis, dapat disesuaikan.' ?></span>
+                            <input class="input mono" id="field-code" name="employee_code" value="<?= e($isEdit ? $employee['employee_code'] : ($val('employee_code') ?: $nextCode)) ?>" maxlength="30" autocomplete="off">
+                            <?php if (!$isEdit): ?>
+                                <input type="hidden" name="code_source" id="field-code-source" value="<?= $val('code_source') === 'manual' ? 'manual' : 'auto' ?>">
+                            <?php endif; ?>
+                            <span class="hint" id="code-hint"><?= $isEdit ? 'Ubah hanya jika diperlukan.' : 'Dibuat otomatis dari format ID dan business unit — ikut berubah saat unit/departemen diganti.' ?></span>
                         </div>
                         <div class="field">
                             <label>Email Perusahaan <span class="req">*</span></label>
@@ -385,6 +392,45 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
 
     unit.addEventListener('change', filterDepartments);
     dept.addEventListener('change', filterPositions);
+
+    /**
+     * ID karyawan otomatis: ambil ulang preview dari server setiap kali
+     * business unit / departemen berubah, supaya kode yang tampil sama persis
+     * dengan yang diterbitkan saat formulir disimpan.
+     */
+    var codeInput = document.getElementById('field-code');
+    var codeSource = document.getElementById('field-code-source');
+    var codeBadge = document.getElementById('code-preview-badge');
+    var codeHint = document.getElementById('code-hint');
+    var codeUrl = <?= json_encode($codeUrl ?? '', JSON_UNESCAPED_SLASHES) ?>;
+
+    if (!codeInput || !codeSource || !codeUrl) { return; }
+
+    var codeRequest = 0;
+    function refreshCode() {
+        var request = ++codeRequest;
+        var query = codeUrl + (codeUrl.indexOf('?') === -1 ? '?' : '&')
+            + 'unit=' + encodeURIComponent(unit.value || '')
+            + '&department=' + encodeURIComponent(dept.value || '');
+
+        fetch(query, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (data) {
+                if (request !== codeRequest || !data || !data.code) { return; }
+                codeInput.value = data.code;
+                if (codeBadge) { codeBadge.textContent = data.code; }
+                codeSource.value = 'auto';
+            })
+            .catch(function () { /* biarkan nilai lama; server tetap menerbitkan ID saat simpan */ });
+    }
+
+    codeInput.addEventListener('input', function () {
+        codeSource.value = 'manual';
+        if (codeHint) { codeHint.textContent = 'ID diubah manual. Kosongkan untuk memakai ID otomatis dari format.'; }
+    });
+
+    unit.addEventListener('change', refreshCode);
+    dept.addEventListener('change', refreshCode);
 
     if (position && salary) {
         position.addEventListener('change', function () {

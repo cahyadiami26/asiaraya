@@ -43,8 +43,9 @@ dengan slip gaji ber-QR.
 | **21.1** | Perbaikan: **dropdown departemen** pada tambah/ubah karyawan kini mengikuti unit bisnis yang dipilih (sebelumnya kosong karena atribut unit tidak ikut terkirim), plus **informasi shift pada presensi harian** diambil dari jadwal sehingga tidak lagi “Tanpa shift” sebelum karyawan check-in | ✅ selesai |
 | **21.2** | Perbaikan privasi: pemberitahuan akun demo dihapus dari form login, dan data pengajuan (lembur, cuti, perubahan jadwal) hanya terlihat oleh pemiliknya — antrean persetujuan hanya untuk atasan langsung yang punya bawahan dan HR | ✅ selesai |
 | **21.3** | Perbaikan: notifikasi persetujuan lembur ke atasan langsung tidak lagi berujung **403** — halaman `/overtime` kini bisa dibuka atasan (cakupan tim, tombol HR disembunyikan), begitu juga `/leave` dan `/schedules/requests` untuk atasan ber-peran FIN | ✅ selesai |
+| **21.4** | Perbaikan: **ID karyawan otomatis** pada formulir tambah karyawan kini benar-benar mengikuti format di halaman *Organisasi → Format ID* (business unit + departemen pilihan), berubah langsung saat unit diganti, dan diterbitkan ulang dari counter saat disimpan sehingga tidak lagi memunculkan “ID karyawan sudah digunakan” | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2 & 21.3) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3 & 21.4) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1478,7 +1479,7 @@ curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…
 ### Format balasan
 
 ```json
-{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.3" } }
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.4" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
 
@@ -1813,6 +1814,94 @@ Begitu notifikasi diklik, halaman tujuan menampilkan **403 Akses Ditolak**.
 
 ---
 
+## 2.29 Perbaikan 21.4 — ID Karyawan Otomatis Tidak Mengikuti Format Organisasi
+
+### Gejala
+
+Menambah karyawan dari `/employees/create` selalu gagal dengan pesan
+**“ID karyawan … sudah digunakan”**, padahal HR baru pertama kali membuka
+formulir. ID yang tampil di formulir juga tidak sama dengan format yang
+disetel di *Organisasi → Format ID* (mis. muncul `ARG-HQ-0001` sementara
+format aktif `ARG-{BU}-{SEQ:4}` untuk unit Jakarta).
+
+### Penyebab
+
+1. **Preview dihitung sebelum unit dipilih.** `EmployeeController::create()`
+   hanya membaca `?unit=` dan memanggil `EmployeeCode::preview(null)`;
+   `render()` lalu memakai nilai cadangan `HQ` untuk `{BU}`. Saat formulir
+   disimpan dengan unit sebenarnya (mis. `JKT`), kode yang terkirim tidak
+   pernah cocok dengan format maupun nomor urut yang berlaku.
+2. **Preview dan penerbitan memakai sumber nomor berbeda.**
+   `preview()` memakai `existingMax()` (nomor terbesar pada kode lama),
+   sedangkan `next()` memakai `id_sequences` yang **dikosongkan** setiap kali
+   format disimpan (`saveIdFormat()`). Counter kembali ke 1 sementara data
+   lama sudah memakai 1100-an → kode baru bertabrakan dengan kode lama.
+3. **Formulir mengirim ID "jadi".** Kolom `employee_code` sudah terisi nilai
+   preview, sehingga `store()` menganggapnya ID ketikan HR: alih-alih
+   menerbitkan nomor baru, ia hanya memeriksa duplikat lalu menolak.
+4. **Tidak ada reaksi saat unit/departemen diganti.** Memilih unit lain di
+   formulir tidak memperbarui ID yang tampil.
+5. **Pembacaan nomor urut terlalu longgar.** `existingMax()` mengambil digit
+   terakhir kode, sehingga format seperti `{YEAR}-{BU}-{SEQ:3}-{MONTH}`
+   terbaca salah.
+6. **`id_sequences.scope_key` tidak unik**, jadi dua permintaan bersamaan
+   dapat membuat baris counter ganda.
+
+### Perbaikan
+
+* **Satu sumber nomor untuk preview dan penerbitan.**
+  `EmployeeCode::preview()` kini memakai `max(counter, existingMax()) + 1`,
+  sama seperti `next()`; `existingMax()` menjadi *lantai* di `next()` sehingga
+  counter yang tertinggal (reset format, impor data) tidak pernah menerbitkan
+  nomor yang sudah terpakai.
+* **Preview benar sejak awal.** `create()` memakai unit aktif pertama bila
+  `?unit=` tidak ada, dan meneruskan `?department=`; fallback `HQ` tidak lagi
+  muncul di formulir. Halaman *Organisasi → Format ID* memakai fungsi yang
+  sama sehingga contohnya identik.
+* **Formulir hidup.** Rute baru `GET /employees/next-code?unit=&department=`
+  (peran HR, tanpa efek samping) dipanggil JavaScript setiap kali business
+  unit/departemen berubah — badge dan kolom ID ikut diperbarui.
+* **ID otomatis bukan ID manual.** Formulir mengirim `code_source`
+  (`auto`/`manual`); `store()` menerbitkan ulang ID lewat
+  `EmployeeCode::nextUnique()` selama HR tidak mengetik sendiri. Klien lama
+  yang tidak mengirim `code_source` tetap dilayani dengan membandingkan nilai
+  terkirim terhadap preview terbaru.
+* **Pembacaan nomor mengikuti format.** `sequenceOf()` menyusun pola regex dari
+  token format aktif (`{SEQ}` ditangkap; `{YEAR}`, `{YY}`, `{MONTH}`,
+  `{COMPANY}`, `{BU}`, `{DEPT}` dicocokkan sesuai bentuknya) dan hanya jatuh
+  ke digit terakhir untuk kode warisan yang tidak mengikuti format.
+* **Unik & aman balapan.** `id_sequences.scope_key` diberi indeks unik
+  (`uq_id_sequences_scope`), `next()` menangani tabrakan insert dengan
+  membaca ulang baris counter, dan konversi pelamar menjadi karyawan
+  (`RecruitmentController`) memakai `nextUnique()`.
+
+### Hasil pengujian
+
+| Skenario | Sebelum | Sesudah |
+|---|---|---|
+| Buka formulir tanpa `?unit=` | `ARG-HQ-0001` | `ARG-JKT-1105` (unit aktif pertama, format aktif) |
+| Simpan dengan unit BDG, kolom masih berisi ID JKT (JS mati) | ID JKT tersimpan / “sudah digunakan” | `ARG-BDG-0528` — ID diterbitkan ulang sesuai unit |
+| Simpan dua karyawan berturut-turut dengan ID awal yang sama | karyawan kedua ditolak | `ARG-BDG-0528` lalu `ARG-BDG-0529` |
+| HR mengetik ID sendiri (`code_source=manual`) | tersimpan | tetap `CUSTOM-001`, duplikat tetap ditolak |
+| Format diubah ke `{COMPANY}/{YY}{MONTH}/{BU}-{DEPT}-{SEQ:3}` | preview ≠ hasil simpan | `ARG/2611/JKT-HRGA-1105` pada preview, simpan, dan halaman Organisasi |
+| Ganti unit/departemen di formulir | ID tidak berubah | badge & kolom ID diperbarui via `/employees/next-code` |
+
+### Catatan teknis
+
+* Berkas berubah: `app/Core/EmployeeCode.php`,
+  `app/Controllers/EmployeeController.php`,
+  `app/Controllers/RecruitmentController.php`,
+  `app/Views/employees/form.php`, `public/index.php`,
+  `database/schema.sql`, `app/Core/Schema.php` (`Schema::VERSION` **23**),
+  `app/bootstrap.php` (versi **2.17.4**).
+* Migrasi hanya menambah indeks unik `uq_id_sequences_scope`; data karyawan
+  tidak diubah. Nomor urut tetap lompat (tidak didaur ulang) bila ada kode
+  lama di unit yang sama — ini disengaja agar ID yang pernah dipakai tidak
+  terbit kembali.
+* Tidak ada perubahan kontrak REST API.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1855,7 +1944,7 @@ storage/                 # logs, cache, uploads, database preview
 
 | Modul | HR | FIN | Karyawan |
 |-------|----|-----|----------|
-| Data karyawan (CRUD, kontrak, foto, resign) | ✅ | – | baca (diri sendiri) |
+| Data karyawan (CRUD, kontrak, foto, resign, ID otomatis mengikuti format unit/departemen) | ✅ | – | baca (diri sendiri) |
 | Unit organisasi (unit/departemen/posisi), format ID, pengaturan perusahaan | ✅ | – | – |
 | Shift & jadwal (master shift, matriks penjadwalan) | ✅ | – | lihat jadwal sendiri |
 | Approval perubahan jadwal | ✅ | – | pengajuan sendiri (status di Jadwal Saya) + persetujuan atasan langsung |

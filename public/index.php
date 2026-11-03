@@ -98,6 +98,8 @@ $router->post('/company', [OrgController::class, 'saveCompany'], ['roles' => ['H
 $router->get('/employees', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.index']);
 $router->get('/employees/contracts', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.contracts', 'params' => ['contract' => 'expiring', 'flag' => 'ACTIVE', 'sort' => 'contract']]);
 $router->get('/employees/create', [EmployeeController::class, 'create'], ['roles' => ['HR'], 'name' => 'employees.create']);
+// Preview ID otomatis untuk formulir tambah karyawan (non-consuming).
+$router->get('/employees/next-code', [EmployeeController::class, 'nextCode'], ['roles' => ['HR'], 'name' => 'employees.next-code']);
 $router->post('/employees', [EmployeeController::class, 'store'], ['roles' => ['HR'], 'name' => 'employees.store']);
 $router->get('/employees/{id}', [EmployeeController::class, 'show'], ['roles' => ['HR'], 'name' => 'employees.show']);
 $router->get('/employees/{id}/edit', [EmployeeController::class, 'edit'], ['roles' => ['HR'], 'name' => 'employees.edit']);

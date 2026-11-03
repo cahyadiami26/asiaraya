@@ -114,7 +114,8 @@ CREATE TABLE IF NOT EXISTS id_sequences (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     scope_key VARCHAR(80) NOT NULL,
     last_number INT NOT NULL DEFAULT 0,
-    updated_at DATETIME NULL
+    updated_at DATETIME NULL,
+    UNIQUE KEY uq_id_sequences_scope (scope_key)
 );
 
 CREATE TABLE IF NOT EXISTS work_shifts (
