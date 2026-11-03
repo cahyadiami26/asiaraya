@@ -14,12 +14,6 @@ $unread = $unreadNotifications ?? 0;
     </form>
 
     <div class="topbar__right">
-        <button type="button" class="bu-switcher" data-dropdown aria-haspopup="true">
-            <?= icon('building') ?>
-            <span><?= e($activeUnit) ?></span>
-            <?= icon('chevron-down', 'ico') ?>
-        </button>
-
         <div class="dropdown hide-sm">
             <button type="button" class="icon-btn" data-dropdown aria-haspopup="true" aria-label="Notifikasi" data-bell>
                 <?= icon('bell') ?>
