@@ -28,9 +28,11 @@ HR/Finance, maupun dasar pengujian (UAT).
 | 15 | Offboarding & aset/BAST | [15-offboarding-dan-aset.md](15-offboarding-dan-aset.md) | Karyawan, atasan, HR, FIN |
 | 16 | Dokumen & riwayat jabatan | [16-dokumen-dan-riwayat-jabatan.md](16-dokumen-dan-riwayat-jabatan.md) | HR, Karyawan |
 | 17 | Pajak PPh 21 & BPJS | [17-pajak-dan-bpjs.md](17-pajak-dan-bpjs.md) | HR, FIN |
-| 18 | Laporan, log, email & penjadwal | [18-laporan-log-email-cron.md](18-laporan-log-email-cron.md) | HR, FIN |
+| 18 | Laporan & log aktivitas | [18-laporan-log-email-cron.md](18-laporan-log-email-cron.md) | HR, FIN |
 | 19 | REST API `/api/v1` (Android) | [19-rest-api-android.md](19-rest-api-android.md) | Semua (token) |
 | 20 | Menu navigasi & RBAC | [20-menu-navigasi-dan-rbac.md](20-menu-navigasi-dan-rbac.md) | HR |
+| 21 | Antrean email (email queue) | [21-antrean-email.md](21-antrean-email.md) | HR |
+| 22 | Penjadwal & cron | [22-penjadwal-dan-cron.md](22-penjadwal-dan-cron.md) | HR |
 
 ## Role pengguna
 

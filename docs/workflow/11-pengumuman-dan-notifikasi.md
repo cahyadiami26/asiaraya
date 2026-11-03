@@ -96,7 +96,8 @@ Berkas pendukung: `app/Models/AnnouncementModel.php`,
 
 * Notifikasi adalah kanal utama pemberitahuan approval; setiap tautan harus
   menuju halaman yang boleh dibuka penerimanya (sudah diaudit pada rilis 2.17.3).
-* Email pengumuman bersifat **opsional**: aktifkan `cron_announcement_email`,
+* Email pengumuman bersifat **opsional**: aktifkan `cron_announcement_email`
+  di halaman **Penjadwal & Cron** ([22-penjadwal-dan-cron.md](22-penjadwal-dan-cron.md)),
   lalu job `announcement_publish` mengirim template `announcement` ke audiens
   (maksimal sekali per karyawan per 30 hari untuk judul yang sama).
 * Aplikasi Android membaca pengumuman & notifikasi lewat `/api/v1/announcements`

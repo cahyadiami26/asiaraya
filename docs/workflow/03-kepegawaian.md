@@ -106,6 +106,9 @@ Berkas pendukung: `app/Models/EmployeeModel.php`, `app/Core/EmployeeCode.php`,
 
 ## 6. Integrasi & catatan
 
+* Pengingat kontrak berakhir dikirim otomatis oleh job `contract_expiry`
+  (jendela H-30, dapat diubah) berupa email + notifikasi lonceng — lihat
+  [22-penjadwal-dan-cron.md](22-penjadwal-dan-cron.md).
 * Data karyawan dipakai semua modul: presensi (jadwal & geofence), payroll
   (gaji pokok, status pajak), cuti (saldo), kinerja, pelatihan, dokumen.
 * Role karyawan menentukan menu; perubahan role langsung berlaku pada login

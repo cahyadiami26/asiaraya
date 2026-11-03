@@ -113,3 +113,5 @@ Berkas pendukung: `app/Models/LeaveModel.php`, `app/Core/ApprovalEngine.php`,
   atau gaji prorata bila jenis cuti tidak berbayar).
 * Halaman `/leave` dual-mode seperti lembur; atasan hanya melihat timnya.
 * Cuti dapat diajukan lewat aplikasi Android (`/api/v1/leaves`).
+* Pengingat sisa cuti menjelang akhir tahun dikirim otomatis oleh job
+  `leave_expiry` (bawaan H-70) — lihat [22-penjadwal-dan-cron.md](22-penjadwal-dan-cron.md).

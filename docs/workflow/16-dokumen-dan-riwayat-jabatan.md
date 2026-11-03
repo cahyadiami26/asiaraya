@@ -91,7 +91,9 @@ Berkas pendukung: `app/Models/DocumentModel.php`, `app/Models/CareerModel.php`,
 
 ## 6. Catatan
 
-* Cron `document_expiry` mengirim pengingat dokumen yang akan kedaluwarsa.
+* Cron `document_expiry` mengirim pengingat dokumen yang akan kedaluwarsa
+  (default H-60, dedup 45 hari; dokumen rahasia tidak dikirim lewat email) —
+  lihat [22-penjadwal-dan-cron.md](22-penjadwal-dan-cron.md).
 * Perubahan jabatan/gaji wajib dicatat di riwayat agar audit trail lengkap;
   payroll memakai nilai terbaru pada data karyawan.
 * Dokumen kontrak dan SK dapat dipakai sebagai lampiran offboarding.

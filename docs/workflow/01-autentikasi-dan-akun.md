@@ -97,6 +97,9 @@ Berkas pendukung: `app/Core/Auth.php`, `app/Core/GoogleAuth.php`,
 
 ## 6. Catatan
 
+* Email reset kata sandi dikirim lewat **antrean email** (status & riwayat di
+  `/mail`); bila SMTP belum aktif, tautan tetap dicatat di
+  `storage/logs/password-reset.log`. Lihat [21-antrean-email.md](21-antrean-email.md).
 * Google SSO memakai email sebagai kunci — HR **wajib** memakai email perusahaan
   yang benar saat membuat karyawan.
 * Semua percobaan login (berhasil/gagal) dan reset kata sandi tercatat di log

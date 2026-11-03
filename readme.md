@@ -2022,7 +2022,7 @@ vendor/                  # dompdf 3.1.6 + font/svg/html5 libs & phpqrcode (manua
 docs/
   openapi.yaml           # spesifikasi REST API /api/v1 (OpenAPI 3.1)
   android-app-prompt.md  # brief siap pakai untuk membangun aplikasi Android (Kotlin)
-  workflow/              # dokumentasi fungsi, workflow, dan role per modul (01–20)
+  workflow/              # dokumentasi fungsi, workflow, dan role per modul (01–22)
 tools/preview/           # runtime pratinjau sandbox (bukan untuk produksi)
 storage/                 # logs, cache, uploads, database preview
 ```
@@ -2072,7 +2072,7 @@ oleh HR dan FIN (nama + timestamp) serta disematkan QR validasi.
 ## 4.1 Dokumentasi modul & workflow
 
 Rincian **fungsi, langkah workflow, dan role pengguna** untuk setiap modul
-tersedia di [`docs/workflow/`](docs/workflow/README.md) — 20 berkas:
+tersedia di [`docs/workflow/`](docs/workflow/README.md) — 22 berkas:
 
 | Kelompok | Berkas |
 |----------|--------|
@@ -2081,7 +2081,7 @@ tersedia di [`docs/workflow/`](docs/workflow/README.md) — 20 berkas:
 | Penggajian | 08 komponen gaji · 09 payroll · 10 klaim & reimbursement |
 | Komunikasi | 11 pengumuman & notifikasi |
 | Pengembangan SDM | 12 penilaian kinerja · 13 pelatihan & sertifikasi · 14 rekrutmen & onboarding · 15 offboarding & aset · 16 dokumen & riwayat jabatan |
-| Pelaporan & sistem | 17 pajak & BPJS · 18 laporan, log, email & penjadwal · 19 REST API Android · 20 menu navigasi & RBAC |
+| Pelaporan & sistem | 17 pajak & BPJS · 18 laporan & log aktivitas · 19 REST API Android · 20 menu navigasi & RBAC · 21 antrean email · 22 penjadwal & cron |
 
 Setiap berkas memakai struktur sama: *Fungsi → Role → Workflow → Status →
 Rute & berkas kode → Catatan*, sehingga bisa dipakai untuk operasional, UAT,
