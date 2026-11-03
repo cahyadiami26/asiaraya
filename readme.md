@@ -44,8 +44,9 @@ dengan slip gaji ber-QR.
 | **21.2** | Perbaikan privasi: pemberitahuan akun demo dihapus dari form login, dan data pengajuan (lembur, cuti, perubahan jadwal) hanya terlihat oleh pemiliknya — antrean persetujuan hanya untuk atasan langsung yang punya bawahan dan HR | ✅ selesai |
 | **21.3** | Perbaikan: notifikasi persetujuan lembur ke atasan langsung tidak lagi berujung **403** — halaman `/overtime` kini bisa dibuka atasan (cakupan tim, tombol HR disembunyikan), begitu juga `/leave` dan `/schedules/requests` untuk atasan ber-peran FIN | ✅ selesai |
 | **21.4** | Perbaikan: **ID karyawan otomatis** pada formulir tambah karyawan kini benar-benar mengikuti format di halaman *Organisasi → Format ID* (business unit + departemen pilihan), berubah langsung saat unit diganti, dan diterbitkan ulang dari counter saat disimpan sehingga tidak lagi memunculkan “ID karyawan sudah digunakan” | ✅ selesai |
+| **21.5** | Perbaikan: **menu peran FIN** dilengkapi — grup *Layanan Mandiri* (profil, presensi, jadwal, pengajuan lembur & cuti, klaim, slip gaji, dokumen, riwayat jabatan, bukti potong) serta menu **Persetujuan Payroll** dengan badge antrean; peran HR ikut mendapat layanan mandiri yang sama | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3 & 21.4) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4 & 21.5) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1479,7 +1480,7 @@ curl https://hris.asiaraya.co.id/api/v1/auth/me -H 'Authorization: Bearer ar_…
 ### Format balasan
 
 ```json
-{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.4" } }
+{ "success": true, "data": { }, "meta": { "request_id": "req_…", "server_time": "2026-10-30T06:34:05+07:00", "version": "2.17.5" } }
 { "success": false, "code": "VALIDATION_ERROR", "message": "Alasan cuti wajib diisi.", "errors": { "reason": "Alasan cuti wajib diisi." }, "meta": { } }
 ```
 
@@ -1902,6 +1903,93 @@ format aktif `ARG-{BU}-{SEQ:4}` untuk unit Jakarta).
 
 ---
 
+## 2.30 Perbaikan 21.5 — Menu & Hak Akses Peran FIN
+
+### Gejala
+
+Pengguna berperan **FIN** (Finance) hanya melihat segelintir menu: *Dashboard*,
+*Perubahan Jadwal*, *Payroll*, *Klaim*, *Laporan*, *PPh 21*, *BPJS*, *Penilaian
+Tim*, *Penilaian Saya*, *Pelatihan Saya*, *Pengunduran Diri Saya*, *Pengumuman*,
+dan *Notifikasi*. Menu untuk **mengajukan lembur/cuti sendiri**, **melihat
+presensi, jadwal, slip gaji, dokumen, bukti potong**, serta **antrean persetujuan
+payroll** tidak muncul — padahal rute `/me/*` terbuka untuk semua peran login dan
+`POST /payroll/{id}/approve|pay` memang khusus FIN.
+
+### Penyebab
+
+1. Seluruh item `me.*` (Profil Saya, Presensi Saya, Jadwal Saya, Lembur Saya,
+   Cuti Saya, Klaim Saya, Slip Gaji, Dokumen Saya, Riwayat Jabatan Saya, Bukti
+   Potong Pajak) dideklarasikan `roles => ['KARYAWAN']` di `app/Core/Nav.php`,
+   sehingga FIN (dan HR) tidak pernah melihatnya walaupun route-nya tidak
+   membatasi peran.
+2. **Tidak ada menu persetujuan payroll.** Halaman `/payroll` menampilkan semua
+   periode; tombol *Setujui*/*Bayar* hanya muncul setelah periode dibuka, dan
+   tidak ada tautan langsung ke antrean `SENT_TO_FINANCE` (yang justru tugas
+   utama Finance).
+3. Grup portal hanya diberi label “Persetujuan Tim” untuk peran non-karyawan,
+   sehingga tidak ada tempat untuk layanan mandiri bila ditambahkan.
+4. Badge antrean payroll belum ada, dan item menu tidak mendukung filter query
+   (mis. `?status=SENT_TO_FINANCE`).
+
+### Perbaikan
+
+* **Layanan mandiri untuk semua peran.** Sepuluh item `me.*` kini memakai
+  `roles => ['HR', 'FIN', 'KARYAWAN']` — sesuai dengan route `/me/*` yang memang
+  terbuka untuk semua pengguna yang login (dan sudah ditautkan dari menu akun di
+  topbar). Karyawan biasa tidak berubah sama sekali.
+* **Grup dipisah untuk non-karyawan.** Grup portal dipecah menjadi
+  **Layanan Mandiri** (halaman pribadi) dan **Persetujuan Tim** (cuti, lembur,
+  perubahan jadwal) agar jelas mana tugas pribadi dan mana antrean persetujuan.
+  Karyawan tetap memakai satu grup “Portal Karyawan”.
+* **Menu Persetujuan Payroll (FIN).** Item baru menuju
+  `/payroll?status=SENT_TO_FINANCE` dengan badge jumlah periode yang menunggu
+  persetujuan. `Nav` sekarang mendukung atribut `query` pada item: URL diberi
+  query string dan status *active* hanya menyala bila query-nya cocok — jadi
+  menu *Payroll* dan *Persetujuan Payroll* tidak menyala bersamaan.
+* **Badge antrean Finance.** `DashboardModel::badges()` menambah kunci `payroll`,
+  dan `Controller::notificationContext()` menghitung antrean `SENT_TO_FINANCE`
+  untuk peran FIN di setiap halaman (satu query ringan), sehingga badge tampil
+  konsisten termasuk di halaman Payroll.
+* **Badge antrean mengikuti peran.** Badge cuti/lembur/perubahan jadwal kini
+  dihitung sesuai cakupan halaman yang dibuka:
+  * **HR** → seluruh perusahaan (tidak berubah);
+  * **FIN & karyawan yang menjadi atasan** → hanya bawahan langsung, dengan
+    status *OPEN* yang sama seperti daftar di halaman persetujuan (sebelumnya
+    FIN melihat angka perusahaan — mis. badge 4 padahal timnya hanya 1);
+  * **karyawan tanpa bawahan** → jumlah pengajuan sendiri (tidak berubah).
+  Item *Persetujuan Cuti Tim* dan *Persetujuan Lembur Tim* kini memakai badge
+  tersebut.
+* **Pengaturan menu ikut mengenali item baru** (`payroll.approvals`) sehingga HR
+  dapat menyembunyikannya dari *Pengaturan → Menu Navigasi* bila tidak dipakai.
+
+### Hasil pengujian (akun `finance@asiaraya.co.id`)
+
+| Menu | Sebelum | Sesudah |
+|---|---|---|
+| Profil / Presensi / Jadwal Saya | tidak ada | ✅ `/me/profile`, `/me/attendance`, `/me/schedule` |
+| **Pengajuan lembur** | tidak ada | ✅ `/me/overtime` (Lembur Saya) |
+| **Pengajuan cuti** | tidak ada | ✅ `/me/leave` (Cuti Saya) |
+| Klaim Saya / Slip Gaji / Dokumen / Riwayat / Bukti Potong | tidak ada | ✅ lima menu di *Layanan Mandiri* |
+| **Persetujuan Payroll** | tidak ada | ✅ `/payroll?status=SENT_TO_FINANCE` + badge antrean |
+| Persetujuan Cuti & Lembur Tim | ada (grup “Persetujuan Tim”) | tetap ada, grup dipisah |
+| Menu peran KARYAWAN | 12 item, grup “Portal Karyawan” | tidak berubah |
+| Menu peran HR | tanpa layanan mandiri | + grup *Layanan Mandiri* (10 item) |
+| Badge *Persetujuan Cuti/Lembur Tim* (FIN) | 4 = antrean seluruh perusahaan | 1 = bawahan langsung (sama dengan daftar di halaman) |
+
+Seluruh halaman `me.*`, `/payroll`, `/claims`, `/reports`, `/tax`, `/bpjs`,
+`/performance/team`, `/schedules/requests`, `/overtime`, dan `/leave` diuji
+dengan akun FIN dan mengembalikan **200**.
+
+### Catatan teknis
+
+* Berkas berubah: `app/Core/Nav.php`, `app/Core/Controller.php`,
+  `app/Models/DashboardModel.php`, `app/bootstrap.php` (versi **2.17.5**).
+* Tidak ada perubahan skema (`Schema::VERSION` tetap **23**) maupun kontrak REST
+  API; hak akses data tetap dijaga RBAC di router & controller — perbaikan ini
+  hanya menyelaraskan navigasi dengan hak yang sudah ada.
+
+---
+
 ## 3. Struktur proyek
 
 ```
@@ -1952,10 +2040,11 @@ storage/                 # logs, cache, uploads, database preview
 | Lembur (approval, setting, terjadwal) | ✅ semua | – | pengajuan & status sendiri; persetujuan tim bila jadi atasan langsung |
 | Cuti (approval, jenis & jatah) | ✅ semua | – | pengajuan & status sendiri; persetujuan tim bila jadi atasan langsung |
 | Komponen gaji & pengaturan payroll/BPJS | ✅ | – | – |
-| Payroll & slip gaji | ✅ proses & kirim | terima, bayar (PAID), cetak | slip sendiri |
+| Payroll & slip gaji | ✅ proses & kirim | ✅ setujui periode (*Persetujuan Payroll*), bayar (PAID), cetak | slip sendiri |
 | Klaim & reimbursement | ✅ semua + kategori | ✅ setujui & bayar | ajukan & pantau sendiri |
 | Pengumuman | ✅ tulis, terbitkan, arsipkan, target berlapis (unit/departemen/jabatan/peran/karyawan) | baca (sesuai audiens) | baca (sesuai audiens) |
 | Notifikasi in-app | ✅ inbox + lonceng | ✅ inbox + lonceng | ✅ inbox + lonceng |
+| Layanan mandiri (profil, presensi, jadwal, lembur, cuti, klaim, slip, dokumen, riwayat jabatan, bukti potong) | ✅ grup *Layanan Mandiri* | ✅ grup *Layanan Mandiri* | ✅ grup *Portal Karyawan* |
 | Penilaian kinerja | ✅ periode, indikator, kalibrasi & final | – | self assessment, lihat hasil sendiri |
 | Pelatihan & sertifikasi | ✅ katalog, sesi, nominasi, presensi, sertifikat | – | daftar pelatihan, riwayat & sertifikat sendiri |
 | Rekrutmen & onboarding | ✅ lowongan, pipeline, pelamar, konversi karyawan | – | – |

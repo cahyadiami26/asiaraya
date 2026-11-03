@@ -517,8 +517,31 @@ final class DashboardModel
         );
     }
 
-    /** Badge counters used by the sidebar + topbar. */
+    /**
+     * Jumlah pengajuan tim yang masih berjalan (status OPEN pada halaman
+     * persetujuan: PENDING + MANAGER_APPROVED), hanya untuk bawahan langsung.
+     */
+    private function teamPendingCount(string $table, int $managerId): int
+    {
+        if ($managerId <= 0) {
+            return 0;
+        }
+        try {
+            return (int) Database::value(
+                "SELECT COUNT(*) FROM {$table} t
+                   JOIN employees e ON e.id = t.employee_id
+                  WHERE t.status IN ('PENDING','MANAGER_APPROVED')
+                    AND e.flag = 'ACTIVE' AND e.direct_manager_id = ?",
+                [$managerId],
+                0
+            );
+        } catch (\Throwable) {
+            // tabel belum ada pada basis data lama
+            return 0;
+        }
+    }
 
+    /** Badge counters used by the sidebar + topbar. */
     public function badges(array $user): array
     {
         $role = (string) ($user['role'] ?? '');
@@ -528,8 +551,23 @@ final class DashboardModel
         // Badge antrean perusahaan hanya untuk HR/Finance. Karyawan biasa
         // melihat jumlah pengajuan miliknya sendiri agar tidak menampilkan
         // (maupun membocorkan) data pengajuan orang lain.
-        if ($staff) {
+        //
+        // Finance bukan approver cuti/lembur/perubahan jadwal tingkat
+        // perusahaan — halaman yang dibukanya hanya berisi bawahan langsung,
+        // jadi badge-nya ikut dibatasi ke tim sendiri (kalau tidak, angka badge
+        // tidak cocok dengan daftar di halaman "Persetujuan Tim").
+        if ($role === 'HR') {
             $counts = $this->pendingApprovals()['counts'];
+        } elseif ($role === 'FIN' || ($selfId > 0 && (int) Database::value(
+            "SELECT COUNT(*) FROM employees WHERE direct_manager_id = ? AND flag = 'ACTIVE'",
+            [$selfId],
+            0
+        ) > 0)) {
+            $counts = [
+                'overtime' => $this->teamPendingCount('overtime_requests', $selfId),
+                'leave'    => $this->teamPendingCount('leave_requests', $selfId),
+                'shift'    => $this->teamPendingCount('shift_change_requests', $selfId),
+            ];
         } else {
             $counts = ['overtime' => 0, 'leave' => 0, 'shift' => 0];
             foreach ([
@@ -598,6 +636,14 @@ final class DashboardModel
                 0
             ),
             'training' => (new \App\Models\TrainingModel())->pendingNominationCount(),
+            'payroll' => (static function (): int {
+                // Periode payroll yang sudah dikirim HR dan menunggu persetujuan Finance.
+                try {
+                    return (int) Database::value("SELECT COUNT(*) FROM payroll_periods WHERE status = 'SENT_TO_FINANCE'", [], 0);
+                } catch (\Throwable) {
+                    return 0;
+                }
+            })(),
             'recruitment' => (new \App\Models\RecruitmentModel())->freshCount(),
             'offboarding' => (new \App\Models\OffboardingModel())->pendingCount(),
             'contracts' => (int) Database::value(
