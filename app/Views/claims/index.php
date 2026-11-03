@@ -122,7 +122,7 @@ $exportQuery = http_build_query(array_filter([
                     <tr>
                         <?php if ($canDecide): ?>
                             <td>
-                                <?php if (in_array($claim['status'], ['PENDING', 'MANAGER_APPROVED'], true)): ?>
+                                <?php if ($canAct($claim)): ?>
                                     <input type="checkbox" name="ids[]" value="<?= (int) $claim['id'] ?>">
                                 <?php endif; ?>
                             </td>

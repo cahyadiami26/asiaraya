@@ -51,6 +51,22 @@
 4. Finance dapat langsung menandai klaim dibayar di luar payroll
    (`POST /claims/{id}/pay`) — status menjadi `PAID`.
 
+### 3.1 Pengajuan oleh HR/Finance sendiri
+
+Approver final klaim adalah **HR atau Finance**, dan keduanya tidak boleh
+memutus klaim sendiri:
+
+* Bila pemohon masih punya atasan langsung, klaim tetap `PENDING` menunggu
+  atasan; HR/Finance lain tidak boleh melompati tahap itu.
+* Bila pemohon adalah **satu-satunya** HR/Finance yang aktif, persetujuan atasan
+  langsung menjadi keputusan **final** (`PENDING → APPROVED`) — klaim langsung
+  siap dibayarkan tanpa tahap persetujuan diri sendiri.
+* Bila pemohon tidak punya atasan langsung **dan** tidak ada HR/Finance lain,
+  klaim ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih
+  dulu (mencegah klaim menggantung).
+* Kotak masuk HR/Finance tidak menampilkan klaim sendiri maupun klaim rekan
+  HR/Finance yang masih menunggu atasan.
+
 ## 4. Status
 
 | Status | Arti | Aktor berikutnya |

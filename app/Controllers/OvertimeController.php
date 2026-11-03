@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\ApprovalEngine;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
@@ -80,6 +81,7 @@ final class OvertimeController extends Controller
             'preview'    => $this->overtime->policyPreview(),
             'top'        => $isHr ? $this->overtime->topEmployees($month, 5) : [],
             'byUnit'     => $isHr ? $this->overtime->byUnit($month) : [],
+            'canDecide'  => static fn (array $row): bool => ApprovalEngine::canAct('overtime', $row, Auth::user()),
         ] + $this->withInput());
     }
 
@@ -199,17 +201,26 @@ final class OvertimeController extends Controller
 
         $decision = strtoupper((string) input('decision', 'APPROVED')) === 'REJECTED' ? 'REJECTED' : 'APPROVED';
         $note = substr(trim((string) input('note', '')), 0, 255);
-        $done = $this->overtime->decideMany($ids, $decision === 'APPROVED', $this->employeeId(), $note);
 
+        // Lewat ApprovalEngine agar aturan tahap & larangan menyetujui
+        // pengajuan sendiri sama dengan aksi satuan.
+        $engine = new ApprovalEngine();
+        $actor = Auth::user() ?? [];
+        $done = 0;
+        $skipped = 0;
         foreach ($ids as $id) {
-            $row = $this->overtime->find($id);
-            if ($row) {
-                $this->notify((int) $row['employee_id'], $decision === 'APPROVED' ? 'approved' : 'rejected', $row);
+            $request = $engine->find('overtime', $id);
+            if (!$request) {
+                $skipped++;
+                continue;
             }
+            $result = $engine->decide('overtime', $request, $decision, $note, $actor);
+            $result['ok'] ? $done++ : $skipped++;
         }
 
-        Audit::log('overtime.bulk-decide', 'overtime_request', null, ['ids' => $ids, 'decision' => $decision]);
-        flash($decision === 'APPROVED' ? 'success' : 'warning', $done . ' pengajuan lembur ' . ($decision === 'APPROVED' ? 'disetujui' : 'ditolak') . '.');
+        Audit::log('overtime.bulk-decide', 'overtime_request', null, ['ids' => $ids, 'decision' => $decision, 'done' => $done, 'skipped' => $skipped]);
+        flash($done > 0 ? 'success' : 'warning', $done . ' pengajuan lembur diproses'
+            . ($skipped > 0 ? ', ' . $skipped . ' dilewati (status tidak sesuai/pengajuan sendiri).' : '.'));
         back('/overtime');
     }
 

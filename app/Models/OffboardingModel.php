@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Core\ApprovalEngine;
 use App\Core\Database;
 
 /**
@@ -474,8 +475,15 @@ final class OffboardingModel
             return ['id' => null, 'error' => 'Hari terakhir kerja tidak boleh sebelum tanggal pengajuan.', 'number' => null, 'status' => null];
         }
 
-        $managerId = (int) ($employee['direct_manager_id'] ?? 0);
-        $status = $byHr || $managerId === 0 ? 'MANAGER_APPROVED' : 'SUBMITTED';
+        $blocked = ApprovalEngine::submissionError((int) $employee['id'], 'offboarding');
+        if ($blocked !== null) {
+            return ['id' => null, 'error' => $blocked, 'number' => null, 'status' => null];
+        }
+
+        $managerId = ApprovalEngine::managerOf((int) $employee['id']) ?? 0;
+        // HR yang membuat pengajuan untuk dirinya sendiri tetap harus lewat atasan.
+        $selfCreatedByHr = $byHr && $actorId === (int) $employee['id'];
+        $status = $managerId === 0 || ($byHr && !$selfCreatedByHr) ? 'MANAGER_APPROVED' : 'SUBMITTED';
         $now = date('Y-m-d H:i:s');
         $number = $this->nextNumber();
 
@@ -527,8 +535,22 @@ final class OffboardingModel
         if (!$request) {
             return ['error' => 'Pengajuan tidak ditemukan.'];
         }
+        if ((int) $request['employee_id'] === $actorId) {
+            return ['error' => 'Anda tidak dapat memutus pengajuan offboarding milik sendiri.'];
+        }
         if ($request['status'] !== 'SUBMITTED') {
             return ['error' => 'Pengajuan tidak berada pada tahap persetujuan atasan.'];
+        }
+
+        // Bila pemohon satu-satunya HR, persetujuan atasan langsung bersifat final
+        // dan proses serah terima dapat dibuka tanpa persetujuan diri sendiri.
+        if (ApprovalEngine::managerStageIsFinal((int) $request['employee_id'], ApprovalEngine::FINAL_ROLES)) {
+            return $this->beginHandover(
+                $request,
+                $actorId,
+                $note !== '' ? $note : 'Disetujui atasan langsung; tahap HR dilewati karena pemohon satu-satunya HR.',
+                null
+            );
         }
 
         $now = date('Y-m-d H:i:s');
@@ -557,24 +579,53 @@ final class OffboardingModel
         if (!$request) {
             return ['error' => 'Pengajuan tidak ditemukan.'];
         }
+        if ((int) $request['employee_id'] === $actorId) {
+            return ['error' => 'Anda tidak dapat memutus pengajuan offboarding milik sendiri.'];
+        }
         if (!in_array($request['status'], ['SUBMITTED', 'MANAGER_APPROVED'], true)) {
             return ['error' => 'Pengajuan ini tidak dapat disetujui pada status saat ini.'];
         }
+        if (ApprovalEngine::awaitingManager($request, ApprovalEngine::FINAL_ROLES)) {
+            return ['error' => 'Pengajuan masih menunggu keputusan atasan langsung.'];
+        }
 
+        return $this->beginHandover(
+            $request,
+            $actorId,
+            $note !== '' ? $note : 'Disetujui HR, checklist serah terima dibuka.',
+            $actorId
+        );
+    }
+
+    /**
+     * Buka proses serah terima (status IN_PROGRESS) beserta checklist-nya.
+     *
+     * @param array<string, mixed> $request
+     * @return array{error:?string,status?:string}
+     */
+    private function beginHandover(array $request, int $actorId, string $note, ?int $hrActorId): array
+    {
+        $id = (int) $request['id'];
         $now = date('Y-m-d H:i:s');
-        Database::update('offboarding_requests', [
-            'status'         => 'IN_PROGRESS',
-            'hr_approved_by' => $actorId,
-            'hr_approved_at' => $now,
-            'submit_date'    => $request['submit_date'] ?: date('Y-m-d'),
-            'updated_at'     => $now,
-        ], 'id = ?', [$id]);
+        $update = [
+            'status'      => 'IN_PROGRESS',
+            'submit_date' => $request['submit_date'] ?: date('Y-m-d'),
+            'updated_at'  => $now,
+        ];
+        if ($hrActorId !== null) {
+            $update['hr_approved_by'] = $hrActorId;
+            $update['hr_approved_at'] = $now;
+        } else {
+            $update['manager_approved_by'] = $actorId;
+            $update['manager_approved_at'] = $now;
+        }
+
+        Database::update('offboarding_requests', $update, 'id = ?', [$id]);
 
         $this->seedClearance($id);
-        $this->logStage($id, (string) $request['status'], 'IN_PROGRESS',
-            $note !== '' ? $note : 'Disetujui HR, checklist serah terima dibuka.', $actorId);
+        $this->logStage($id, (string) $request['status'], 'IN_PROGRESS', $note, $actorId);
 
-        $this->notify((int) $request['employee_id'], 'Pengajuan offboarding disetujui HR',
+        $this->notify((int) $request['employee_id'], 'Pengajuan offboarding disetujui',
             'Silakan selesaikan checklist serah terima sebelum ' . tanggal($request['last_working_date']) . '.',
             '/me/offboarding', 'success');
         if (!empty($request['manager_id'])) {
@@ -593,6 +644,9 @@ final class OffboardingModel
         $request = $this->find($id);
         if (!$request) {
             return ['error' => 'Pengajuan tidak ditemukan.'];
+        }
+        if ((int) $request['employee_id'] === $actorId) {
+            return ['error' => 'Anda tidak dapat memutus pengajuan offboarding milik sendiri. Gunakan tombol tarik pengajuan.'];
         }
         if (!in_array($request['status'], ['DRAFT', 'SUBMITTED', 'MANAGER_APPROVED', 'IN_PROGRESS'], true)) {
             return ['error' => 'Pengajuan ini sudah selesai dan tidak dapat ditolak.'];

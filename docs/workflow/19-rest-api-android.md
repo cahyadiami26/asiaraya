@@ -72,6 +72,19 @@ GET  /api/v1/attendance/history?from=&to=  ·  /summary?month=
    menyetujui; lembur menghitung kompensasi; klaim lanjut ke FIN
 ```
 
+Aturan tahap pada endpoint persetujuan:
+
+* `GET /api/v1/approvals` hanya berisi pengajuan yang **benar-benar** bisa
+  diputus pengguna: tanpa pengajuan sendiri, dan untuk HR tanpa pengajuan rekan
+  HR yang masih menunggu atasan.
+* `POST .../decide` menolak (`422 DECISION_REJECTED`) bila pengguna memutus
+  pengajuannya sendiri atau memutus tahap yang belum berhak.
+* Respons `decide` menyertakan `stage` (`MANAGER`/`HR`/`FINAL`) dan `final`
+  (`true` bila status sudah final). Bila pemohon satu-satunya HR, keputusan
+  atasan langsung sudah final meski `stage = MANAGER`.
+* Pengajuan yang tidak akan punya approver (tanpa atasan langsung dan tanpa
+  approver final lain) ditolak saat dibuat (`422 APPROVER_MISSING`).
+
 ### 3.4 Unduhan PDF
 
 ```text

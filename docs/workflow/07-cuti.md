@@ -70,7 +70,36 @@ HR ──► Saldo Cuti → Generate tahun berjalan (per unit / semua)
 4. Bila pengajuan yang sudah `APPROVED` dibatalkan HR, presensi `LEAVE` dan
    saldo dikembalikan (revert).
 
-### 3.3 Pembatalan
+### 3.3 Pengajuan oleh HR sendiri
+
+Tahap final cuti hanya bisa diputus **HR**, sedangkan HR tidak boleh memutus
+pengajuannya sendiri. Aturannya:
+
+```text
+[Pemohon] ajukan ──► PENDING
+                          │
+                [Atasan langsung] setujui
+                          │
+        ┌─────────────────┴──────────────────┐
+        ▼                                    ▼
+pemohon satu-satunya HR              ada HR lain (aktif)
+        │                                    │
+        ▼                                    ▼
+APPROVED (final)                     MANAGER_APPROVED
+manager_id terisi, hr_id kosong              │
+                                             ▼
+                                   [HR lain] setujui → APPROVED
+```
+
+* Persetujuan atasan **wajib** dilalui; HR lain tidak boleh memutus `PENDING`
+  milik rekan HR sebelum atasan memutus.
+* Bila pemohon belum punya atasan langsung (atau atasannya nonaktif / menunjuk
+  dirinya sendiri) dan tidak ada HR lain, pengajuan **ditolak saat dibuat**
+  dengan pesan agar atasan langsung ditetapkan lebih dulu.
+* Saldo cuti tetap dipotong dan presensi `LEAVE` tetap dibuat saat status
+  berubah menjadi `APPROVED`, termasuk pada jalur final-di-atasan.
+
+### 3.4 Pembatalan
 
 * Karyawan dapat membatalkan pengajuan yang belum diproses (`/me/leave/{id}/cancel`).
 * HR dapat membatalkan pengajuan kapan pun (`POST /leave/{id}/cancel`) dengan

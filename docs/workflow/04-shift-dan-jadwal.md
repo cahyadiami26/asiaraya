@@ -70,7 +70,41 @@ Aturan tambahan:
 * Satu karyawan hanya boleh punya **satu pengajuan aktif** (PENDING /
   MANAGER_APPROVED) pada satu waktu.
 * Pemohon tidak dapat memutus pengajuannya sendiri.
-* HR dapat memutus tahap 2 walaupun atasan belum memutus (override).
+* HR dapat memutus tahap 2 walaupun atasan belum memutus (override) — kecuali
+  pengajuan milik rekan HR yang punya atasan langsung: pengajuan itu harus
+  menunggu atasan lebih dahulu.
+* Bila pemohon adalah satu-satunya HR, persetujuan atasan langsung menjadi
+  keputusan **final** (lihat 3.3).
+
+### 3.3 Pengajuan oleh HR sendiri
+
+Tahap final perubahan jadwal hanya bisa diputus **HR**, dan HR tidak boleh
+memutus pengajuannya sendiri. Karena itu:
+
+```text
+HR (satu-satunya) ajukan perubahan ──► PENDING
+                                            │
+                              [Atasan] setujui
+                                            │
+                                            ▼
+                        APPROVED (final di tahap atasan)
+                        manager_id terisi, hr_id kosong, jadwal diperbarui
+
+HR (ada HR lain) ajukan perubahan ──► PENDING
+                                            │
+                              [Atasan] setujui
+                                            ▼
+                                    MANAGER_APPROVED
+                                            │
+                              [HR lain] setujui ──► APPROVED
+```
+
+* `PENDING` milik rekan HR **tidak muncul** sebagai tugas HR lain sampai atasan
+  memutus (tombol keputusan juga disembunyikan).
+* Bila pemohon belum punya atasan langsung dan tidak ada HR lain, pengajuan
+  ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih dulu —
+  supaya tidak ada pengajuan yang menggantung selamanya.
+* Atasan yang berstatus nonaktif tidak dihitung sebagai approver.
 
 ## 4. Status
 

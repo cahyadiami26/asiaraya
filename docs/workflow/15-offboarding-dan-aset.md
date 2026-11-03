@@ -56,6 +56,8 @@
    membuat pengajuan untuk PHK/akhir kontrak.
 2. **Approval**: atasan menyetujui (`SUBMITTED → MANAGER_APPROVED`), lalu HR
    menyetujui (`→ IN_PROGRESS`). Saat HR menyetujui, checklist default dibuat.
+   Bila pemohon adalah **satu-satunya HR**, persetujuan atasan langsung membuka
+   proses serah terima (`SUBMITTED → IN_PROGRESS`) tanpa persetujuan diri sendiri.
 3. **Serah terima**: HR/atasan/FIN menandai item `DONE` atau `WAIVED`; aset
    diubah statusnya (`RETURNED`, `WAIVED`, `LOST`, `NOT_HELD`).
 4. **BAST**: HR menerbitkan berita acara (`POST /offboarding/{id}/bast`) — PDF
@@ -64,7 +66,19 @@
 6. **Selesai**: HR menekan “Selesaikan”. Sistem menolak bila masih ada aset
    `PENDING`; bila lolos, karyawan ditandai `RESIGN` dan tidak dapat login lagi.
 
-### 3.1 Pembatalan
+### 3.1 Larangan memutus pengajuan sendiri
+
+* Pemohon — termasuk HR — **tidak dapat** menyetujui atau menolak pengajuan
+  offboarding miliknya sendiri, baik di tahap atasan maupun tahap HR. Tombol
+  keputusan tidak ditampilkan untuk pemilik pengajuan.
+* Bila HR membuat pengajuan untuk dirinya sendiri (menu `/offboarding`), status
+  awalnya tetap `SUBMITTED` sehingga harus lewat atasan langsung; hak istimewa
+  “dibuat HR → langsung `MANAGER_APPROVED`” hanya berlaku untuk pengajuan yang
+  dibuat HR **atas nama karyawan lain**.
+* Bila pemohon belum punya atasan langsung dan tidak ada HR lain, pengajuan
+  ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih dulu.
+
+### 3.2 Pembatalan
 
 * Karyawan dapat menarik pengajuan sebelum diproses (`withdrawMine` → `WITHDRAWN`).
 * HR dapat membatalkan (`cancel` → `CANCELLED`).

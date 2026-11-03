@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers\Api\V1;
 
 use App\Core\ApiController;
+use App\Core\ApprovalEngine;
 use App\Core\ApiRequest;
 use App\Core\Audit;
 use App\Core\Database;
@@ -147,6 +148,11 @@ final class ScheduleApiController extends ApiController
         $current = $this->schedules->shiftOn($employeeId, $from);
         if ($current && (int) $current['shift_id'] === (int) $shift['id']) {
             $this->fail(422, 'Shift yang diajukan sama dengan jadwal Anda saat ini.', [], 'SAME_SHIFT');
+        }
+
+        $blocked = ApprovalEngine::submissionError($employeeId, 'schedule');
+        if ($blocked !== null) {
+            $this->fail(422, $blocked, [], 'APPROVER_MISSING');
         }
 
         $id = $this->schedules->createRequest(

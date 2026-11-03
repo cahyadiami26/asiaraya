@@ -4,6 +4,7 @@
  * @var array $rows, $stats, $filters, $units, $departments, $employees, $daily, $top, $byUnit, $policy, $preview, $paginator
  * @var string $month, $monthLabel, $prevMonth, $nextMonth
  * @var bool $isHr  false = halaman persetujuan tim untuk atasan langsung
+ * @var callable $canDecide  apakah baris boleh diputus pengguna ini
  */
 use App\Models\OvertimeModel;
 
@@ -251,7 +252,7 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                     <tr>
                         <?php if ($isHr): ?>
                             <td>
-                                <?php if ($isOpen): ?>
+                                <?php if ($isOpen && $canDecide($row)): ?>
                                     <input type="checkbox" name="ids[]" value="<?= (int) $row['id'] ?>" form="bulk-decide" class="row-check">
                                 <?php endif; ?>
                             </td>
@@ -328,11 +329,11 @@ $monthTotalHours = array_sum(array_column($daily, 'hours'));
                         </td>
                         <td>
                             <div class="flex" style="gap:4px;flex-wrap:wrap">
-                                <?php if ($isOpen): ?>
+                                <?php if ($isOpen && $canDecide($row)): ?>
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/decide') ?>">
                                         <?= csrf_field() ?>
                                         <input type="hidden" name="decision" value="APPROVED">
-                                        <button class="btn btn-sm btn-teal" type="submit" title="<?= $isHr ? 'Setujui (final HR)' : 'Setujui sebagai atasan' ?>"><?= icon('check') ?></button>
+                                        <button class="btn btn-sm btn-teal" type="submit" title="Setujui pengajuan"><?= icon('check') ?></button>
                                     </form>
                                     <form class="inline-form" method="post" action="<?= url('overtime/' . $row['id'] . '/decide') ?>">
                                         <?= csrf_field() ?>

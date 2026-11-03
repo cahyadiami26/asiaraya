@@ -100,6 +100,21 @@ Tidak ada status domain di modul ini. Ringkasan lapisan:
 | Laporan | ✔ | ✔ | — |
 | Log, email, penjadwal, pengaturan | ✔ | — | — |
 
+**Batas kewenangan yang tetap berlaku bagi HR/Finance**
+
+Role menentukan *cakupan data*, bukan hak memutus pengajuan sendiri. Aturan
+berikut dijalankan di model/engine sehingga berlaku juga untuk REST API:
+
+* Tidak ada pengguna yang dapat menyetujui atau menolak pengajuannya sendiri
+  (cuti, lembur, perubahan jadwal, klaim, offboarding).
+* HR tidak boleh melompati tahap atasan pada pengajuan rekan HR yang sudah
+  punya atasan langsung.
+* Bila pengguna adalah satu-satunya approver final, persetujuan atasan langsung
+  menjadi keputusan final (lihat `README.md` → *Bila yang mengajukan adalah HR
+  sendiri*).
+* Tombol/centang keputusan di UI hanya dirender bila `ApprovalEngine::canAct()`
+  (atau `ExpenseModel::canDecide()` untuk klaim) menyatakan pengguna berhak.
+
 ## 5. Rute & berkas kode
 
 | Rute | Controller@method | Keterangan |

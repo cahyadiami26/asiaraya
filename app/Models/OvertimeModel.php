@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Core\ApprovalEngine;
 use App\Core\Database;
 use App\Core\Settings;
 
@@ -560,6 +561,15 @@ final class OvertimeModel
         $autoApprove = $type === 'SCHEDULED' && (int) ($data['auto_approve'] ?? 1) === 1;
         $now = date('Y-m-d H:i:s');
 
+        if (!$autoApprove) {
+            // Pengajuan yang harus disetujui tidak boleh dibuat bila tidak ada
+            // satu pun approver yang mungkin (mis. HR tanpa atasan langsung).
+            $blocked = ApprovalEngine::submissionError($employeeId, 'overtime');
+            if ($blocked !== null) {
+                return ['id' => null, 'error' => $blocked];
+            }
+        }
+
         $record = [
             'employee_id'    => $employeeId,
             'department_id'  => $employee['department_id'] !== null ? (int) $employee['department_id'] : null,
@@ -684,37 +694,6 @@ final class OvertimeModel
             'updated_at' => date('Y-m-d H:i:s'),
         ], 'id = ?', [$id]);
         return ['error' => null];
-    }
-
-    /** Keputusan massal oleh HR (tahap final). */
-    public function decideMany(array $ids, bool $approved, int $actorId, string $note = ''): int
-    {
-        $done = 0;
-        $now = date('Y-m-d H:i:s');
-        foreach (array_unique(array_map('intval', $ids)) as $id) {
-            $row = Database::one('SELECT * FROM overtime_requests WHERE id = ?', [$id]);
-            if (!$row || !in_array((string) $row['status'], self::STATUS_OPEN, true)) {
-                continue;
-            }
-            $update = [
-                'status'         => $approved ? 'APPROVED' : 'REJECTED',
-                'hr_id'          => $actorId,
-                'hr_approved_at' => $now,
-                'hr_note'        => substr($note, 0, 255) ?: null,
-                'updated_at'     => $now,
-            ];
-            if ($approved) {
-                $hours = (float) ($row['actual_hours'] ?: $row['planned_hours']);
-                $update['compensation_amount'] = $this->compensation(
-                    (int) $row['employee_id'],
-                    $hours,
-                    (string) $row['work_date']
-                )['amount'];
-            }
-            Database::update('overtime_requests', $update, 'id = ?', [$id]);
-            $done++;
-        }
-        return $done;
     }
 
     /**

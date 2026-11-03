@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Core\ApprovalEngine;
 use App\Core\Audit;
 use App\Core\Auth;
 use App\Core\Controller;
@@ -329,10 +330,12 @@ final class OffboardingController extends Controller
             'isManager'   => $isManager,
             'isHr'        => $isHr,
             'isFin'       => $isFin,
-            'canApproveManager' => in_array($status, ['SUBMITTED'], true) && ($isManager || $isHr),
-            'canApproveHr'      => $isHr && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED'], true),
+            // Pemohon tidak pernah boleh menyetujui/menolak pengajuannya sendiri.
+            'canApproveManager' => !$isOwner && in_array($status, ['SUBMITTED'], true) && ($isManager || $isHr),
+            'canApproveHr'      => $isHr && !$isOwner && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED'], true)
+                && !ApprovalEngine::awaitingManager($request, ApprovalEngine::FINAL_ROLES),
             'canComplete'       => $isHr && $status === 'IN_PROGRESS',
-            'canReject'         => ($isHr || $isManager) && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED', 'IN_PROGRESS'], true),
+            'canReject'         => !$isOwner && ($isHr || $isManager) && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED', 'IN_PROGRESS'], true),
             'canWithdraw'       => $isOwner && in_array($status, ['SUBMITTED', 'MANAGER_APPROVED', 'IN_PROGRESS'], true),
             'canCancel'         => $isHr && in_array($status, ['DRAFT', 'SUBMITTED', 'MANAGER_APPROVED', 'IN_PROGRESS'], true),
             'canDelete'         => $isHr && in_array($status, ['DRAFT', 'REJECTED', 'WITHDRAWN', 'CANCELLED'], true),
@@ -402,8 +405,10 @@ final class OffboardingController extends Controller
         if ($result['error'] !== null) {
             flash('error', $result['error']);
         } else {
-            Audit::log('offboarding.approve_manager', 'offboarding_request', (int) $id);
-            flash('success', 'Disetujui atasan. Pengajuan diteruskan ke HR.');
+            Audit::log('offboarding.approve_manager', 'offboarding_request', (int) $id, ['status' => $result['status'] ?? null]);
+            flash('success', ($result['status'] ?? '') === 'IN_PROGRESS'
+                ? 'Disetujui atasan. Proses serah terima langsung dibuka (pemohon satu-satunya HR).'
+                : 'Disetujui atasan. Pengajuan diteruskan ke HR.');
         }
         redirect('/offboarding/' . (int) $id);
     }

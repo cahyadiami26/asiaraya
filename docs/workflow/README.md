@@ -74,7 +74,9 @@ Aturan yang berlaku di semua modul approval:
 1. Pemohon **tidak boleh** memutus pengajuannya sendiri (dicek di engine).
 2. Tahap 1 hanya untuk atasan langsung dan hanya saat status `PENDING`.
 3. Tahap 2 hanya untuk HR dan hanya saat status `PENDING`/`MANAGER_APPROVED`
-   (HR boleh mengambil alih bila atasan belum memutus).
+   (HR boleh mengambil alih bila atasan belum memutus) — **kecuali** pengajuan
+   milik rekan HR yang punya atasan: pengajuan itu harus menunggu atasan lebih
+   dahulu, HR lain tidak boleh melompati tahap 1.
 4. Penolakan pada tahap mana pun mengakhiri pengajuan (`REJECTED`) dan
    mengirim notifikasi ke pemohon.
 5. Setiap keputusan dicatat pada `activity_logs` dan memicu notifikasi in-app.
@@ -82,6 +84,30 @@ Aturan yang berlaku di semua modul approval:
 Modul dengan alur sedikit berbeda dijelaskan pada berkasnya masing-masing:
 klaim (atasan → HR/Finance → pembayaran), payroll (HR → Finance → PAID),
 rekrutmen (pipeline pelamar), offboarding (atasan → HR → serah terima).
+
+### Bila yang mengajukan adalah HR sendiri
+
+HR adalah approver final, sehingga tanpa aturan khusus pengajuan HR akan
+menunggu persetujuan dirinya sendiri. Aturan yang dipakai:
+
+| Kondisi | Perilaku |
+|---------|----------|
+| HR punya atasan langsung **dan** ada HR lain aktif | Alur normal: atasan (`MANAGER_APPROVED`) → HR lain (`APPROVED`) |
+| HR punya atasan langsung, **satu-satunya HR** | Persetujuan atasan langsung = **final** (`APPROVED`); `hr_id` dibiarkan kosong, audit mencatat `final_by: MANAGER` |
+| HR belum punya atasan langsung, ada HR lain aktif | Tahap atasan dilewati; HR lain memutus dari `PENDING` |
+| HR belum punya atasan langsung **dan** tidak ada HR lain | Pengajuan ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih dulu |
+| Atasan langsung nonaktif atau menunjuk diri sendiri | Dianggap tidak ada atasan (aturan di atas berlaku) |
+
+Prinsip yang sama dipakai klaim dengan approver final **HR atau Finance**, dan
+offboarding (persetujuan atasan langsung langsung membuka `IN_PROGRESS` bila
+pemohon satu-satunya HR). Rincian per modul ada di
+[04](04-shift-dan-jadwal.md), [06](06-lembur.md), [07](07-cuti.md),
+[10](10-klaim-reimbursement.md), dan [15](15-offboarding-dan-aset.md).
+
+Kotak masuk persetujuan (`/approvals`, `/leave`, `/overtime`,
+`/schedules/requests`, `/claims`) tidak menampilkan pengajuan sendiri, dan
+tombol keputusan hanya muncul bila pengguna benar-benar berhak memutus tahap
+saat ini.
 
 ## Konvensi status
 

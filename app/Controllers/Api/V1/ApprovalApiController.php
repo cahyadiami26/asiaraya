@@ -113,11 +113,12 @@ final class ApprovalApiController extends ApiController
             Audit::log('api.approval.claim', 'expense_claim', (int) $id, ['status' => $result['status']]);
 
             $this->ok([
-                'type'   => 'claim',
-                'status' => $result['status'],
-                'stage'  => $result['stage'],
+                'type'    => 'claim',
+                'status'  => $result['status'],
+                'stage'   => $result['stage'],
+                'final'   => (bool) ($result['final'] ?? false),
                 'message' => $decision === 'APPROVED'
-                    ? 'Klaim disetujui' . ($result['stage'] === 'MANAGER' ? ' dan diteruskan ke HR/Finance.' : '.')
+                    ? 'Klaim disetujui' . (empty($result['final']) ? ' dan diteruskan ke HR/Finance.' : '.')
                     : 'Klaim ditolak.',
             ]);
         }
@@ -140,6 +141,7 @@ final class ApprovalApiController extends ApiController
             'type'    => $type,
             'status'  => $result['status'],
             'stage'   => $result['stage'],
+            'final'   => (bool) ($result['final'] ?? false),
             'message' => $result['message'],
         ]);
     }
@@ -240,23 +242,28 @@ final class ApprovalApiController extends ApiController
         ];
     }
 
+    private function claimFilters(): array
+    {
+        if (in_array((string) $this->user['role'], ['HR', 'FIN'], true)) {
+            // Kotak masuk HR/Finance: jangan tampilkan klaim sendiri maupun
+            // klaim rekan HR/Finance yang masih menunggu atasan langsung.
+            return [
+                'status'           => 'AWAITING',
+                'final_ready'      => true,
+                'exclude_employee' => (int) $this->user['id'],
+            ];
+        }
+
+        return ['manager' => (int) $this->user['id']];
+    }
+
     private function claimInbox(int $limit, int $offset): array
     {
-        return (new ExpenseModel())->claims(
-            $this->user['role'] === 'HR' || $this->user['role'] === 'FIN'
-                ? ['status' => 'AWAITING']
-                : ['manager' => (int) $this->user['id']],
-            $limit,
-            $offset
-        );
+        return (new ExpenseModel())->claims($this->claimFilters(), $limit, $offset);
     }
 
     private function claimCount(): int
     {
-        return (new ExpenseModel())->countClaims(
-            $this->user['role'] === 'HR' || $this->user['role'] === 'FIN'
-                ? ['status' => 'AWAITING']
-                : ['manager' => (int) $this->user['id']]
-        );
+        return (new ExpenseModel())->countClaims($this->claimFilters());
     }
 }

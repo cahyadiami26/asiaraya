@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\ApprovalEngine;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
@@ -77,23 +78,13 @@ final class LeaveController extends Controller
         ] + $this->withInput());
     }
 
-    /** Atasan di tahap 1, HR di tahap final (tidak boleh menyetujui cuti sendiri). */
+    /**
+     * Atasan di tahap 1, HR di tahap final. Tidak ada yang boleh memutus
+     * pengajuannya sendiri, dan pengajuan rekan HR tetap menunggu atasan.
+     */
     public static function canDecide(array $request): bool
     {
-        $user = auth();
-        if (!$user) {
-            return false;
-        }
-        $status = (string) $request['status'];
-        $employeeId = (int) $request['employee_id'];
-
-        if ($status === 'PENDING' && Auth::isManagerOf($employeeId)) {
-            return true;
-        }
-
-        return ($user['role'] ?? '') === 'HR'
-            && in_array($status, LeaveModel::STATUS_OPEN, true)
-            && $employeeId !== (int) $user['id'];
+        return ApprovalEngine::canAct('leave', $request, auth());
     }
 
     public function export(): void

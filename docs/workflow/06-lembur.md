@@ -54,14 +54,42 @@
    aktual bila sudah diisi, jika tidak memakai jam rencana.
 4. Notifikasi dikirim ke pemohon setiap perubahan status.
 
-### 3.2 Lembur terjadwal (HR)
+### 3.2 Pengajuan oleh HR sendiri
+
+Tahap final lembur hanya bisa diputus **HR**, sedangkan HR tidak boleh
+memutus pengajuannya sendiri. Aturannya:
+
+```text
+[Pemohon] ajukan ──► PENDING
+                          │
+                [Atasan langsung] setujui
+                          │
+        ┌─────────────────┴──────────────────┐
+        ▼                                    ▼
+pemohon satu-satunya HR              ada HR lain (aktif)
+        │                                    │
+        ▼                                    ▼
+APPROVED (final)                     MANAGER_APPROVED
+manager_id terisi, hr_id kosong              │
+                                             ▼
+                                   [HR lain] setujui → APPROVED
+```
+
+* Persetujuan atasan **wajib** dilalui; HR lain tidak boleh memutus `PENDING`
+  milik rekan HR sebelum atasan memutus.
+* Bila pemohon belum punya atasan langsung (atau atasannya nonaktif / menunjuk
+  dirinya sendiri) dan tidak ada HR lain, pengajuan **ditolak saat dibuat**
+  dengan pesan agar atasan langsung ditetapkan lebih dulu.
+* Kompensasi tetap dihitung saat status berubah menjadi `APPROVED` (termasuk pada jalur final-di-atasan).
+
+### 3.3 Lembur terjadwal (HR)
 
 1. HR membuka **Manajemen Lembur Terjadwal** (`/overtime/schedules`).
 2. Pilih karyawan/unit, tanggal, jam, lalu simpan sebagai lembur yang sudah
    disetujui (tetap tercatat beserta pembuatnya).
 3. HR dapat memperbarui jam aktual (`POST /overtime/{id}/actual`).
 
-### 3.3 Kebijakan lembur
+### 3.4 Kebijakan lembur
 
 | Pengaturan | Default | Arti |
 |------------|---------|------|

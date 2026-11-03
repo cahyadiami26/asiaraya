@@ -14,6 +14,11 @@ use App\Models\ScheduleModel;
  * Tahap 2 — HR             : MANAGER_APPROVED → APPROVED (final)
  * Penolakan pada tahap mana pun mengakhiri pengajuan sebagai REJECTED.
  *
+ * Pengecualian: bila pemohon sendiri adalah satu-satunya approver final
+ * (mis. HR satu-satunya di perusahaan), tahap HR tidak mungkin diputus tanpa
+ * menyetujui pengajuan sendiri — sehingga persetujuan atasan langsung langsung
+ * menjadi keputusan final (PENDING → APPROVED).
+ *
  * Dipakai bersama oleh halaman web (ApprovalController) dan REST API
  * (Api\V1\ApprovalApiController) supaya aturan & efek sampingnya identik.
  */
@@ -39,6 +44,132 @@ final class ApprovalEngine
         'CANCELLED'        => 'Dibatalkan',
     ];
 
+    /** Peran yang berhak memutus tahap final cuti, lembur, dan perubahan jadwal. */
+    public const FINAL_ROLES = ['HR'];
+
+    /** @var array<int, ?int> */
+    private static array $managerCache = [];
+
+    /** @var array<int, ?string> */
+    private static array $roleCache = [];
+
+    /** @var array<string, bool> */
+    private static array $approverCache = [];
+
+    /** Peran final per jenis pengajuan; klaim biaya juga boleh diputus Finance. */
+    public static function finalRoles(string $type): array
+    {
+        return $type === 'claim' ? ['HR', 'FIN'] : self::FINAL_ROLES;
+    }
+
+    /** Peran karyawan pada tabel employees (null bila tidak ada). */
+    public static function roleOf(int $employeeId): ?string
+    {
+        if (array_key_exists($employeeId, self::$roleCache)) {
+            return self::$roleCache[$employeeId];
+        }
+        if ($employeeId <= 0) {
+            return self::$roleCache[$employeeId] = null;
+        }
+        $role = Database::value('SELECT role FROM employees WHERE id = ?', [$employeeId]);
+
+        return self::$roleCache[$employeeId] = $role !== null ? (string) $role : null;
+    }
+
+    /**
+     * Atasan langsung yang sah: aktif dan bukan karyawan itu sendiri.
+     * Mengembalikan null bila belum ditetapkan, nonaktif, atau menunjuk diri sendiri.
+     */
+    public static function managerOf(int $employeeId): ?int
+    {
+        if (array_key_exists($employeeId, self::$managerCache)) {
+            return self::$managerCache[$employeeId];
+        }
+        if ($employeeId <= 0) {
+            return self::$managerCache[$employeeId] = null;
+        }
+        $row = Database::one(
+            'SELECT m.id FROM employees e
+               JOIN employees m ON m.id = e.direct_manager_id
+              WHERE e.id = ? AND m.flag = ? AND m.id <> e.id',
+            [$employeeId, 'ACTIVE']
+        );
+
+        return self::$managerCache[$employeeId] = $row !== null ? (int) $row['id'] : null;
+    }
+
+    /** Masih ada approver final lain (aktif) selain karyawan ini? */
+    public static function hasOtherFinalApprover(int $employeeId, array $roles): bool
+    {
+        $roles = array_values(array_unique(array_map('strval', $roles)));
+        if ($roles === []) {
+            return false;
+        }
+        $key = $employeeId . '|' . implode(',', $roles);
+        if (array_key_exists($key, self::$approverCache)) {
+            return self::$approverCache[$key];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($roles), '?'));
+        $found = Database::value(
+            'SELECT id FROM employees WHERE role IN (' . $placeholders . ') AND flag = ? AND id <> ? LIMIT 1',
+            array_merge($roles, ['ACTIVE', $employeeId])
+        );
+
+        return self::$approverCache[$key] = $found !== null;
+    }
+
+    /**
+     * Pemohon adalah approver final dan tidak ada approver final lain, sehingga
+     * persetujuan atasan langsung adalah keputusan terakhir yang mungkin.
+     */
+    public static function managerStageIsFinal(int $employeeId, array $roles): bool
+    {
+        $role = self::roleOf($employeeId);
+
+        return $role !== null
+            && in_array($role, $roles, true)
+            && !self::hasOtherFinalApprover($employeeId, $roles);
+    }
+
+    /**
+     * Pengajuan masih harus menunggu atasan langsung, sehingga approver final
+     * (HR/Finance selain pemohon) belum boleh memutusnya.
+     */
+    public static function awaitingManager(array $request, array $roles): bool
+    {
+        if ((string) ($request['status'] ?? '') !== 'PENDING') {
+            return false;
+        }
+        $employeeId = (int) ($request['employee_id'] ?? 0);
+        if (!in_array((string) self::roleOf($employeeId), $roles, true)) {
+            return false;
+        }
+
+        return self::managerOf($employeeId) !== null;
+    }
+
+    /**
+     * Alasan pengajuan tidak dapat dibuat karena tidak akan ada approver sama
+     * sekali; null berarti aman diajukan.
+     */
+    public static function submissionError(int $employeeId, string $type): ?string
+    {
+        if (self::managerOf($employeeId) !== null) {
+            return null;
+        }
+        $roles = self::finalRoles($type);
+        if (!in_array((string) self::roleOf($employeeId), $roles, true)) {
+            return null;
+        }
+        if (self::hasOtherFinalApprover($employeeId, $roles)) {
+            return null;
+        }
+
+        return 'Atasan langsung Anda belum ditetapkan, dan belum ada ' . implode('/', $roles)
+            . ' lain yang dapat menyetujui. Minta admin menetapkan atasan langsung Anda pada menu Karyawan, lalu ajukan kembali.';
+    }
+
     public function table(string $type): ?string
     {
         return self::TABLES[$type] ?? null;
@@ -58,25 +189,43 @@ final class ApprovalEngine
     {
         $actorId = (int) ($actor['id'] ?? 0);
         $role = (string) ($actor['role'] ?? '');
+        $employeeId = (int) ($request['employee_id'] ?? 0);
+        $status = (string) ($request['status'] ?? '');
 
         if ($actorId <= 0) {
             return ['error' => 'Sesi berakhir.'];
         }
-        if ($actorId === (int) $request['employee_id']) {
+        // Tidak seorang pun boleh memutus pengajuannya sendiri.
+        if ($actorId === $employeeId) {
             return ['error' => 'Anda tidak dapat memutus pengajuan milik sendiri.'];
         }
 
-        $managerId = Database::value('SELECT direct_manager_id FROM employees WHERE id = ?', [(int) $request['employee_id']]);
-        $isManager = $managerId !== null && (int) $managerId === $actorId;
+        $managerId = self::managerOf($employeeId);
 
-        if ($isManager && $request['status'] === 'PENDING') {
+        if ($managerId !== null && $managerId === $actorId && $status === 'PENDING') {
             return ['stage' => 'MANAGER'];
         }
-        if ($role === 'HR' && in_array($request['status'], ['PENDING', 'MANAGER_APPROVED'], true)) {
+
+        if ($role === 'HR' && in_array($status, ['PENDING', 'MANAGER_APPROVED'], true)) {
+            // Pengajuan rekan HR tetap harus lewat atasan langsung lebih dahulu.
+            if (self::awaitingManager($request, self::FINAL_ROLES)) {
+                return ['error' => 'Pengajuan masih menunggu keputusan atasan langsung.'];
+            }
+
             return ['stage' => 'HR'];
         }
 
         return ['error' => 'Anda tidak berhak memproses pengajuan ini pada tahap saat ini.'];
+    }
+
+    /** Apakah aktor boleh memutus pengajuan ini sekarang? (dipakai tombol UI) */
+    public static function canAct(string $type, array $request, ?array $actor): bool
+    {
+        if (!$actor) {
+            return false;
+        }
+
+        return !isset((new self())->stage($type, $request, $actor)['error']);
     }
 
     /**
@@ -103,6 +252,10 @@ final class ApprovalEngine
             return ['ok' => false, 'error' => $stageInfo['error']];
         }
         $stage = (string) $stageInfo['stage'];
+        // Bila pemohon satu-satunya approver final, tahap atasan adalah final.
+        $finalByManager = $stage === 'MANAGER'
+            && self::managerStageIsFinal((int) $request['employee_id'], self::FINAL_ROLES);
+        $isFinalStage = $stage === 'HR' || $finalByManager;
 
         $note = mb_substr(trim($note), 0, 255);
         $now = date('Y-m-d H:i:s');
@@ -111,27 +264,27 @@ final class ApprovalEngine
         // Efek samping final dijalankan sebelum baris diperbarui (butuh status lama).
         if ($type === 'leave') {
             $leave = new LeaveModel();
-            if ($stage === 'HR' && $approved) {
+            if ($isFinalStage && $approved) {
                 $leave->applyApproval((int) $request['id']);
-            } elseif ($stage === 'HR' && $request['status'] === 'APPROVED') {
+            } elseif ($isFinalStage && $request['status'] === 'APPROVED') {
                 $leave->revertApproval((int) $request['id']);
             }
         }
 
-        if ($type === 'schedule' && $stage === 'HR' && $approved) {
+        if ($type === 'schedule' && $isFinalStage && $approved) {
             (new ScheduleModel())->assign(
                 (int) $request['employee_id'],
                 (int) $request['requested_shift_id'],
                 (string) $request['start_date'],
                 (string) $request['end_date'],
                 'REQUEST',
-                $note !== '' ? $note : 'Disetujui HR',
+                $note !== '' ? $note : 'Disetujui ' . ($finalByManager ? 'atasan langsung' : 'HR'),
                 $actorId
             );
         }
 
         if ($stage === 'MANAGER') {
-            $status = $approved ? 'MANAGER_APPROVED' : 'REJECTED';
+            $status = $approved ? ($finalByManager ? 'APPROVED' : 'MANAGER_APPROVED') : 'REJECTED';
             $update = [
                 'status'              => $status,
                 'manager_id'          => $actorId,
@@ -163,15 +316,20 @@ final class ApprovalEngine
             Database::update('overtime_requests', ['compensation_amount' => $compensation], 'id = ?', [(int) $request['id']]);
         }
 
-        $message = $this->notify((int) $request['employee_id'], $status, $type, (int) $request['id']);
-        Audit::log('approval.' . $stage, $table, (int) $request['id'], ['status' => $status, 'channel' => (string) ($actor['channel'] ?? 'web')]);
+        $message = $this->notify((int) $request['employee_id'], $status, $type, (int) $request['id'], $finalByManager);
+        Audit::log('approval.' . $stage, $table, (int) $request['id'], [
+            'status'    => $status,
+            'channel'   => (string) ($actor['channel'] ?? 'web'),
+            'final_by'  => $finalByManager ? 'MANAGER' : $stage,
+        ]);
 
         return [
-            'ok'      => true,
-            'status'  => $status,
-            'stage'   => $stage,
-            'request' => $request,
-            'message' => $message,
+            'ok'           => true,
+            'status'       => $status,
+            'stage'        => $stage,
+            'final'        => $isFinalStage,
+            'request'      => $request,
+            'message'      => $message,
         ];
     }
 
@@ -189,18 +347,7 @@ final class ApprovalEngine
         $limit = max(1, min(200, $limit));
         $offset = max(0, $offset);
         $params = [];
-        $where = [];
-
-        if ((string) ($actor['role'] ?? '') === 'HR') {
-            $where[] = "r.status IN ('PENDING','MANAGER_APPROVED')";
-        } else {
-            $where[] = "r.status = 'PENDING'";
-            $where[] = 'e.direct_manager_id = ?';
-            $params[] = (int) $actor['id'];
-        }
-
-        $where[] = 'r.employee_id <> ?';
-        $params[] = (int) $actor['id'];
+        $where = $this->inboxWhere($actor, $params);
 
         $extra = '';
         if ($type === 'leave') {
@@ -224,7 +371,7 @@ final class ApprovalEngine
                   LEFT JOIN departments d ON d.id = e.department_id
                   LEFT JOIN positions p ON p.id = e.position_id
                   ' . $join . '
-                 WHERE ' . implode(' AND ', $where) . '
+                 WHERE ' . $where . '
                  ORDER BY r.created_at DESC, r.id DESC
                  LIMIT ' . $limit . ' OFFSET ' . $offset;
 
@@ -239,23 +386,12 @@ final class ApprovalEngine
         }
 
         $params = [];
-        $where = [];
-
-        if ((string) ($actor['role'] ?? '') === 'HR') {
-            $where[] = "r.status IN ('PENDING','MANAGER_APPROVED')";
-        } else {
-            $where[] = "r.status = 'PENDING'";
-            $where[] = 'e.direct_manager_id = ?';
-            $params[] = (int) $actor['id'];
-        }
-
-        $where[] = 'r.employee_id <> ?';
-        $params[] = (int) $actor['id'];
+        $where = $this->inboxWhere($actor, $params);
 
         return (int) Database::value(
             'SELECT COUNT(*) FROM ' . $table . ' r
                JOIN employees e ON e.id = r.employee_id
-              WHERE ' . implode(' AND ', $where),
+              WHERE ' . $where,
             $params,
             0
         );
@@ -270,16 +406,52 @@ final class ApprovalEngine
         }
         $expenses = new \App\Models\ExpenseModel();
         $counts['claim'] = in_array((string) ($actor['role'] ?? ''), ['HR', 'FIN'], true)
-            ? $expenses->countClaims(['status' => 'AWAITING'])
+            ? $expenses->countClaims([
+                'status'           => 'AWAITING',
+                'final_ready'      => true,
+                'exclude_employee' => (int) ($actor['id'] ?? 0),
+            ])
             : count($expenses->pendingForManager((int) $actor['id']));
 
         return $counts;
     }
 
-    private function notify(int $employeeId, string $status, string $type, int $id): string
+    /**
+     * Klausa WHERE kotak masuk persetujuan.
+     *
+     * HR melihat PENDING & MANAGER_APPROVED, kecuali pengajuan rekan HR yang
+     * masih menunggu atasan langsung (bukan kewenangan HR) dan pengajuan sendiri.
+     *
+     * @param array<int, mixed> $params
+     */
+    private function inboxWhere(array $actor, array &$params): string
+    {
+        $where = [];
+        $actorId = (int) ($actor['id'] ?? 0);
+
+        if ((string) ($actor['role'] ?? '') === 'HR') {
+            $where[] = "r.status IN ('PENDING','MANAGER_APPROVED')";
+            $where[] = "NOT (r.status = 'PENDING' AND e.role = 'HR' AND EXISTS (
+                            SELECT 1 FROM employees m
+                             WHERE m.id = e.direct_manager_id AND m.flag = 'ACTIVE' AND m.id <> e.id))";
+        } else {
+            $where[] = "r.status = 'PENDING'";
+            $where[] = 'e.direct_manager_id = ?';
+            $params[] = $actorId;
+        }
+
+        $where[] = 'r.employee_id <> ?';
+        $params[] = $actorId;
+
+        return implode(' AND ', $where);
+    }
+
+    private function notify(int $employeeId, string $status, string $type, int $id, bool $finalByManager = false): string
     {
         $verb = match ($status) {
-            'APPROVED'         => 'telah disetujui final oleh HR',
+            'APPROVED'         => $finalByManager
+                ? 'telah disetujui final oleh atasan langsung'
+                : 'telah disetujui final oleh HR',
             'MANAGER_APPROVED' => 'telah disetujui atasan langsung dan menunggu HR',
             default            => 'ditolak',
         };
