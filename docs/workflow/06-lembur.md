@@ -60,26 +60,25 @@ Tahap final lembur hanya bisa diputus **HR**, sedangkan HR tidak boleh
 memutus pengajuannya sendiri. Aturannya:
 
 ```text
-[Pemohon] ajukan ──► PENDING
+[Pemohon HR] ajukan ──► PENDING
                           │
                 [Atasan langsung] setujui
                           │
-        ┌─────────────────┴──────────────────┐
-        ▼                                    ▼
-pemohon satu-satunya HR              ada HR lain (aktif)
-        │                                    │
-        ▼                                    ▼
-APPROVED (final)                     MANAGER_APPROVED
-manager_id terisi, hr_id kosong              │
-                                             ▼
-                                   [HR lain] setujui → APPROVED
+                          ▼
+                  APPROVED (final)
+         manager_id terisi · hr_id kosong
 ```
 
+* **Selalu selesai di atasan langsung** — berapa pun jumlah akun HR, pengajuan
+  milik HR tidak lagi menunggu tahap HR karena tahap itu hanya bisa diputus
+  dirinya sendiri. Notifikasi & audit mencatat `final_by: MANAGER`.
 * Persetujuan atasan **wajib** dilalui; HR lain tidak boleh memutus `PENDING`
   milik rekan HR sebelum atasan memutus.
 * Bila pemohon belum punya atasan langsung (atau atasannya nonaktif / menunjuk
   dirinya sendiri) dan tidak ada HR lain, pengajuan **ditolak saat dibuat**
   dengan pesan agar atasan langsung ditetapkan lebih dulu.
+* Pengajuan lama yang masih `MANAGER_APPROVED` diselesaikan otomatis oleh
+  migrasi skema 24 (`ApprovalEngine::finalizeLegacy()`).
 * Kompensasi tetap dihitung saat status berubah menjadi `APPROVED` (termasuk pada jalur final-di-atasan).
 
 ### 3.3 Lembur terjadwal (HR)

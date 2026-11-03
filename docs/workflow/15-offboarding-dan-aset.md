@@ -56,8 +56,9 @@
    membuat pengajuan untuk PHK/akhir kontrak.
 2. **Approval**: atasan menyetujui (`SUBMITTED → MANAGER_APPROVED`), lalu HR
    menyetujui (`→ IN_PROGRESS`). Saat HR menyetujui, checklist default dibuat.
-   Bila pemohon adalah **satu-satunya HR**, persetujuan atasan langsung membuka
-   proses serah terima (`SUBMITTED → IN_PROGRESS`) tanpa persetujuan diri sendiri.
+   Bila pemohon berperan **HR**, persetujuan atasan langsung langsung membuka
+   proses serah terima (`SUBMITTED → IN_PROGRESS`) tanpa menunggu persetujuan
+   diri sendiri; checklist default ikut dibuat.
 3. **Serah terima**: HR/atasan/FIN menandai item `DONE` atau `WAIVED`; aset
    diubah statusnya (`RETURNED`, `WAIVED`, `LOST`, `NOT_HELD`).
 4. **BAST**: HR menerbitkan berita acara (`POST /offboarding/{id}/bast`) — PDF

@@ -90,17 +90,22 @@ rekrutmen (pipeline pelamar), offboarding (atasan → HR → serah terima).
 HR adalah approver final, sehingga tanpa aturan khusus pengajuan HR akan
 menunggu persetujuan dirinya sendiri. Aturan yang dipakai:
 
+**Aturan utama: pengajuan milik HR selesai di atasan langsung, tidak menunggu
+HR.** Sebab tahap final hanya boleh diputus pemegang peran HR, sedangkan pemohon
+tidak boleh menyetujui pengajuannya sendiri — berapa pun jumlah akun HR yang
+ada, tahap itu tidak akan pernah bisa diputus orang yang tepat.
+
 | Kondisi | Perilaku |
 |---------|----------|
-| HR punya atasan langsung **dan** ada HR lain aktif | Alur normal: atasan (`MANAGER_APPROVED`) → HR lain (`APPROVED`) |
-| HR punya atasan langsung, **satu-satunya HR** | Persetujuan atasan langsung = **final** (`APPROVED`); `hr_id` dibiarkan kosong, audit mencatat `final_by: MANAGER` |
+| HR punya atasan langsung (jumlah HR lain tidak berpengaruh) | Persetujuan atasan langsung = **final** (`APPROVED`); `hr_id` dibiarkan kosong, audit mencatat `final_by: MANAGER`, saldo/shift/kompensasi langsung dihitung |
 | HR belum punya atasan langsung, ada HR lain aktif | Tahap atasan dilewati; HR lain memutus dari `PENDING` |
 | HR belum punya atasan langsung **dan** tidak ada HR lain | Pengajuan ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih dulu |
 | Atasan langsung nonaktif atau menunjuk diri sendiri | Dianggap tidak ada atasan (aturan di atas berlaku) |
+| Sudah telanjur `MANAGER_APPROVED` sebelum aturan ini berlaku | Diselesaikan otomatis oleh migrasi skema 24 (`ApprovalEngine::finalizeLegacy()`): status menjadi `APPROVED` beserta efek sampingnya |
 
-Prinsip yang sama dipakai klaim dengan approver final **HR atau Finance**, dan
-offboarding (persetujuan atasan langsung langsung membuka `IN_PROGRESS` bila
-pemohon satu-satunya HR). Rincian per modul ada di
+Prinsip yang sama dipakai klaim dengan approver final **HR atau Finance**
+(pengajuan milik HR/Finance berhenti di atasan), dan offboarding (persetujuan
+atasan langsung langsung membuka `IN_PROGRESS` bila pemohon HR). Rincian per modul ada di
 [04](04-shift-dan-jadwal.md), [06](06-lembur.md), [07](07-cuti.md),
 [10](10-klaim-reimbursement.md), dan [15](15-offboarding-dan-aset.md).
 

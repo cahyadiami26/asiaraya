@@ -45,9 +45,10 @@ dengan slip gaji ber-QR.
 | **21.3** | Perbaikan: notifikasi persetujuan lembur ke atasan langsung tidak lagi berujung **403** — halaman `/overtime` kini bisa dibuka atasan (cakupan tim, tombol HR disembunyikan), begitu juga `/leave` dan `/schedules/requests` untuk atasan ber-peran FIN | ✅ selesai |
 | **21.4** | Perbaikan: **ID karyawan otomatis** pada formulir tambah karyawan kini benar-benar mengikuti format di halaman *Organisasi → Format ID* (business unit + departemen pilihan), berubah langsung saat unit diganti, dan diterbitkan ulang dari counter saat disimpan sehingga tidak lagi memunculkan “ID karyawan sudah digunakan” | ✅ selesai |
 | **21.5** | Perbaikan: **menu peran FIN** dilengkapi — grup *Layanan Mandiri* (profil, presensi, jadwal, pengajuan lembur & cuti, klaim, slip gaji, dokumen, riwayat jabatan, bukti potong) serta menu **Persetujuan Payroll** dengan badge antrean; peran HR ikut mendapat layanan mandiri yang sama | ✅ selesai |
-| **21.6** | Perbaikan alur persetujuan: pengajuan milik **HR sendiri** (cuti, lembur, perubahan jadwal, klaim, offboarding) tidak lagi menggantung menunggu persetujuan diri sendiri — persetujuan atasan langsung menjadi **final** bila pemohon satu-satunya approver; larangan *self-approval* kini juga berlaku di offboarding dan aksi massal lembur; pengajuan yang tidak akan punya approver ditolak saat dibuat; tombol/centang keputusan hanya tampil bila pengguna benar-benar berhak | ✅ selesai |
+| **21.6** | Perbaikan alur persetujuan: pengajuan milik **HR sendiri** (cuti, lembur, perubahan jadwal, klaim, offboarding) tidak lagi menggantung menunggu persetujuan diri sendiri — persetujuan atasan langsung menjadi **final**; larangan *self-approval* kini juga berlaku di offboarding dan aksi massal lembur; pengajuan yang tidak akan punya approver ditolak saat dibuat; tombol/centang keputusan hanya tampil bila pengguna benar-benar berhak | ✅ selesai |
+| **21.7** | Penyempurnaan 21.6: pengajuan milik HR **selalu selesai di atasan langsung** (tidak menunggu HR walaupun ada akun HR lain), klaim milik HR/Finance juga berhenti di atasan, dan pengajuan lama yang telanjur `MANAGER_APPROVED` diselesaikan otomatis oleh **migrasi skema 24** — saldo cuti langsung terpotong, shift ditulis, lembur masuk payroll, klaim siap dibayar | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5 & 21.6) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6 & 21.7) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -208,10 +209,10 @@ cp database/demo-preview.sqlite storage/database.sqlite
   (`→ APPROVED`). Hanya persetujuan final yang mengubah tabel `schedules`, dan
   hanya pada rentang yang diminta.
 * Setiap keputusan mengirim notifikasi ke karyawan; penolakan tidak mengubah jadwal.
-* **Pengajuan oleh HR sendiri**: persetujuan atasan langsung menjadi final bila
-  pemohon satu-satunya HR (tidak ada yang bisa memutus tahap HR tanpa menyetujui
-  pengajuan sendiri). HR lain tidak boleh melompati tahap atasan pada pengajuan
-  rekan HR, dan pengajuan ditolak saat dibuat bila tidak ada approver sama sekali.
+* **Pengajuan oleh HR sendiri** selalu **selesai di atasan langsung**: tahap HR
+  hanya bisa diputus pemohon sendiri, sehingga dilewati berapa pun jumlah akun
+  HR. HR lain tidak boleh melompati tahap atasan pada pengajuan rekan HR, dan
+  pengajuan ditolak saat dibuat bila tidak ada approver sama sekali.
 
 ---
 
@@ -366,11 +367,9 @@ halaman lembur, dan payroll selalu konsisten.
   dibuka, pembatalan oleh HR (saldo dikembalikan otomatis), dan **Export CSV** per tahun.
 * **Atasan langsung** membuka halaman yang sama dan hanya melihat pengajuan anggota timnya
   (blok KPI/filter HR disembunyikan); pengajuan milik sendiri tidak dapat diputus sendiri.
-* **Pengajuan oleh HR sendiri**: tahap HR hanya bisa diputus HR, sehingga bila
-  pemohon satu-satunya HR persetujuan atasan langsung langsung final
-  (`APPROVED`, `hr_id` kosong, audit `final_by: MANAGER`) dan saldo tetap
-  terpotong. Bila ada HR lain, alur tetap dua tahap tetapi HR lain harus
-  menunggu atasan lebih dulu.
+* **Pengajuan oleh HR sendiri** berhenti di atasan langsung: persetujuan
+  atasan menjadi final (`APPROVED`, `hr_id` kosong, audit `final_by: MANAGER`)
+  dan saldo cuti langsung terpotong, tanpa menunggu HR lain.
 
 ### Cuti Saya (`/me/leave`)
 * Kartu saldo per jenis (sisa, jatah, terpakai, carry) + ringkasan tahun.
@@ -385,7 +384,7 @@ halaman lembur, dan payroll selalu konsisten.
 | --- | --- |
 | Atasan menyetujui | status `MANAGER_APPROVED`, notifikasi ke karyawan |
 | HR menyetujui (final) | status `APPROVED`, **saldo `used` bertambah**, hari kerja pada rentang ditandai `LEAVE` di tabel presensi |
-| Atasan menyetujui = final (pemohon satu-satunya HR) | status langsung `APPROVED` dengan efek yang sama seperti persetujuan HR |
+| Atasan menyetujui = final (pemohon berperan HR) | status langsung `APPROVED` dengan efek yang sama seperti persetujuan HR |
 | Ditolak / dibatalkan | saldo **tidak** berubah; bila cuti yang sudah `APPROVED` dibatalkan, `used` dikurangi kembali dan penanda presensi dihapus |
 | Presensi | baris yang sudah ada (mis. karyawan tetap masuk) **tidak** ditimpa; hanya baris kosong/`ABSENT` yang diubah menjadi `LEAVE` |
 
@@ -655,7 +654,7 @@ otomatis). Setiap keputusan mengirim notifikasi ke pengaju; persetujuan atasan
 juga memberi tahu HR.
 
 Approver final adalah **HR atau Finance**, jadi klaim tidak pernah boleh diputus
-pengajunya sendiri. Bila pemohon satu-satunya HR/Finance yang aktif,
+pengajunya sendiri. Bila pemohon berperan HR/Finance dan punya atasan langsung,
 persetujuan atasan langsung langsung final (`APPROVED`, siap dibayarkan). Bila
 pemohon belum punya atasan langsung dan tidak ada HR/Finance lain, klaim
 ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih dulu.
@@ -1583,11 +1582,15 @@ dihitung, notifikasi + audit `approval.MANAGER`/`approval.HR`). Pengguna tidak
 bisa memutus pengajuannya sendiri.
 
 Respons `decide` memuat `stage` (`MANAGER`/`HR`/`FINAL`) dan `final` (boolean).
-Bila pemohon satu-satunya approver final, `stage` tetap `MANAGER` tetapi
-`final: true` karena keputusan atasan langsung sudah mengakhiri pengajuan.
+Untuk pengajuan milik HR (atau HR/Finance pada klaim), `stage` tetap
+`MANAGER` tetapi `final: true` karena keputusan atasan langsung sudah
+mengakhiri pengajuan.
 
 ### Skema & data demo
 
+* `Schema::VERSION` kini **24** — versi 24 menyelesaikan otomatis pengajuan
+  lama milik HR/Finance yang masih tertahan pada `MANAGER_APPROVED`
+  (`ApprovalEngine::finalizeLegacy()`), lihat batch 21.7.
 * `Schema::VERSION` naik ke **22** — tabel baru `api_tokens`
   (employee, hash access/refresh, perangkat, masa berlaku, `revoked_at`) dan
   `api_punch_logs` (idempotensi presensi). Migrasi berjalan otomatis saat
@@ -2097,15 +2100,15 @@ adalah approver final, pengajuan milik HR mengikuti aturan khusus:
 
 | Kondisi | Hasil |
 |---------|-------|
-| HR punya atasan langsung + ada HR lain aktif | Atasan → `MANAGER_APPROVED` → HR lain → `APPROVED` |
-| HR punya atasan langsung, satu-satunya HR | Atasan menyetujui = **final** (`APPROVED`, `hr_id` kosong, audit `final_by: MANAGER`) |
+| HR punya atasan langsung (berapa pun jumlah HR lain) | Atasan menyetujui = **final** (`APPROVED`, `hr_id` kosong, audit `final_by: MANAGER`); saldo cuti, shift, dan kompensasi lembur langsung dihitung |
 | HR tanpa atasan langsung, ada HR lain | HR lain memutus dari `PENDING` |
 | HR tanpa atasan langsung & tanpa HR lain | Pengajuan **ditolak saat dibuat** dengan pesan agar atasan langsung ditetapkan |
+| Sudah telanjur `MANAGER_APPROVED` (data lama) | Diselesaikan otomatis oleh migrasi skema **24**: status `APPROVED` + efek sampingnya, sehingga lembur ikut payroll dan saldo cuti terpotong |
 
 Aturan yang sama berlaku untuk klaim (approver final HR **atau** Finance) dan
-offboarding (atasan langsung membuka `IN_PROGRESS` bila pemohon satu-satunya
-HR). Pengajuan rekan HR yang masih `PENDING` tidak boleh dilompati HR lain, dan
-tombol keputusan di UI hanya tampil bila pengguna benar-benar berhak.
+offboarding (atasan langsung membuka `IN_PROGRESS` bila pemohon HR). Pengajuan
+rekan HR yang masih `PENDING` tidak boleh dilompati HR lain, dan tombol
+keputusan di UI hanya tampil bila pengguna benar-benar berhak.
 Rincian: [`docs/workflow/README.md`](docs/workflow/README.md) bagian *Bila yang
 mengajukan adalah HR sendiri*.
 

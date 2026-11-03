@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 23;
+    public const VERSION = 24;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -141,6 +141,22 @@ final class Schema
 
         if ($withSeed) {
             $log = array_merge($log, self::seed($fresh));
+        }
+
+        // Versi 24: pengajuan milik approver final (HR, atau HR/Finance untuk
+        // klaim) selesai di atasan langsung. Baris lama yang masih tertahan pada
+        // MANAGER_APPROVED diselesaikan sekali di sini agar ikut terhitung
+        // (saldo cuti, jadwal, lembur payroll, klaim siap bayar).
+        try {
+            $finished = (new \App\Core\ApprovalEngine())->finalizeLegacy();
+            $total = array_sum($finished);
+            if ($total > 0) {
+                $log[] = 'Pengajuan lama yang menunggu HR diselesaikan: ' . $total
+                    . ' (cuti ' . $finished['leave'] . ', lembur ' . $finished['overtime']
+                    . ', jadwal ' . $finished['schedule'] . ', klaim ' . $finished['claim'] . ').';
+            }
+        } catch (\Throwable $e) {
+            $log[] = 'Penyelesaian pengajuan lama dilewati: ' . $e->getMessage();
         }
 
         self::markInstalled();

@@ -51,7 +51,9 @@ final class ApprovalController extends Controller
         }
 
         $status = (string) $result['status'];
+        $stage = (string) ($result['stage'] ?? '');
         $label = match (true) {
+            $status === 'APPROVED' && $stage === 'MANAGER' => 'disetujui final oleh atasan langsung',
             $status === 'APPROVED'         => 'disetujui (final)',
             $status === 'MANAGER_APPROVED' => 'disetujui atasan, menunggu HR',
             default                        => 'ditolak',

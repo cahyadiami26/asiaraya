@@ -80,8 +80,9 @@ Aturan tahap pada endpoint persetujuan:
 * `POST .../decide` menolak (`422 DECISION_REJECTED`) bila pengguna memutus
   pengajuannya sendiri atau memutus tahap yang belum berhak.
 * Respons `decide` menyertakan `stage` (`MANAGER`/`HR`/`FINAL`) dan `final`
-  (`true` bila status sudah final). Bila pemohon satu-satunya HR, keputusan
-  atasan langsung sudah final meski `stage = MANAGER`.
+  (`true` bila status sudah final). Pengajuan milik HR (atau HR/Finance untuk
+  klaim) **selalu final di tahap atasan**, sehingga `decide` mengembalikan
+  `{stage: "MANAGER", status: "APPROVED", final: true}`.
 * Pengajuan yang tidak akan punya approver (tanpa atasan langsung dan tanpa
   approver final lain) ditolak saat dibuat (`422 APPROVER_MISSING`).
 

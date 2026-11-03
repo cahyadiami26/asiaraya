@@ -14,10 +14,10 @@ use App\Models\ScheduleModel;
  * Tahap 2 — HR             : MANAGER_APPROVED → APPROVED (final)
  * Penolakan pada tahap mana pun mengakhiri pengajuan sebagai REJECTED.
  *
- * Pengecualian: bila pemohon sendiri adalah satu-satunya approver final
- * (mis. HR satu-satunya di perusahaan), tahap HR tidak mungkin diputus tanpa
- * menyetujui pengajuan sendiri — sehingga persetujuan atasan langsung langsung
- * menjadi keputusan final (PENDING → APPROVED).
+ * Pengecualian: bila pemohon sendiri adalah approver final (HR untuk cuti,
+ * lembur, dan jadwal; HR/Finance untuk klaim), tahap final tidak mungkin
+ * diputus tanpa menyetujui pengajuan sendiri. Pengajuan seperti itu **selesai
+ * di atasan langsung** (PENDING → APPROVED) dan tidak menunggu HR.
  *
  * Dipakai bersama oleh halaman web (ApprovalController) dan REST API
  * (Api\V1\ApprovalApiController) supaya aturan & efek sampingnya identik.
@@ -120,16 +120,17 @@ final class ApprovalEngine
     }
 
     /**
-     * Pemohon adalah approver final dan tidak ada approver final lain, sehingga
-     * persetujuan atasan langsung adalah keputusan terakhir yang mungkin.
+     * Pemohon adalah approver final untuk jenis pengajuannya (HR untuk cuti,
+     * lembur, jadwal; HR/Finance untuk klaim). Tahap final hanya boleh diputus
+     * orang lain dengan peran itu, sedangkan pemohon tidak boleh menyetujui
+     * pengajuannya sendiri — karena itu persetujuan atasan langsung sudah
+     * menjadi keputusan terakhir, berapa pun jumlah HR yang ada.
      */
     public static function managerStageIsFinal(int $employeeId, array $roles): bool
     {
         $role = self::roleOf($employeeId);
 
-        return $role !== null
-            && in_array($role, $roles, true)
-            && !self::hasOtherFinalApprover($employeeId, $roles);
+        return $role !== null && in_array($role, $roles, true);
     }
 
     /**
@@ -414,6 +415,98 @@ final class ApprovalEngine
             : count($expenses->pendingForManager((int) $actor['id']));
 
         return $counts;
+    }
+
+    /**
+     * Selesaikan pengajuan lama yang tertahan pada status MANAGER_APPROVED
+     * padahal pemohonnya adalah approver final (HR, atau HR/Finance untuk
+     * klaim). Dipanggil sekali oleh migrasi skema setelah aturan "selesai di
+     * atasan langsung" berlaku, agar pengajuan tersebut ikut terhitung:
+     * saldo cuti terpotong, shift ditulis, lembur masuk payroll, klaim siap
+     * dibayar. Idempoten karena hanya menyentuh status MANAGER_APPROVED.
+     *
+     * @return array<string, int> jumlah baris yang diselesaikan per jenis
+     */
+    public function finalizeLegacy(): array
+    {
+        $result = ['leave' => 0, 'overtime' => 0, 'schedule' => 0, 'claim' => 0];
+        $now = date('Y-m-d H:i:s');
+
+        foreach (['leave', 'overtime', 'schedule'] as $type) {
+            $table = self::TABLES[$type];
+            $rows = Database::all(
+                'SELECT r.* FROM ' . $table . ' r
+                   JOIN employees e ON e.id = r.employee_id
+                  WHERE r.status = ? AND e.role = ?',
+                ['MANAGER_APPROVED', 'HR']
+            );
+
+            foreach ($rows as $row) {
+                try {
+                    if ($type === 'leave') {
+                        (new LeaveModel())->applyApproval((int) $row['id']);
+                    } elseif ($type === 'overtime') {
+                        $hours = (float) ($row['actual_hours'] ?: $row['planned_hours']);
+                        $amount = (new OvertimeModel())->compensation(
+                            (int) $row['employee_id'],
+                            $hours,
+                            (string) ($row['work_date'] ?? '')
+                        )['amount'];
+                        Database::update('overtime_requests', ['compensation_amount' => $amount], 'id = ?', [(int) $row['id']]);
+                    } else {
+                        (new ScheduleModel())->assign(
+                            (int) $row['employee_id'],
+                            (int) $row['requested_shift_id'],
+                            (string) $row['start_date'],
+                            (string) $row['end_date'],
+                            'REQUEST',
+                            'Disetujui final oleh atasan langsung',
+                            (int) ($row['manager_id'] ?? 0) ?: null
+                        );
+                    }
+
+                    Database::update($table, [
+                        'status'     => 'APPROVED',
+                        'updated_at' => $now,
+                    ], 'id = ?', [(int) $row['id']]);
+                    $result[$type]++;
+                } catch (\Throwable $e) {
+                    error_log('finalizeLegacy ' . $type . ' #' . $row['id'] . ': ' . $e->getMessage());
+                    continue;
+                }
+
+                Audit::log('approval.legacy_final', $table, (int) $row['id'], [
+                    'from'     => 'MANAGER_APPROVED',
+                    'to'       => 'APPROVED',
+                    'final_by' => 'MANAGER',
+                ]);
+                try {
+                    $this->notify((int) $row['employee_id'], 'APPROVED', $type, (int) $row['id'], true);
+                } catch (\Throwable) {
+                    // notifikasi bersifat best-effort
+                }
+            }
+        }
+
+        $claims = Database::all(
+            "SELECT c.id, c.employee_id FROM expense_claims c
+               JOIN employees e ON e.id = c.employee_id
+              WHERE c.status = 'MANAGER_APPROVED' AND e.role IN ('HR','FIN')"
+        );
+        foreach ($claims as $claim) {
+            Database::update('expense_claims', [
+                'status'     => 'APPROVED',
+                'updated_at' => $now,
+            ], 'id = ?', [(int) $claim['id']]);
+            Audit::log('approval.legacy_final', 'expense_claim', (int) $claim['id'], [
+                'from'     => 'MANAGER_APPROVED',
+                'to'       => 'APPROVED',
+                'final_by' => 'MANAGER',
+            ]);
+            $result['claim']++;
+        }
+
+        return $result;
     }
 
     /**

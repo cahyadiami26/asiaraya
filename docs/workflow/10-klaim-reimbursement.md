@@ -56,14 +56,16 @@
 Approver final klaim adalah **HR atau Finance**, dan keduanya tidak boleh
 memutus klaim sendiri:
 
-* Bila pemohon masih punya atasan langsung, klaim tetap `PENDING` menunggu
-  atasan; HR/Finance lain tidak boleh melompati tahap itu.
-* Bila pemohon adalah **satu-satunya** HR/Finance yang aktif, persetujuan atasan
-  langsung menjadi keputusan **final** (`PENDING → APPROVED`) — klaim langsung
-  siap dibayarkan tanpa tahap persetujuan diri sendiri.
+* Bila pemohon punya atasan langsung, klaim **selesai di atasan**: persetujuan
+  atasan langsung menjadi keputusan **final** (`PENDING → APPROVED`) — klaim
+  langsung siap dibayarkan tanpa menunggu HR/Finance lain.
+* HR/Finance lain tidak boleh memutus klaim `PENDING` milik rekan HR/Finance
+  sebelum atasan memutus (kotak masuk menyembunyikannya).
 * Bila pemohon tidak punya atasan langsung **dan** tidak ada HR/Finance lain,
   klaim ditolak saat dibuat dengan pesan agar atasan langsung ditetapkan lebih
   dulu (mencegah klaim menggantung).
+* Klaim lama yang masih `MANAGER_APPROVED` milik HR/Finance diselesaikan
+  otomatis oleh migrasi skema 24.
 * Kotak masuk HR/Finance tidak menampilkan klaim sendiri maupun klaim rekan
   HR/Finance yang masih menunggu atasan.
 
