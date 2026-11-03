@@ -1,6 +1,5 @@
 <?php
 /** @var array|null $currentUser */
-$activeUnit = setting('active_business_unit_label', 'Jakarta HQ (Pusat)');
 $unread = $unreadNotifications ?? 0;
 ?>
 <header class="topbar">
