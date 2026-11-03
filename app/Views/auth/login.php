@@ -7,7 +7,7 @@
  */
 $oldIdentifier = $_SESSION['_old_identifier'] ?? '';
 unset($_SESSION['_old_identifier']);
-$activeUnitLabel = setting('company_city', 'Jakarta');
+$activeUnitLabel = setting('company_city', 'Bandar Lampung');
 ?>
 <header class="auth-top">
     <div class="auth-brand">
@@ -38,11 +38,6 @@ $activeUnitLabel = setting('company_city', 'Jakarta');
             <div class="auth-visual__overlay">
                 <span class="kicker">Pusat Operasional Digital</span>
                 <b>Menara Asia Raya, Mega Kuningan Jakarta</b>
-            </div>
-            <div class="auth-visual__card">
-                <div class="t">Login HRIS</div>
-                <div class="v">Employee ID · 100642</div>
-                <div class="bar"><i></i></div>
             </div>
         </div>
 
