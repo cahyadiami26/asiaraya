@@ -6,7 +6,10 @@
 
 ## 1. Fungsi
 
-* **Autentikasi bearer token**: login, refresh, logout, profil (`/api/v1/auth/*`).
+* **Autentikasi bearer token**: login, refresh, logout, sesi (`/api/v1/auth/*`).
+* **Profil karyawan lengkap** (`/api/v1/me/profile`): identitas, masa kerja,
+  kontrak, penempatan organisasi, atasan langsung, kontak, data pribadi,
+  payroll/bank, saldo cuti, dan ringkasan dokumen.
 * **Konfigurasi aplikasi**: nama perusahaan, jam kerja, kebijakan cuti/lembur,
   versi minimum aplikasi (`/api/v1/app/config`).
 * **Presensi mobile**: presensi hari ini, punch (selfie + GPS), riwayat, ringkasan.
@@ -96,6 +99,39 @@ GET /api/v1/payslips/{id}/pdf  (header Authorization)
    yang bisa diunduh tanpa header
 ```
 
+### 3.5 Profil karyawan
+
+```text
+GET /api/v1/me/profile?year=2026   (header Authorization)
+        ▼
+{ profile, employment, organization, manager, contact, personal,
+  payroll, leave{summary,balances}, documents, permissions }
+```
+
+Dipakai layar **Profil & Pengaturan** aplikasi Android. Berbeda dari
+`GET /api/v1/auth/me` yang hanya berisi sesi + penghitung beranda, endpoint ini
+mengembalikan **data kepegawaian lengkap milik pemilik token**:
+
+| Blok | Isi |
+|------|-----|
+| `profile` | NIK, nama, nama panggilan, foto, peran + label, status (`ACTIVE`) |
+| `employment` | status kepegawaian (PKWT/PKWTT), tanggal bergabung, `tenure` (tahun/bulan/hari + label), kontrak (`start`, `end`, `remaining_days`, `expiring_soon` ≤ 60 hari), tanggal resign |
+| `organization` | unit bisnis, departemen, jabatan (id, nama, kode) |
+| `manager` | atasan langsung: id, nama, email, jabatan, departemen, status aktif (null bila belum ditetapkan) |
+| `contact` | email perusahaan, username, telepon, alamat, `google_linked` |
+| `personal` | tanggal lahir, umur, jenis kelamin, status pernikahan, agama |
+| `payroll` | gaji pokok (+label rupiah), status pajak, NPWP, BPJS Kesehatan & Ketenagakerjaan, bank (nama, pemilik, nomor + versi tersamar) |
+| `leave` | ringkasan cuti tahun berjalan (`total`, `approved_days`, `open`, `remaining`) + saldo per jenis |
+| `documents` | jumlah dokumen: `total`, `verified`, `unverified`, `rejected`, `expiring_soon` (tanpa URL berkas) |
+| `permissions` | peran, `can_approve`, `is_manager`, `editable_fields` (`phone`, `address`), `email_change_requires_hr` |
+
+* `?year=` (2000–2100, default tahun berjalan) mengatur tahun saldo cuti;
+  nilainya juga dikembalikan di `meta.year`.
+* Endpoint **employee-scoped**: tidak ada parameter id karyawan, sehingga data
+  rekan kerja tidak bisa dibaca. Tanpa token → `401 UNAUTHENTICATED`.
+* Email perusahaan tidak dapat diubah dari aplikasi (harus HR); nomor HP dan
+  alamat dapat diubah lewat web `/me/profile` — API saat ini hanya membaca.
+
 ## 4. Status & konvensi respons
 
 | Hal | Aturan |
@@ -113,6 +149,7 @@ GET /api/v1/payslips/{id}/pdf  (header Authorization)
 | Grup | Rute | Controller |
 |------|------|-----------|
 | Auth | `POST /api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`; `GET /api/v1/auth/me`, `GET /api/v1/app/config` | `AuthApiController` |
+| Profil | `GET /api/v1/me/profile` | `ProfileApiController` |
 | Presensi | `GET /api/v1/attendance/today`; `POST /api/v1/attendance/punch`; `GET /api/v1/attendance/history`, `GET /api/v1/attendance/summary` | `AttendanceApiController` |
 | Jadwal | `GET /api/v1/schedule/today`, `GET /api/v1/schedule`, `GET /api/v1/shifts`; `GET /api/v1/schedule-requests`; `POST /api/v1/schedule-requests`; `POST /api/v1/schedule-requests/{id}/cancel` | `ScheduleApiController` |
 | Lembur | `GET /api/v1/overtimes`, `GET /api/v1/overtimes/policy`; `POST /api/v1/overtimes`; `POST /api/v1/overtimes/{id}/cancel` | `OvertimeApiController` |

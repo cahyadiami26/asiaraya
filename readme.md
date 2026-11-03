@@ -47,8 +47,9 @@ dengan slip gaji ber-QR.
 | **21.5** | Perbaikan: **menu peran FIN** dilengkapi — grup *Layanan Mandiri* (profil, presensi, jadwal, pengajuan lembur & cuti, klaim, slip gaji, dokumen, riwayat jabatan, bukti potong) serta menu **Persetujuan Payroll** dengan badge antrean; peran HR ikut mendapat layanan mandiri yang sama | ✅ selesai |
 | **21.6** | Perbaikan alur persetujuan: pengajuan milik **HR sendiri** (cuti, lembur, perubahan jadwal, klaim, offboarding) tidak lagi menggantung menunggu persetujuan diri sendiri — persetujuan atasan langsung menjadi **final**; larangan *self-approval* kini juga berlaku di offboarding dan aksi massal lembur; pengajuan yang tidak akan punya approver ditolak saat dibuat; tombol/centang keputusan hanya tampil bila pengguna benar-benar berhak | ✅ selesai |
 | **21.7** | Penyempurnaan 21.6: pengajuan milik HR **selalu selesai di atasan langsung** (tidak menunggu HR walaupun ada akun HR lain), klaim milik HR/Finance juga berhenti di atasan, dan pengajuan lama yang telanjur `MANAGER_APPROVED` diselesaikan otomatis oleh **migrasi skema 24** — saldo cuti langsung terpotong, shift ditulis, lembur masuk payroll, klaim siap dibayar | ✅ selesai |
+| **21.8** | **API profil karyawan** `GET /api/v1/me/profile`: identitas & status kepegawaian, masa kerja, kontrak (sisa hari + peringatan ≤ 60 hari), unit/departemen/jabatan, atasan langsung, kontak, data pribadi, payroll & bank (nomor rekening tersamar), saldo cuti tahun berjalan, serta ringkasan dokumen — dipakai layar *Profil & Pengaturan* aplikasi Android yang sebelumnya hanya memuat data sesi | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6 & 21.7) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7 & 21.8) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1513,6 +1514,7 @@ Indonesia.
 | Kelompok | Endpoint |
 |----------|----------|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /app/config` |
+| Profil | `GET /me/profile?year=` — data kepegawaian lengkap pemilik token |
 | Pengumuman | `GET /announcements`, `GET /announcements/{id}`, `POST /announcements/{id}/read` |
 | Jadwal | `GET /schedule/today`, `GET /schedule?from&to`, `GET /shifts`, `GET /schedule-requests`, `POST /schedule-requests`, `POST /schedule-requests/{id}/cancel` |
 | Presensi | `GET /attendance/today`, `POST /attendance/punch`, `GET /attendance/history?month`, `GET /attendance/summary?month` |
@@ -1523,6 +1525,32 @@ Indonesia.
 | Pajak | `GET /tax-slips`, `GET /tax-slips/{year}`, `GET /tax-slips/{year}/pdf` |
 | Notifikasi | `GET /notifications`, `POST /notifications/{id}/read`, `POST /notifications/read-all` |
 | Persetujuan | `GET /approvals?type=`, `GET /approvals/summary`, `POST /approvals/{type}/{id}/decide` |
+
+### Profil karyawan (`GET /me/profile`)
+
+Layar *Profil & Pengaturan* di aplikasi Android memakai endpoint khusus ini,
+bukan `/auth/me` (yang hanya berisi sesi + penghitung beranda):
+
+```bash
+curl 'https://hris.asiaraya.co.id/api/v1/me/profile?year=2026' \
+  -H 'Authorization: Bearer ar_…'
+```
+
+| Blok | Isi |
+|------|-----|
+| `profile` | NIK, nama, nama panggilan, foto, peran + label, status kepegawaian |
+| `employment` | status PKWT/PKWTT, tanggal bergabung, `tenure` (masa kerja + label), kontrak (`remaining_days`, `expiring_soon` ≤ 60 hari), tanggal resign |
+| `organization` | unit bisnis, departemen, jabatan (id, nama, kode) |
+| `manager` | atasan langsung: nama, email, jabatan, departemen, status (null bila belum ditetapkan) |
+| `contact` | email perusahaan, username, telepon, alamat, `google_linked` |
+| `personal` | tanggal lahir, umur, jenis kelamin, status pernikahan, agama |
+| `payroll` | gaji pokok + label rupiah, status pajak, NPWP, BPJS Kesehatan/Ketenagakerjaan, bank & nomor rekening tersamar |
+| `leave` | ringkasan cuti tahun `?year=` + saldo per jenis (kuota, terpakai, sisa, progress) |
+| `documents` | jumlah dokumen total/terverifikasi/belum/ditolak/akan kedaluwarsa |
+| `permissions` | peran, `can_approve`, `is_manager`, `editable_fields`, `email_change_requires_hr` |
+
+Endpoint bersifat *employee-scoped* — tidak ada parameter id karyawan, sehingga
+hanya data pemilik token yang dapat dibaca; tanpa token → `401 UNAUTHENTICATED`.
 
 ### Presensi dari Android
 

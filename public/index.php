@@ -19,6 +19,7 @@ use App\Controllers\Api\V1\LeaveApiController;
 use App\Controllers\Api\V1\NotificationApiController;
 use App\Controllers\Api\V1\OvertimeApiController;
 use App\Controllers\Api\V1\PayrollApiController;
+use App\Controllers\Api\V1\ProfileApiController;
 use App\Controllers\Api\V1\ScheduleApiController;
 use App\Controllers\Api\V1\TaxApiController;
 use App\Controllers\AnnouncementController;
@@ -426,6 +427,8 @@ $router->post('/api/v1/auth/login', [AuthApiController::class, 'login'], $api + 
 $router->post('/api/v1/auth/refresh', [AuthApiController::class, 'refresh'], $api + ['name' => 'api.refresh']);
 $router->post('/api/v1/auth/logout', [AuthApiController::class, 'logout'], $api + ['name' => 'api.logout']);
 $router->get('/api/v1/auth/me', [AuthApiController::class, 'me'], $api + ['name' => 'api.me']);
+// Profil karyawan lengkap (identitas, masa kerja, kontrak, payroll, saldo cuti).
+$router->get('/api/v1/me/profile', [ProfileApiController::class, 'show'], $api + ['name' => 'api.profile']);
 $router->get('/api/v1/app/config', [AuthApiController::class, 'appConfig'], $api + ['name' => 'api.config']);
 
 $router->get('/api/v1/announcements', [AnnouncementApiController::class, 'index'], $api + ['name' => 'api.announcements']);

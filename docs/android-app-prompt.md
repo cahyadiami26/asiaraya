@@ -416,8 +416,26 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
   bukan crash.
 
 ### S16 — Profil & Pengaturan
-- Data karyawan dari `/auth/me`: foto/avatar, nama, NIK, jabatan, departemen,
-  unit, atasan langsung, email, telepon.
+- **Sumber data: `GET /api/v1/me/profile?year=<tahun>`** (bukan `/auth/me`).
+  `/auth/me` hanya untuk sesi + penghitung; profil memakai endpoint khusus ini.
+- Kartu identitas: foto/avatar, nama, nama panggilan, NIK, peran, status
+  kepegawaian, jabatan, departemen, unit bisnis, atasan langsung (nama,
+  jabatan, email), email perusahaan, telepon, alamat.
+- Bagian **Kepegawaian**: status (PKWT/PKWTT), tanggal bergabung, masa kerja
+  (`employment.tenure.label`), kontrak (`contract.start`/`end`,
+  `remaining_days`; tampilkan badge “Berakhir ≤ 60 hari” bila
+  `contract.expiring_soon`).
+- Bagian **Data pribadi**: tanggal lahir + umur, jenis kelamin, status
+  pernikahan, agama.
+- Bagian **Payroll & bank**: gaji pokok (`payroll.basic_salary_label`), status
+  pajak, NPWP, BPJS Kesehatan, BPJS Ketenagakerjaan, bank + nomor rekening
+  tersamar (`bank.account_number_masked`).
+- Bagian **Cuti**: ringkasan tahun berjalan (`leave.summary`) + daftar saldo
+  per jenis dengan progress bar (`leave.balances[]`).
+- Bagian **Dokumen**: jumlah total/terverifikasi/belum/kedaluwarsa dari
+  `documents` (tautan daftar dokumen belum tersedia di API).
+- Tombol **Muat ulang** saat pull-to-refresh; data kontak bisa berubah — cache
+  paling lama 1 jam.
 - **Server:** tampilkan alamat aktif, tombol **Ubah Server** (dialog input +
   “Uji koneksi”), “Kembalikan ke bawaan”, peringatan bahwa mengganti server
   mengakhiri sesi.
@@ -426,7 +444,9 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
   “Keluar dari semua perangkat” bila nanti tersedia di API.
 - **Tentang:** versi aplikasi, versi server (`meta.version`), kebijakan privasi
   singkat, info demo mode.
-- **DoD:** logout menghapus token & cache; ganti server memaksa login ulang.
+- **DoD:** semua blok di atas terisi dari `/me/profile` (bukan kosong), nama/NIK/
+  jabatan/atasan tampil walau `manager` null (tampilkan “Belum ditetapkan”),
+  logout menghapus token & cache, ganti server memaksa login ulang.
 
 ---
 
@@ -680,6 +700,8 @@ POST   /auth/login                     {identifier,password,device_name,platform
 POST   /auth/refresh                   {refresh_token}
 POST   /auth/logout
 GET    /auth/me                        employee, counters, attendance_today, permissions
+GET    /me/profile?year=YYYY           profile, employment, organization, manager, contact,
+                                       personal, payroll, leave, documents, permissions
 GET    /app/config                     app, company, features, attendance, leave, overtime, claims, limits
 
 GET    /announcements?page&per_page&category&q&unread

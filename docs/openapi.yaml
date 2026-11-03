@@ -148,6 +148,43 @@ paths:
                               role: { type: string, enum: [HR, FIN, KARYAWAN] }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /api/v1/me/profile:
+    get:
+      tags: [Profil]
+      summary: Profil karyawan lengkap milik pemilik token
+      description: |
+        Berbeda dari `/auth/me` (sesi + penghitung beranda), endpoint ini
+        mengembalikan data kepegawaian lengkap: identitas, masa kerja, kontrak,
+        penempatan organisasi, atasan langsung, kontak, data pribadi,
+        payroll/bank, saldo cuti, dan ringkasan dokumen.
+
+        Endpoint bersifat *employee-scoped*: tidak ada parameter id karyawan,
+        hanya data pemilik token yang dapat dibaca.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          description: Tahun saldo cuti (2000–2100, default tahun berjalan).
+          schema:
+            type: integer
+            minimum: 2000
+            maximum: 2100
+            default: 2026
+      responses:
+        '200':
+          description: Profil karyawan
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/EmployeeProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/v1/app/config:
     get:
       tags: [Konfigurasi]
@@ -1389,6 +1426,151 @@ components:
             id: { type: integer, nullable: true }
             name: { type: string, nullable: true }
         photo_url: { type: string, nullable: true }
+    EmployeeProfile:
+      type: object
+      description: Profil karyawan lengkap (GET /api/v1/me/profile)
+      properties:
+        profile:
+          type: object
+          properties:
+            id: { type: integer }
+            employee_code: { type: string, examples: [ARG-JKT-0421] }
+            full_name: { type: string }
+            nickname: { type: string, nullable: true }
+            photo_url: { type: string, nullable: true }
+            role: { type: string, enum: [HR, FIN, KARYAWAN] }
+            role_label: { type: string, examples: [Karyawan] }
+            status:
+              type: object
+              properties:
+                code: { type: string, examples: [ACTIVE] }
+                label: { type: string, examples: [Aktif] }
+            is_active: { type: boolean }
+        employment:
+          type: object
+          properties:
+            status: { type: string, examples: [PKWTT] }
+            join_date: { type: string, format: date, nullable: true }
+            tenure:
+              type: object
+              properties:
+                years: { type: integer }
+                months: { type: integer }
+                days: { type: integer }
+                total_days: { type: integer }
+                label: { type: string, examples: ['1 tahun 8 bulan'] }
+            contract:
+              type: object
+              properties:
+                start: { type: string, format: date, nullable: true }
+                end: { type: string, format: date, nullable: true }
+                remaining_days: { type: integer, nullable: true }
+                expiring_soon: { type: boolean, description: 'Berakhir ≤ 60 hari' }
+                expired: { type: boolean }
+            resign_date: { type: string, format: date, nullable: true }
+        organization:
+          type: object
+          properties:
+            business_unit: { $ref: '#/components/schemas/OrgUnit' }
+            department: { $ref: '#/components/schemas/OrgUnit' }
+            position: { $ref: '#/components/schemas/OrgUnit' }
+        manager:
+          type: object
+          nullable: true
+          description: Null bila belum ada atasan langsung.
+          properties:
+            id: { type: integer }
+            full_name: { type: string }
+            email: { type: string, nullable: true }
+            position: { type: string, nullable: true }
+            department: { type: string, nullable: true }
+            is_active: { type: boolean }
+        contact:
+          type: object
+          properties:
+            email: { type: string, format: email }
+            username: { type: string, nullable: true }
+            phone: { type: string, nullable: true }
+            address: { type: string, nullable: true }
+            google_linked: { type: boolean }
+        personal:
+          type: object
+          properties:
+            birth_date: { type: string, format: date, nullable: true }
+            age: { type: integer, nullable: true }
+            gender: { type: string, nullable: true }
+            marital_status: { type: string, nullable: true }
+            religion: { type: string, nullable: true }
+        payroll:
+          type: object
+          properties:
+            basic_salary: { type: number }
+            basic_salary_label: { type: string, examples: ['Rp 8.000.000'] }
+            tax_status: { type: string, examples: [TK/0] }
+            npwp: { type: string, nullable: true }
+            bpjs_kesehatan_no: { type: string, nullable: true }
+            bpjs_tk_no: { type: string, nullable: true }
+            bank:
+              type: object
+              properties:
+                name: { type: string, nullable: true }
+                account_name: { type: string, nullable: true }
+                account_number: { type: string, nullable: true }
+                account_number_masked: { type: string, nullable: true, examples: ['••••••1609'] }
+        leave:
+          type: object
+          properties:
+            year: { type: integer }
+            summary:
+              type: object
+              properties:
+                year: { type: integer }
+                total: { type: integer, description: Jumlah pengajuan cuti tahun ini }
+                approved_days: { type: number }
+                open: { type: integer }
+                remaining: { type: number }
+            balances:
+              type: array
+              items:
+                type: object
+                properties:
+                  leave_type_id: { type: integer }
+                  type_name: { type: string }
+                  type_code: { type: string }
+                  color: { type: string, nullable: true }
+                  year: { type: integer }
+                  quota: { type: number }
+                  carry_over: { type: number }
+                  used: { type: number }
+                  remaining: { type: number }
+                  unlimited: { type: boolean }
+                  progress: { type: number }
+        documents:
+          type: object
+          properties:
+            total: { type: integer }
+            verified: { type: integer }
+            unverified: { type: integer }
+            rejected: { type: integer }
+            expiring_soon: { type: integer }
+        permissions:
+          type: object
+          properties:
+            role: { type: string, enum: [HR, FIN, KARYAWAN] }
+            role_label: { type: string }
+            can_approve: { type: boolean }
+            is_manager: { type: boolean }
+            editable_fields:
+              type: array
+              items: { type: string, examples: [phone, address] }
+            email_change_requires_hr: { type: boolean }
+        server_time: { type: string, format: date-time }
+    OrgUnit:
+      type: object
+      properties:
+        id: { type: integer, nullable: true }
+        name: { type: string, nullable: true }
+        code: { type: string, nullable: true }
     Shift:
       type: object
       nullable: true
