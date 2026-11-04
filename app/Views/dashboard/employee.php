@@ -6,6 +6,10 @@
 $today = $attendance['today'];
 $sched = $attendance['schedule'];
 $summary = $attendance['summary'];
+$week = $attendance['week'] ?? [];
+$weekSummary = $attendance['week_summary'] ?? ['present' => 0, 'late' => 0, 'absent' => 0, 'leave' => 0, 'late_minutes' => 0, 'work_hours' => 0, 'recorded' => 0];
+$weekStart = $attendance['week_start'] ?? date('Y-m-d', strtotime('monday this week'));
+$weekEnd = $attendance['week_end'] ?? date('Y-m-d', strtotime($weekStart . ' +6 days'));
 $lastItem = $payroll['last_item'];
 $checkInTime = $today['check_in_at'] ?? null;
 $checkOutTime = $today['check_out_at'] ?? null;
@@ -101,34 +105,75 @@ $operational = $sched['operational_type'] ?? 'NORMAL';
     <section class="card">
         <div class="card__head">
             <div>
-                <h2>Riwayat Presensi <?= e(bulan_id((int) date('n'))) ?></h2>
-                <div class="sub">Rekap kehadiran, jam masuk-keluar, dan status verifikasi geofence.</div>
+                <h2>Riwayat Presensi Minggu Ini</h2>
+                <div class="sub">
+                    <?= tanggal($weekStart, 'j M') ?>–<?= tanggal($weekEnd, 'j M Y') ?>
+                    · <b><?= (int) $weekSummary['present'] ?></b> hadir
+                    · <?= (int) $weekSummary['late'] ?> terlambat
+                    <?php if ((int) $weekSummary['leave'] > 0): ?>· <?= (int) $weekSummary['leave'] ?> cuti<?php endif; ?>
+                    <?php if ((int) $weekSummary['absent'] > 0): ?>· <?= (int) $weekSummary['absent'] ?> alpha<?php endif; ?>
+                    · <?= number_id($weekSummary['work_hours'], 1) ?> jam kerja
+                </div>
             </div>
-            <a href="<?= url('me/attendance') ?>" class="small" style="font-weight:650">Lihat semua</a>
+            <a href="<?= url('me/attendance') ?>" class="small" style="font-weight:650">Rekap bulan →</a>
         </div>
         <div class="table-wrap">
-            <table class="data">
-                <thead><tr><th>Tanggal</th><th>Shift</th><th>Masuk</th><th>Keluar</th><th>Status</th></tr></thead>
+            <table class="data week-table">
+                <thead><tr><th>Hari</th><th>Shift</th><th>Masuk</th><th>Keluar</th><th>Durasi</th><th>Status</th></tr></thead>
                 <tbody>
-                <?php foreach (array_slice($attendance['month'], 0, 8) as $row): ?>
-                    <tr>
-                        <td><b><?= tanggal($row['work_date']) ?></b><div class="small muted"><?= e(hari($row['work_date'])) ?></div></td>
-                        <td class="small"><?= e($row['shift_name'] ?? '-') ?></td>
-                        <td class="mono"><?= $row['check_in_at'] ? e(substr((string) $row['check_in_at'], 11, 5)) : '—' ?></td>
-                        <td class="mono"><?= $row['check_out_at'] ? e(substr((string) $row['check_out_at'], 11, 5)) : '—' ?></td>
+                <?php foreach ($week as $day): ?>
+                    <tr<?= $day['is_today'] ? ' class="is-today"' : '' ?>>
                         <td>
-                            <?= status_badge($row['status']) ?>
-                            <?php if ((int) $row['late_minutes'] > 0): ?>
-                                <span class="small" style="color:var(--rose-600);display:block">+<?= (int) $row['late_minutes'] ?> menit</span>
+                            <b><?= e(hari($day['date'])) ?></b>
+                            <div class="small muted">
+                                <?= tanggal($day['date'], 'd M') ?>
+                                <?php if ($day['is_today']): ?><span class="badge badge-teal" style="margin-left:4px">Hari ini</span><?php endif; ?>
+                            </div>
+                        </td>
+                        <td class="small">
+                            <?php if ($day['shift_name']): ?>
+                                <?php if ($day['shift_color']): ?>
+                                    <span class="week-dot" style="background:<?= e($day['shift_color']) ?>"></span>
+                                <?php endif; ?>
+                                <?= e($day['shift_name']) ?>
+                                <?php if ($day['operational_type'] && $day['operational_type'] !== 'NORMAL'): ?>
+                                    <span class="small muted">· <?= e($day['operational_type']) ?></span>
+                                <?php endif; ?>
+                            <?php else: ?>
+                                <span class="muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td class="mono"><?= $day['check_in_at'] ? e(substr((string) $day['check_in_at'], 11, 5)) : '—' ?></td>
+                        <td class="mono"><?= $day['check_out_at'] ? e(substr((string) $day['check_out_at'], 11, 5)) : '—' ?></td>
+                        <td class="mono small">
+                            <?= $day['work_minutes'] > 0 ? number_id($day['work_hours'], 1) . ' j' : '—' ?>
+                        </td>
+                        <td>
+                            <?php if ($day['status']): ?>
+                                <?= status_badge($day['status']) ?>
+                                <?php if ((int) $day['late_minutes'] > 0): ?>
+                                    <span class="small" style="color:var(--rose-600);display:block">+<?= (int) $day['late_minutes'] ?> menit</span>
+                                <?php endif; ?>
+                            <?php elseif ($day['is_today']): ?>
+                                <span class="badge badge-slate">Belum presensi</span>
+                            <?php else: ?>
+                                <span class="small muted">Belum tercatat</span>
                             <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
-                <?php if (!$attendance['month']): ?>
-                    <tr><td colspan="5"><div class="table-empty"><?= icon('calendar') ?>Belum ada presensi bulan ini.</div></td></tr>
+                <?php if (!$week): ?>
+                    <tr><td colspan="6"><div class="table-empty"><?= icon('calendar') ?>Belum ada data presensi minggu ini.</div></td></tr>
                 <?php endif; ?>
                 </tbody>
             </table>
+        </div>
+        <div class="card__foot" style="padding:10px 16px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <span class="small muted">Senin–Minggu · minggu berjalan (<?= e(date('W', strtotime($weekStart))) ?>)</span>
+            <span class="small muted">
+                <?= (int) $weekSummary['recorded'] ?> hari tercatat
+                <?php if ((int) $weekSummary['late_minutes'] > 0): ?>· <?= (int) $weekSummary['late_minutes'] ?> menit terlambat<?php endif; ?>
+            </span>
         </div>
     </section>
 
@@ -209,4 +254,10 @@ $operational = $sched['operational_type'] ?? 'NORMAL';
     </div>
 </div>
 
-<style>@media (max-width:1180px){.dash-grid{grid-template-columns:1fr !important}}</style>
+<style>
+.week-table tr.is-today td{background:var(--teal-50,#e7fbf7)}
+.week-table tr.is-today td:first-child{box-shadow:inset 3px 0 0 var(--teal-600,#0d9488)}
+.week-table tr.is-today td:first-child b{font-weight:700}
+.week-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+@media (max-width:1180px){.dash-grid{grid-template-columns:1fr !important}}
+</style>

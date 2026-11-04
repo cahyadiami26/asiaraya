@@ -444,7 +444,130 @@ final class DashboardModel
             $summary['late_minutes'] += (int) $row['late_minutes'];
         }
 
-        return ['today' => $today, 'schedule' => $schedule, 'month' => $month, 'summary' => $summary];
+        $week = $this->weekAttendance($employeeId);
+
+        return [
+            'today'        => $today,
+            'schedule'     => $schedule,
+            'month'        => $month,
+            'summary'      => $summary,
+            'week'         => $week['days'],
+            'week_summary' => $week['summary'],
+            'week_start'   => $week['start'],
+            'week_end'     => $week['end'],
+        ];
+    }
+
+    /**
+     * Presensi minggu berjalan (Senin–Minggu) untuk dashboard karyawan.
+     *
+     * Semua tujuh hari selalu dikembalikan agar tabel tidak "bolong": hari yang
+     * belum punya baris presensi tetap tampil dengan shift terjadwal (bila ada)
+     * dan status kosong — bukan dianggap alpha, karena baris ALPA hanya dibuat
+     * HR lewat menu presensi.
+     *
+     * @return array{start:string,end:string,days:array<int,array<string,mixed>>,summary:array<string,mixed>}
+     */
+    private function weekAttendance(int $employeeId, ?string $anchor = null): array
+    {
+        $anchor = $anchor !== null && strtotime($anchor) !== false ? $anchor : date('Y-m-d');
+        // ISO week: Senin sebagai hari pertama.
+        $start = date('Y-m-d', strtotime('monday this week', strtotime($anchor)));
+        $end = date('Y-m-d', strtotime($start . ' +6 days'));
+        $today = date('Y-m-d');
+
+        $records = Database::all(
+            'SELECT a.*, s.name AS shift_name, s.code AS shift_code, s.check_in_time, s.check_out_time, s.color AS shift_color
+             FROM attendance a
+             LEFT JOIN work_shifts s ON s.id = a.shift_id
+             WHERE a.employee_id = ? AND a.work_date BETWEEN ? AND ?
+             ORDER BY a.work_date ASC',
+            [$employeeId, $start, $end]
+        );
+        $byDate = [];
+        foreach ($records as $record) {
+            $byDate[(string) $record['work_date']] = $record;
+        }
+
+        // Shift terjadwal dipakai untuk mengisi hari yang belum ada presensi.
+        $schedules = Database::all(
+            'SELECT sc.start_date, sc.end_date, sc.shift_id, s.name AS shift_name, s.code AS shift_code,
+                    s.check_in_time, s.check_out_time, s.operational_type, s.color AS shift_color
+             FROM schedules sc
+             JOIN work_shifts s ON s.id = sc.shift_id
+             WHERE sc.employee_id = ? AND sc.start_date <= ? AND sc.end_date >= ?
+             ORDER BY sc.start_date ASC, sc.id ASC',
+            [$employeeId, $end, $start]
+        );
+
+        $summary = [
+            'present'      => 0,
+            'late'         => 0,
+            'absent'       => 0,
+            'leave'        => 0,
+            'late_minutes' => 0,
+            'work_minutes' => 0,
+            'work_hours'   => 0.0,
+            'recorded'     => 0,
+        ];
+
+        $days = [];
+        for ($i = 0; $i < 7; $i++) {
+            $date = date('Y-m-d', strtotime($start . ' +' . $i . ' days'));
+            $row = $byDate[$date] ?? null;
+
+            $planned = null;
+            foreach ($schedules as $schedule) {
+                if ((string) $schedule['start_date'] <= $date && (string) $schedule['end_date'] >= $date) {
+                    $planned = $schedule;
+                    break;
+                }
+            }
+
+            $status = $row !== null ? (string) $row['status'] : null;
+            $workMinutes = (int) ($row['work_minutes'] ?? 0);
+
+            if ($status !== null) {
+                $summary['recorded']++;
+                if (in_array($status, ['PRESENT', 'LATE'], true)) {
+                    $summary['present']++;
+                }
+                if ($status === 'LATE') {
+                    $summary['late']++;
+                }
+                if ($status === 'ABSENT') {
+                    $summary['absent']++;
+                }
+                if ($status === 'LEAVE') {
+                    $summary['leave']++;
+                }
+                $summary['late_minutes'] += (int) ($row['late_minutes'] ?? 0);
+                $summary['work_minutes'] += $workMinutes;
+            }
+
+            $days[] = [
+                'date'             => $date,
+                'weekday'          => (int) date('N', strtotime($date)),
+                'is_today'         => $date === $today,
+                'is_future'        => $date > $today,
+                'has_record'       => $row !== null,
+                'status'           => $status,
+                'shift_name'       => $row['shift_name'] ?? $planned['shift_name'] ?? null,
+                'shift_code'       => $row['shift_code'] ?? $planned['shift_code'] ?? null,
+                'shift_color'      => $row['shift_color'] ?? $planned['shift_color'] ?? null,
+                'operational_type' => $row['operational_type'] ?? $planned['operational_type'] ?? null,
+                'scheduled'        => ($row['shift_name'] ?? null) !== null || $planned !== null,
+                'check_in_at'      => $row['check_in_at'] ?? null,
+                'check_out_at'     => $row['check_out_at'] ?? null,
+                'late_minutes'     => (int) ($row['late_minutes'] ?? 0),
+                'work_minutes'     => $workMinutes,
+                'work_hours'       => round($workMinutes / 60, 2),
+            ];
+        }
+
+        $summary['work_hours'] = round($summary['work_minutes'] / 60, 1);
+
+        return ['start' => $start, 'end' => $end, 'days' => $days, 'summary' => $summary];
     }
 
     public function myRequests(int $employeeId): array

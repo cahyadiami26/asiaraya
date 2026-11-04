@@ -17,6 +17,10 @@
 * **Live monitoring** HR (`/attendance/live`) — posisi & punch terakhir.
 * **Presensi harian** (`/attendance/daily`) dan **rekap bulanan**
   (`/attendance/rekap`) + ekspor CSV.
+* **Dashboard karyawan** (`/dashboard`) menampilkan tabel **riwayat presensi
+  minggu berjalan** (Senin–Minggu): shift, jam masuk/keluar, durasi kerja, dan
+  status per hari, dengan baris hari ini disorot serta ringkasan
+  hadir/terlambat/cuti/jam kerja minggu itu.
 * Penandaan alpha manual oleh HR (`POST /attendance/mark-absent`).
 * Pengaturan presensi: jam kerja, toleransi, wajib geofence/selfie, bypass WFH,
   resolusi & kualitas foto, denda.
@@ -62,7 +66,29 @@ tentukan status: PRESENT / LATE (+ menit keterlambatan & denda tier)
   setiap tanggal cuti (dan menghapusnya bila approval dibatalkan).
 * HR dapat menandai karyawan `ABSENT` untuk tanggal tanpa presensi.
 
-### 3.4 Monitoring & rekap
+### 3.4 Dashboard karyawan — minggu berjalan
+
+```text
+/dashboard (role KARYAWAN / FIN / HR dengan data sendiri)
+        │  minggu berjalan = Senin s.d. Minggu (ISO week, zona Asia/Jakarta)
+        ▼
+tabel "Riwayat Presensi Minggu Ini"
+  Senin … Minggu  ·  shift terjadwal  ·  masuk  ·  keluar  ·  durasi  ·  status
+```
+
+* **Selalu tujuh baris** agar tidak ada hari yang hilang. Hari yang belum punya
+  baris presensi tetap tampil dengan shift terjadwal (bila ada) dan status
+  kosong (“Belum tercatat”), bukan dianggap alpha — baris `ABSENT` hanya dibuat
+  oleh HR (`POST /attendance/mark-absent`) atau oleh proses cuti/alpha terkait.
+* Hari ini ditandai badge **Hari ini** dan barisnya disorot; bila belum
+  check-in, statusnya “Belum presensi”.
+* Durasi memakai `attendance.work_minutes` (menit kerja bersih setelah potong
+  istirahat), ditampilkan dalam jam dengan satu desimal.
+* Ringkasan di kepala kartu: jumlah hadir, terlambat, cuti, alpha, dan total jam
+  kerja minggu tersebut; tautan **Rekap bulan →** membuka `/me/attendance`
+  untuk rekap bulanan penuh.
+
+### 3.5 Monitoring & rekap
 
 ```text
 /attendance/live  → punch terbaru + posisi (HR)
@@ -96,6 +122,7 @@ serta denda: `attendance_late_deduction_type` + `attendance_late_tier_1_max`,
 | Rute | Controller@method | Keterangan |
 |------|-------------------|------------|
 | `GET /me/attendance` | `AttendanceController@mine` | Halaman presensi PWA |
+| `GET /dashboard` | `DashboardController@index` | Dashboard karyawan — tabel presensi minggu berjalan (`DashboardModel::myAttendance`) |
 | `POST /attendance/punch` | `AttendanceController@punch` | Check-in/out (web) |
 | `GET /attendance/live` | `AttendanceController@live` | Monitoring live |
 | `GET /attendance/daily` | `AttendanceController@daily` | Presensi harian |
@@ -104,7 +131,9 @@ serta denda: `attendance_late_deduction_type` + `attendance_late_tier_1_max`,
 | `GET/POST /attendance/settings` | `AttendanceController@settings/saveSettings` | Pengaturan |
 
 Berkas pendukung: `app/Models/AttendanceModel.php`, `app/Views/attendance/*`,
-tabel `attendance` (unique `employee_id + work_date`).
+`app/Views/dashboard/employee.php` (tabel minggu berjalan),
+tabel `attendance` (unique `employee_id + work_date`) dan `schedules`
+(dipakai mengisi shift terjadwal pada hari yang belum ada presensi).
 
 ## 6. Integrasi & catatan
 
