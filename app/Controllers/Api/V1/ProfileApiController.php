@@ -12,12 +12,18 @@ use App\Models\LeaveModel;
 /**
  * Profil karyawan untuk aplikasi Android.
  *
- * GET /api/v1/me/profile?year=YYYY
+ * GET /api/v1/me/profile?year=YYYY     (kanonis)
+ * GET /api/v1/me?year=YYYY             (alias)
+ * GET /api/v1/profile?year=YYYY        (alias)
  *
  * Berbeda dari `GET /api/v1/auth/me` (sesi login + penghitung beranda),
  * endpoint ini mengembalikan **data kepegawaian lengkap** pemilik token:
  * identitas, masa kerja & kontrak, penempatan organisasi, atasan langsung,
  * kontak, data pribadi, data payroll/bank, saldo cuti, dan ringkasan dokumen.
+ *
+ * Blok `employee` adalah bentuk datar (flat) dari data yang sama dengan
+ * `/auth/me` — disediakan agar layar yang memakai model `Employee` di aplikasi
+ * Android dapat membaca satu endpoint saja tanpa memetakan ulang blok bertingkat.
  *
  * Hanya data milik pemilik token yang bisa dibaca — tidak ada parameter
  * employee lain, sehingga tidak ada risiko membocorkan data rekan kerja.
@@ -40,12 +46,19 @@ final class ProfileApiController extends ApiController
         $year = ApiRequest::queryInt('year', (int) date('Y'), 2000, 2100);
         $leave = new LeaveModel();
         $isManager = $this->hasSubordinates($employeeId);
+        $manager = $this->managerPayload($employee);
+
+        // Dipakai bersama oleh blok profile/employee dan /auth/me.
+        $employee['manager_name'] = $manager['full_name'] ?? null;
+        $employee['manager_email'] = $manager['email'] ?? null;
+        $employee['manager_position'] = $manager['position'] ?? null;
 
         $this->ok([
             'profile'      => $this->profileIdentity($employee),
+            'employee'     => $this->employeePayload($employee),
             'employment'   => $this->employmentPayload($employee),
             'organization' => $this->organizationPayload($employee),
-            'manager'      => $this->managerPayload($employee),
+            'manager'      => $manager,
             'contact'      => [
                 'email'         => (string) ($employee['email'] ?? ''),
                 'username'      => $employee['username'] ?? null,

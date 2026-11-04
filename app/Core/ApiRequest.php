@@ -26,11 +26,21 @@ final class ApiRequest
         return current_path();
     }
 
-    /** Header request (nama tanpa awalan HTTP_, tidak peka huruf besar/kecil). */
+    /**
+     * Header request (nama tanpa awalan HTTP_, tidak peka huruf besar/kecil).
+     *
+     * `REDIRECT_HTTP_*` ikut dibaca karena Apache + mod_rewrite memindahkan
+     * header `Authorization` ke sana pada sebagian konfigurasi hosting —
+     * penyebab klasik token "hilang" sehingga aplikasi Android menerima 401
+     * padahal header sudah dikirim.
+     */
     public static function header(string $name): ?string
     {
         $key = strtoupper(str_replace('-', '_', $name));
-        $value = $_SERVER['HTTP_' . $key] ?? $_SERVER[$key] ?? null;
+        $value = $_SERVER['HTTP_' . $key]
+            ?? $_SERVER[$key]
+            ?? $_SERVER['REDIRECT_HTTP_' . $key]
+            ?? null;
 
         if ($value === null && function_exists('getallheaders')) {
             foreach ((array) getallheaders() as $headerName => $headerValue) {

@@ -79,13 +79,16 @@ final class Auth
 
         $user = Database::one(
             'SELECT e.*, bu.name AS business_unit_name, bu.code AS business_unit_code,
-                    d.name AS department_name, p.name AS position_name,
-                    m.full_name AS manager_name
+                    d.name AS department_name, d.code AS department_code,
+                    p.name AS position_name, p.code AS position_code,
+                    m.full_name AS manager_name, m.email AS manager_email,
+                    mp.name AS manager_position
              FROM employees e
              LEFT JOIN business_units bu ON bu.id = e.business_unit_id
              LEFT JOIN departments d ON d.id = e.department_id
              LEFT JOIN positions p ON p.id = e.position_id
              LEFT JOIN employees m ON m.id = e.direct_manager_id
+             LEFT JOIN positions mp ON mp.id = m.position_id
              WHERE e.id = ?',
             [$id]
         );

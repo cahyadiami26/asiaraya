@@ -11,27 +11,115 @@ namespace App\Controllers\Api\V1;
  */
 trait ApiPresenter
 {
+    /**
+     * Bentuk ringkas data karyawan yang dipakai lintas endpoint
+     * (`auth/login`, `auth/me`, `me/profile` → blok `employee`).
+     *
+     * Semua kunci bersifat aditif: aplikasi lama yang hanya membaca
+     * `id/employee_code/full_name/position/...` tetap berjalan, sedangkan layar
+     * "Data Karyawan" mendapat status kepegawaian, kontrak, data pribadi, dan
+     * penempatan organisasi tanpa perlu memanggil endpoint lain.
+     */
     protected function employeePayload(array $user): array
     {
+        $flag = (string) ($user['flag'] ?? '');
+        $joinDate = $this->isoDate($user['join_date'] ?? null);
+        $unitName = $user['business_unit_name'] ?? $user['unit_name'] ?? null;
+        $unitCode = $user['business_unit_code'] ?? $user['unit_code'] ?? null;
+
         return [
             'id'            => (int) $user['id'],
             'employee_code' => (string) ($user['employee_code'] ?? ''),
             'full_name'     => (string) ($user['full_name'] ?? ''),
+            'nickname'      => $user['nickname'] ?? null,
             'email'         => (string) ($user['email'] ?? ''),
             'username'      => $user['username'] ?? null,
             'phone'         => $user['phone'] ?? null,
+            'address'       => $user['address'] ?? null,
             'role'          => (string) ($user['role'] ?? 'KARYAWAN'),
-            'flag'          => (string) ($user['flag'] ?? ''),
-            'join_date'     => $this->isoDate($user['join_date'] ?? null),
+            'role_label'    => role_label((string) ($user['role'] ?? 'KARYAWAN')),
+            'flag'          => $flag,
+            'status'        => [
+                'code'  => $flag,
+                'label' => match ($flag) {
+                    'ACTIVE'  => 'Aktif',
+                    'RESIGN'  => 'Resign',
+                    'EXPIRED' => 'Habis kontrak',
+                    default   => $flag,
+                },
+            ],
+            'is_active'     => $flag === 'ACTIVE',
+            'join_date'     => $joinDate,
+            'employment'    => [
+                'status'         => (string) ($user['employment_status'] ?? ''),
+                'join_date'      => $joinDate,
+                'tenure_label'   => $this->tenureLabel($joinDate),
+                'contract_start' => $this->isoDate($user['contract_start'] ?? null),
+                'contract_end'   => $this->isoDate($user['contract_end'] ?? null),
+                'resign_date'    => $this->isoDate($user['resign_date'] ?? null),
+            ],
+            'personal'      => [
+                'birth_date'     => $this->isoDate($user['birth_date'] ?? null),
+                'gender'         => $user['gender'] ?? null,
+                'marital_status' => $user['marital_status'] ?? null,
+                'religion'       => $user['religion'] ?? null,
+            ],
             'position'      => $user['position_name'] ?? null,
             'department'    => $user['department_name'] ?? null,
-            'business_unit' => $user['business_unit_name'] ?? null,
+            'business_unit' => $unitName,
+            'organization'  => [
+                'business_unit' => [
+                    'id'   => isset($user['business_unit_id']) ? (int) $user['business_unit_id'] : null,
+                    'name' => $unitName,
+                    'code' => $unitCode,
+                ],
+                'department'    => [
+                    'id'   => isset($user['department_id']) ? (int) $user['department_id'] : null,
+                    'name' => $user['department_name'] ?? null,
+                    'code' => $user['department_code'] ?? null,
+                ],
+                'position'      => [
+                    'id'   => isset($user['position_id']) ? (int) $user['position_id'] : null,
+                    'name' => $user['position_name'] ?? null,
+                    'code' => $user['position_code'] ?? null,
+                ],
+            ],
             'manager'       => [
-                'id'   => isset($user['direct_manager_id']) ? (int) $user['direct_manager_id'] : null,
-                'name' => $user['manager_name'] ?? null,
+                'id'       => isset($user['direct_manager_id']) ? (int) $user['direct_manager_id'] : null,
+                'name'     => $user['manager_name'] ?? null,
+                'email'    => $user['manager_email'] ?? null,
+                'position' => $user['manager_position'] ?? null,
             ],
             'photo_url'     => $this->mediaUrl($user['avatar'] ?? null) ?: $this->mediaUrl($user['photo'] ?? null),
         ];
+    }
+
+    /** Label masa kerja ringkas: "1 tahun 8 bulan" (null bila belum bergabung). */
+    protected function tenureLabel(?string $joinDate): ?string
+    {
+        if ($joinDate === null || strtotime($joinDate) === false) {
+            return null;
+        }
+
+        $start = new \DateTimeImmutable($joinDate);
+        $today = new \DateTimeImmutable(date('Y-m-d'));
+        if ($start > $today) {
+            return 'Belum mulai';
+        }
+
+        $diff = $start->diff($today);
+        $parts = [];
+        if ((int) $diff->y > 0) {
+            $parts[] = (int) $diff->y . ' tahun';
+        }
+        if ((int) $diff->m > 0) {
+            $parts[] = (int) $diff->m . ' bulan';
+        }
+        if ((int) $diff->y === 0 && (int) $diff->d > 0) {
+            $parts[] = (int) $diff->d . ' hari';
+        }
+
+        return $parts === [] ? 'Baru bergabung' : implode(' ', $parts);
     }
 
     protected function attendancePayload(?array $row, ?array $context = null): array

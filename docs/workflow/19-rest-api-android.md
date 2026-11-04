@@ -102,35 +102,122 @@ GET /api/v1/payslips/{id}/pdf  (header Authorization)
 ### 3.5 Profil karyawan
 
 ```text
-GET /api/v1/me/profile?year=2026   (header Authorization)
+GET /api/v1/me/profile?year=2026     ← kanonis (dipakai aplikasi Android)
+GET /api/v1/me?year=2026             ← alias
+GET /api/v1/profile?year=2026        ← alias
+        │  header: Authorization: Bearer <access_token>
         ▼
-{ profile, employment, organization, manager, contact, personal,
-  payroll, leave{summary,balances}, documents, permissions }
+{ success: true, data: { profile, employee, employment, organization,
+  manager, contact, personal, payroll, leave, documents, permissions,
+  server_time }, meta: { year, request_id, server_time, version } }
 ```
 
 Dipakai layar **Profil & Pengaturan** aplikasi Android. Berbeda dari
-`GET /api/v1/auth/me` yang hanya berisi sesi + penghitung beranda, endpoint ini
-mengembalikan **data kepegawaian lengkap milik pemilik token**:
+`GET /api/v1/auth/me` yang berisi sesi + penghitung beranda, endpoint ini
+mengembalikan **data kepegawaian lengkap milik pemilik token**.
 
 | Blok | Isi |
 |------|-----|
-| `profile` | NIK, nama, nama panggilan, foto, peran + label, status (`ACTIVE`) |
-| `employment` | status kepegawaian (PKWT/PKWTT), tanggal bergabung, `tenure` (tahun/bulan/hari + label), kontrak (`start`, `end`, `remaining_days`, `expiring_soon` ≤ 60 hari), tanggal resign |
+| `profile` | `id`, `employee_code` (NIK), `full_name`, `nickname`, `photo_url`, `role` + `role_label`, `status{code,label}`, `is_active` |
+| `employee` | **bentuk datar** dari data yang sama dengan `/auth/me` — lihat tabel di bawah |
+| `employment` | status kepegawaian (PKWT/PKWTT), `join_date`, `tenure` (tahun/bulan/hari + `label`), kontrak (`start`, `end`, `remaining_days`, `expiring_soon` ≤ 60 hari, `expired`), `resign_date` |
 | `organization` | unit bisnis, departemen, jabatan (id, nama, kode) |
-| `manager` | atasan langsung: id, nama, email, jabatan, departemen, status aktif (null bila belum ditetapkan) |
+| `manager` | atasan langsung: id, nama, email, jabatan, departemen, `is_active` (null bila belum ditetapkan) |
 | `contact` | email perusahaan, username, telepon, alamat, `google_linked` |
 | `personal` | tanggal lahir, umur, jenis kelamin, status pernikahan, agama |
-| `payroll` | gaji pokok (+label rupiah), status pajak, NPWP, BPJS Kesehatan & Ketenagakerjaan, bank (nama, pemilik, nomor + versi tersamar) |
-| `leave` | ringkasan cuti tahun berjalan (`total`, `approved_days`, `open`, `remaining`) + saldo per jenis |
-| `documents` | jumlah dokumen: `total`, `verified`, `unverified`, `rejected`, `expiring_soon` (tanpa URL berkas) |
+| `payroll` | gaji pokok (+`basic_salary_label` rupiah), status pajak, NPWP, BPJS Kesehatan & Ketenagakerjaan, `bank{name,account_name,account_number,account_number_masked}` |
+| `leave` | `year`, `summary{total,approved_days,open,remaining}`, `balances[]` (kuota, carry, terpakai, sisa, `unlimited`, `progress`) |
+| `documents` | `total`, `verified`, `unverified`, `rejected`, `expiring_soon` (tanpa URL berkas) |
 | `permissions` | peran, `can_approve`, `is_manager`, `editable_fields` (`phone`, `address`), `email_change_requires_hr` |
+
+**Blok `employee` (datar).** Bentuknya identik dengan `data.employee` pada
+`POST /api/v1/auth/login` dan `GET /api/v1/auth/me`, sehingga satu model
+`Employee` di aplikasi Android bisa dipakai untuk ketiga endpoint:
+
+| Field | Tipe | Contoh |
+|-------|------|--------|
+| `id` | int | `4` |
+| `employee_code` | string | `"ARG-JKT-0421"` (NIK) |
+| `full_name`, `nickname` | string, string? | `"Dimas Aditya"`, `"Dimas"` |
+| `email`, `username`, `phone`, `address` | string? | `"dimas.aditya@asiaraya.co.id"` |
+| `role`, `role_label` | string | `"KARYAWAN"`, `"Karyawan"` |
+| `flag`, `status{code,label}`, `is_active` | string / bool | `"ACTIVE"`, `{"code":"ACTIVE","label":"Aktif"}`, `true` |
+| `join_date` | date? | `"2025-03-02"` |
+| `employment` | object | `{status, join_date, tenure_label, contract_start, contract_end, resign_date}` |
+| `personal` | object | `{birth_date, gender, marital_status, religion}` |
+| `position`, `department`, `business_unit` | string? | `"Software Engineer"` |
+| `organization` | object | `{business_unit{id,name,code}, department{…}, position{…}}` |
+| `manager` | object | `{id, name, email, position}` (semua null bila belum ditetapkan) |
+| `photo_url` | string? | `null` bila belum ada foto |
+
+Contoh respons (dipotong, karyawan `Dimas Aditya`):
+
+```json
+{
+  "success": true,
+  "data": {
+    "profile": {
+      "id": 4, "employee_code": "ARG-JKT-0421", "full_name": "Dimas Aditya",
+      "nickname": "Dimas", "photo_url": null, "role": "KARYAWAN",
+      "role_label": "Karyawan", "status": {"code": "ACTIVE", "label": "Aktif"},
+      "is_active": true
+    },
+    "employee": {
+      "id": 4, "employee_code": "ARG-JKT-0421", "full_name": "Dimas Aditya",
+      "nickname": "Dimas", "position": "Software Engineer",
+      "department": "Teknologi Informasi", "business_unit": "Jakarta HQ (Pusat)",
+      "manager": {"id": 3, "name": "Budi Santoso",
+                  "email": "budi.santoso@asiaraya.co.id", "position": "IT Dept Head"},
+      "employment": {"status": "PKWTT", "join_date": "2025-03-02",
+                     "tenure_label": "1 tahun 8 bulan", "contract_end": null}
+    },
+    "employment": {
+      "status": "PKWTT", "join_date": "2025-03-02",
+      "tenure": {"years": 1, "months": 8, "days": 2, "total_days": 612,
+                 "label": "1 tahun 8 bulan"},
+      "contract": {"start": "2025-01-30", "end": null, "remaining_days": null,
+                   "expiring_soon": false, "expired": false},
+      "resign_date": null
+    },
+    "payroll": {
+      "basic_salary": 14000000, "basic_salary_label": "Rp 14.000.000",
+      "bank": {"name": "BNI", "account_name": "Dimas Aditya",
+               "account_number_masked": "••••••8672"}
+    },
+    "leave": {"year": 2026,
+              "summary": {"total": 1, "approved_days": 0, "open": 1, "remaining": 109},
+              "balances": [{"type_code": "CT", "quota": 12, "used": 3,
+                            "remaining": 9, "unlimited": false, "progress": 75}]},
+    "documents": {"total": 4, "verified": 3, "unverified": 1,
+                  "rejected": 0, "expiring_soon": 1}
+  },
+  "meta": {"year": 2026, "request_id": "req_96a99af24a7549a8",
+           "server_time": "2026-11-04T11:30:24+07:00", "version": "2.17.5"}
+}
+```
+
+Kode respons:
+
+| Kode | `code` | Kapan |
+|------|--------|-------|
+| 200 | — | selalu untuk token valid; blok tanpa data dikirim `null`/array kosong, bukan dihilangkan |
+| 401 | `UNAUTHENTICATED` | header `Authorization` tidak ada / token kedaluwarsa (8 jam) / dicabut saat logout — klien harus `POST /api/v1/auth/refresh`, lalu login bila refresh gagal |
+| 404 | `NOT_FOUND` | path salah (mis. `/api/v1/employee`); pakai `/api/v1/me/profile` |
+| 500 | — | `message` generik + `meta.request_id` untuk mencocokkan log server |
 
 * `?year=` (2000–2100, default tahun berjalan) mengatur tahun saldo cuti;
   nilainya juga dikembalikan di `meta.year`.
 * Endpoint **employee-scoped**: tidak ada parameter id karyawan, sehingga data
-  rekan kerja tidak bisa dibaca. Tanpa token → `401 UNAUTHENTICATED`.
+  rekan kerja tidak bisa dibaca.
+* Token dibaca dari `Authorization: Bearer <token>`; cadangan `X-Api-Token` dan
+  `?access_token=` (dipakai `DownloadManager`). Header juga dibaca dari
+  `REDIRECT_HTTP_AUTHORIZATION` supaya tetap jalan di Apache + `mod_rewrite`.
 * Email perusahaan tidak dapat diubah dari aplikasi (harus HR); nomor HP dan
   alamat dapat diubah lewat web `/me/profile` — API saat ini hanya membaca.
+* Bila layar profil kosong padahal token valid: periksa (1) path harus
+  `/api/v1/me/profile`, (2) header `Authorization` benar-benar terkirim,
+  (3) pemetaan field memakai nama persis seperti tabel `employee` di atas —
+  kunci snake_case dan peka huruf besar/kecil.
 
 ## 4. Status & konvensi respons
 
@@ -149,7 +236,7 @@ mengembalikan **data kepegawaian lengkap milik pemilik token**:
 | Grup | Rute | Controller |
 |------|------|-----------|
 | Auth | `POST /api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/logout`; `GET /api/v1/auth/me`, `GET /api/v1/app/config` | `AuthApiController` |
-| Profil | `GET /api/v1/me/profile` | `ProfileApiController` |
+| Profil | `GET /api/v1/me/profile` (alias: `GET /api/v1/me`, `GET /api/v1/profile`) | `ProfileApiController` |
 | Presensi | `GET /api/v1/attendance/today`; `POST /api/v1/attendance/punch`; `GET /api/v1/attendance/history`, `GET /api/v1/attendance/summary` | `AttendanceApiController` |
 | Jadwal | `GET /api/v1/schedule/today`, `GET /api/v1/schedule`, `GET /api/v1/shifts`; `GET /api/v1/schedule-requests`; `POST /api/v1/schedule-requests`; `POST /api/v1/schedule-requests/{id}/cancel` | `ScheduleApiController` |
 | Lembur | `GET /api/v1/overtimes`, `GET /api/v1/overtimes/policy`; `POST /api/v1/overtimes`; `POST /api/v1/overtimes/{id}/cancel` | `OvertimeApiController` |

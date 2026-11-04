@@ -418,6 +418,14 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
 ### S16 — Profil & Pengaturan
 - **Sumber data: `GET /api/v1/me/profile?year=<tahun>`** (bukan `/auth/me`).
   `/auth/me` hanya untuk sesi + penghitung; profil memakai endpoint khusus ini.
+  Alias yang diterima server: `GET /api/v1/me` dan `GET /api/v1/profile`
+  (respons identik) — pakai path kanonis di kode.
+- **Dua bentuk data, pilih salah satu:** blok bertingkat (`profile`,
+  `employment`, `organization`, `manager`, `contact`, `personal`, `payroll`,
+  `leave`, `documents`, `permissions`) **atau** blok datar `data.employee`
+  (bentuknya sama dengan `data.employee` pada `login` dan `auth/me`, jadi satu
+  model `Employee` cukup untuk ketiga endpoint). Jangan menebak nama field —
+  salin persis dari **Lampiran B “Profil karyawan”** / §3.5 doc 19.
 - Kartu identitas: foto/avatar, nama, nama panggilan, NIK, peran, status
   kepegawaian, jabatan, departemen, unit bisnis, atasan langsung (nama,
   jabatan, email), email perusahaan, telepon, alamat.
@@ -447,6 +455,13 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
 - **DoD:** semua blok di atas terisi dari `/me/profile` (bukan kosong), nama/NIK/
   jabatan/atasan tampil walau `manager` null (tampilkan “Belum ditetapkan”),
   logout menghapus token & cache, ganti server memaksa login ulang.
+- **Bila layar kosong padahal sudah login**, periksa berurutan: (1) URL yang
+  benar-benar dipanggil (`response.raw().request.url`) harus
+  `<server>/api/v1/me/profile`; (2) status HTTP — `401` → refresh token lalu
+  login ulang, `404` → path salah, `200` tetapi kosong → **pemetaan field**
+  salah (snake_case, huruf kecil semua); (3) bila parsing gagal, tampilkan pesan
+  “Data profil gagal dimuat (kode …)” + tombol **Coba lagi** — jangan menelan
+  error sehingga layar hanya kosong tanpa penjelasan.
 
 ---
 
@@ -539,6 +554,78 @@ Untuk setiap layar: endpoint, isi, keadaan, dan **kriteria penerimaan**.
 - Timeout: connect 15 s, read 30 s, write 60 s.
 
 ---
+
+### 8.9 Pemetaan JSON profil (wajib persis)
+
+Endpoint `GET /api/v1/me/profile` mengirim **snake_case**. Bila memakai Gson/Moshi
+tanpa anotasi, `employeeCode` ≠ `employee_code` dan semua field akan `null`
+(layar terlihat kosong meski HTTP 200). Contoh model yang benar:
+
+```kotlin
+data class ProfileEnvelope(
+    val success: Boolean,
+    val data: ProfileData,
+    val meta: MetaInfo?
+)
+
+data class ProfileData(
+    val profile: ProfileIdentity?,
+    val employee: Employee?,
+    val employment: Employment?,
+    val organization: Organization?,
+    val manager: Manager?,
+    val contact: Contact?,
+    val personal: Personal?,
+    val payroll: Payroll?,
+    val leave: LeaveBlock?,
+    val documents: Documents?,
+    val permissions: Permissions?
+)
+
+data class Employee(
+    val id: Long,
+    @SerializedName("employee_code") val employeeCode: String?,
+    @SerializedName("full_name") val fullName: String?,
+    val nickname: String?,
+    val email: String?,
+    val username: String?,
+    val phone: String?,
+    val address: String?,
+    val role: String?,
+    @SerializedName("role_label") val roleLabel: String?,
+    val flag: String?,
+    val status: StatusInfo?,          // {code,label}
+    @SerializedName("is_active") val isActive: Boolean?,
+    @SerializedName("join_date") val joinDate: String?,
+    val employment: Employment?,      // {status, join_date, tenure_label, contract_start, contract_end, resign_date}
+    val personal: Personal?,          // {birth_date, gender, marital_status, religion}
+    val position: String?,
+    val department: String?,
+    @SerializedName("business_unit") val businessUnit: String?,
+    val organization: Organization?,
+    val manager: Manager?,            // {id, name, email, position}
+    @SerializedName("photo_url") val photoUrl: String?
+)
+
+data class Employment(
+    val status: String?,
+    @SerializedName("join_date") val joinDate: String?,
+    @SerializedName("tenure_label") val tenureLabel: String?,
+    @SerializedName("contract_start") val contractStart: String?,
+    @SerializedName("contract_end") val contractEnd: String?,
+    @SerializedName("resign_date") val resignDate: String?,
+    val tenure: Tenure?,              // hanya di blok employment tingkat atas
+    val contract: Contract?           // {start,end,remaining_days,expiring_soon,expired}
+)
+```
+
+* Uang (`basic_salary`) = angka rupiah tanpa desimal tambahan; tampilkan lewat
+  `basic_salary_label` bila tersedia.
+* Nomor rekening: pakai `payroll.bank.account_number_masked` (jangan pernah
+  menampilkan `account_number` penuh di UI).
+* Tanggal `YYYY-MM-DD`, waktu ISO-8601 dengan offset `+07:00`.
+* Bila satu blok `null` (mis. `manager`), tampilkan placeholder
+  (“Belum ditetapkan”) — jangan menyembunyikan seluruh kartu.
 
 ## 9. Mode offline (antrean presensi)
 
@@ -767,6 +854,56 @@ POST   /approvals/{type}/{id}/decide  {decision:"APPROVED"|"REJECTED",note?}
               "department":"IT","business_unit":"Jakarta HQ (Pusat)",
               "manager":{"id":2,"name":"Budi Santoso"},"photo_url":null}},
  "meta":{"request_id":"req_…","server_time":"2026-10-30T06:33:56+07:00","version":"2.17.5"}}
+```
+
+**Profil karyawan (200)** — `GET /api/v1/me/profile?year=2026`
+```json
+{"success":true,"data":{
+  "profile":{"id":4,"employee_code":"ARG-JKT-0421","full_name":"Dimas Aditya","nickname":"Dimas",
+             "photo_url":null,"role":"KARYAWAN","role_label":"Karyawan",
+             "status":{"code":"ACTIVE","label":"Aktif"},"is_active":true},
+  "employee":{"id":4,"employee_code":"ARG-JKT-0421","full_name":"Dimas Aditya","nickname":"Dimas",
+              "email":"dimas.aditya@asiaraya.co.id","username":"dimas.aditya",
+              "phone":"087327429954","address":"Jl. Diponegoro No. 20, Indonesia",
+              "role":"KARYAWAN","role_label":"Karyawan","flag":"ACTIVE",
+              "status":{"code":"ACTIVE","label":"Aktif"},"is_active":true,
+              "join_date":"2025-03-02",
+              "employment":{"status":"PKWTT","join_date":"2025-03-02","tenure_label":"1 tahun 8 bulan",
+                            "contract_start":"2025-01-30","contract_end":null,"resign_date":null},
+              "personal":{"birth_date":"1995-10-30","gender":"Laki-laki","marital_status":"Menikah","religion":"Islam"},
+              "position":"Software Engineer","department":"Teknologi Informasi",
+              "business_unit":"Jakarta HQ (Pusat)",
+              "organization":{"business_unit":{"id":1,"name":"Jakarta HQ (Pusat)","code":"JKT"},
+                              "department":{"id":3,"name":"Teknologi Informasi","code":"IT"},
+                              "position":{"id":4,"name":"Software Engineer","code":"POS-004"}},
+              "manager":{"id":3,"name":"Budi Santoso","email":"budi.santoso@asiaraya.co.id","position":"IT Dept Head"},
+              "photo_url":null},
+  "employment":{"status":"PKWTT","join_date":"2025-03-02",
+                "tenure":{"years":1,"months":8,"days":2,"total_days":612,"label":"1 tahun 8 bulan"},
+                "contract":{"start":"2025-01-30","end":null,"remaining_days":null,"expiring_soon":false,"expired":false},
+                "resign_date":null},
+  "organization":{"business_unit":{"id":1,"name":"Jakarta HQ (Pusat)","code":"JKT"},
+                  "department":{"id":3,"name":"Teknologi Informasi","code":"IT"},
+                  "position":{"id":4,"name":"Software Engineer","code":"POS-004"}},
+  "manager":{"id":3,"full_name":"Budi Santoso","email":"budi.santoso@asiaraya.co.id",
+             "position":"IT Dept Head","department":"Teknologi Informasi","is_active":true},
+  "contact":{"email":"dimas.aditya@asiaraya.co.id","username":"dimas.aditya","phone":"087327429954",
+             "address":"Jl. Diponegoro No. 20, Indonesia","google_linked":false},
+  "personal":{"birth_date":"1995-10-30","age":31,"gender":"Laki-laki","marital_status":"Menikah","religion":"Islam"},
+  "payroll":{"basic_salary":14000000,"basic_salary_label":"Rp 14.000.000","tax_status":"K/1",
+             "npwp":"49.319.632.9-931.000","bpjs_kesehatan_no":"0001519347974","bpjs_tk_no":"110218089346",
+             "bank":{"name":"BNI","account_name":"Dimas Aditya","account_number":"8018398672",
+                     "account_number_masked":"••••••8672"}},
+  "leave":{"year":2026,
+           "summary":{"year":2026,"total":1,"approved_days":0,"open":1,"remaining":109},
+           "balances":[{"leave_type_id":1,"type_name":"Cuti Tahunan","type_code":"CT","color":"#0d9488",
+                        "year":2026,"quota":12,"carry_over":0,"used":3,"remaining":9,
+                        "unlimited":false,"progress":75}]},
+  "documents":{"total":4,"verified":3,"unverified":1,"rejected":0,"expiring_soon":1},
+  "permissions":{"role":"KARYAWAN","role_label":"Karyawan","can_approve":false,"is_manager":false,
+                 "editable_fields":["phone","address"],"email_change_requires_hr":true},
+  "server_time":"2026-11-04T11:30:24+07:00"},
+ "meta":{"year":2026,"request_id":"req_96a99af24a7549a8","server_time":"2026-11-04T11:30:24+07:00","version":"2.17.5"}}
 ```
 
 **Presensi hari ini (200)**

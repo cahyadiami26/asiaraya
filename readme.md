@@ -49,8 +49,9 @@ dengan slip gaji ber-QR.
 | **21.7** | Penyempurnaan 21.6: pengajuan milik HR **selalu selesai di atasan langsung** (tidak menunggu HR walaupun ada akun HR lain), klaim milik HR/Finance juga berhenti di atasan, dan pengajuan lama yang telanjur `MANAGER_APPROVED` diselesaikan otomatis oleh **migrasi skema 24** — saldo cuti langsung terpotong, shift ditulis, lembur masuk payroll, klaim siap dibayar | ✅ selesai |
 | **21.8** | **API profil karyawan** `GET /api/v1/me/profile`: identitas & status kepegawaian, masa kerja, kontrak (sisa hari + peringatan ≤ 60 hari), unit/departemen/jabatan, atasan langsung, kontak, data pribadi, payroll & bank (nomor rekening tersamar), saldo cuti tahun berjalan, serta ringkasan dokumen — dipakai layar *Profil & Pengaturan* aplikasi Android yang sebelumnya hanya memuat data sesi | ✅ selesai |
 | **21.9** | Perbaikan **dashboard karyawan**: tabel *Riwayat Presensi* kini menampilkan **minggu berjalan** (Senin–Minggu) dengan tujuh baris tetap — shift terjadwal, jam masuk/keluar, durasi kerja, dan status per hari, baris hari ini disorot, plus ringkasan hadir/terlambat/cuti/alpha/jam kerja minggu tersebut. Hari tanpa baris presensi ditandai “Belum tercatat” (bukan alpha) | ✅ selesai |
+| **21.10** | **Perbaikan data karyawan di aplikasi Android**: endpoint profil kini menerima alias path (`/api/v1/me`, `/api/v1/profile`), menyertakan blok datar `employee` (bentuk sama dengan `login`/`auth/me`), dan `/auth/me` membawa data kepegawaian lengkap (nama panggilan, status, kontrak, masa kerja, data pribadi, organisasi, atasan + email/jabatan) sehingga layar *Data Karyawan* terisi walau hanya memanggil satu endpoint. Header `Authorization` juga dibaca dari `REDIRECT_HTTP_AUTHORIZATION` (Apache/mod_rewrite) | ✅ selesai |
 
-Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7, 21.8 & 21.9) sudah aktif — tidak ada lagi tautan mati atau menu
+Seluruh dua puluh satu batch (plus penyempurnaan 17.1, 20.1, 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7, 21.8, 21.9 & 21.10) sudah aktif — tidak ada lagi tautan mati atau menu
 "Segera". Skema database dipasang sejak batch 1 sehingga setiap batch baru
 cukup menambah query, rute, dan tampilan; penambahan tabel baru mengikuti
 migrasi otomatis bernomor versi (`Schema::VERSION`).
@@ -1515,7 +1516,7 @@ Indonesia.
 | Kelompok | Endpoint |
 |----------|----------|
 | Auth | `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `GET /app/config` |
-| Profil | `GET /me/profile?year=` — data kepegawaian lengkap pemilik token |
+| Profil | `GET /me/profile?year=` — data kepegawaian lengkap pemilik token (alias: `GET /me`, `GET /profile`; blok datar `data.employee`) |
 | Pengumuman | `GET /announcements`, `GET /announcements/{id}`, `POST /announcements/{id}/read` |
 | Jadwal | `GET /schedule/today`, `GET /schedule?from&to`, `GET /shifts`, `GET /schedule-requests`, `POST /schedule-requests`, `POST /schedule-requests/{id}/cancel` |
 | Presensi | `GET /attendance/today`, `POST /attendance/punch`, `GET /attendance/history?month`, `GET /attendance/summary?month` |
@@ -1540,6 +1541,7 @@ curl 'https://hris.asiaraya.co.id/api/v1/me/profile?year=2026' \
 | Blok | Isi |
 |------|-----|
 | `profile` | NIK, nama, nama panggilan, foto, peran + label, status kepegawaian |
+| `employee` | **bentuk datar** (sama dengan `data.employee` pada `login`/`auth/me`): id, NIK, nama, panggilan, email, telepon, alamat, peran, status, kontrak, masa kerja, data pribadi, organisasi, atasan |
 | `employment` | status PKWT/PKWTT, tanggal bergabung, `tenure` (masa kerja + label), kontrak (`remaining_days`, `expiring_soon` ≤ 60 hari), tanggal resign |
 | `organization` | unit bisnis, departemen, jabatan (id, nama, kode) |
 | `manager` | atasan langsung: nama, email, jabatan, departemen, status (null bila belum ditetapkan) |
@@ -1552,6 +1554,9 @@ curl 'https://hris.asiaraya.co.id/api/v1/me/profile?year=2026' \
 
 Endpoint bersifat *employee-scoped* — tidak ada parameter id karyawan, sehingga
 hanya data pemilik token yang dapat dibaca; tanpa token → `401 UNAUTHENTICATED`.
+Alias `GET /api/v1/me` dan `GET /api/v1/profile` mengembalikan respons yang sama
+persis; token dibaca dari `Authorization: Bearer`, cadangan `X-Api-Token`
+(atau `?access_token=`) untuk klien yang tidak bisa mengirim header.
 
 ### Presensi dari Android
 
