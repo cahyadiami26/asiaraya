@@ -20,6 +20,10 @@ $err = static fn (string $key): string => isset($errors[$key])
     ? '<span class="err">' . e($errors[$key]) . '</span>'
     : '';
 $unitId = (int) $val('business_unit_id', 0);
+if (!$isEdit && $unitId === 0) {
+    // Samakan pilihan unit dengan unit yang dipakai untuk preview ID.
+    $unitId = (int) ($defaultUnitId ?? 0);
+}
 $deptId = (int) $val('department_id', 0);
 $positionId = (int) $val('position_id', 0);
 $photo = $isEdit ? ($employee['photo'] ?? null) : null;
@@ -49,7 +53,7 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                 <div class="card__head">
                     <div><h2>Identitas Karyawan</h2>
                         <div class="sub">Data ini tercetak pada slip gaji dan dokumen kepegawaian.</div></div>
-                    <span class="tag-soft mono"><?= e($isEdit ? $employee['employee_code'] : $nextCode) ?></span>
+                    <span class="tag-soft mono" id="code-preview-badge"><?= e($isEdit ? $employee['employee_code'] : $nextCode) ?></span>
                 </div>
                 <div class="card__body">
                     <div class="form-grid">
@@ -64,8 +68,11 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                         </div>
                         <div class="field">
                             <label>ID Karyawan</label>
-                            <input class="input mono" name="employee_code" value="<?= e($isEdit ? $employee['employee_code'] : $nextCode) ?>" maxlength="30">
-                            <span class="hint"><?= $isEdit ? 'Ubah hanya jika diperlukan.' : 'Dibuat otomatis, dapat disesuaikan.' ?></span>
+                            <input class="input mono" id="field-code" name="employee_code" value="<?= e($isEdit ? $employee['employee_code'] : ($val('employee_code') ?: $nextCode)) ?>" maxlength="30" autocomplete="off">
+                            <?php if (!$isEdit): ?>
+                                <input type="hidden" name="code_source" id="field-code-source" value="<?= $val('code_source') === 'manual' ? 'manual' : 'auto' ?>">
+                            <?php endif; ?>
+                            <span class="hint" id="code-hint"><?= $isEdit ? 'Ubah hanya jika diperlukan.' : 'Dibuat otomatis dari format ID dan business unit — ikut berubah saat unit/departemen diganti.' ?></span>
                         </div>
                         <div class="field">
                             <label>Email Perusahaan <span class="req">*</span></label>
@@ -142,6 +149,10 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                                     </option>
                                 <?php endforeach; ?>
                             </select>
+                            <span class="hint" id="department-hint" hidden>
+                                Belum ada departemen untuk unit ini — daftar menampilkan semua departemen.
+                                Lengkapi pemetaan unit di <a href="<?= url('organisation') ?>">Unit Organisasi</a>.
+                            </span>
                         </div>
                         <div class="field">
                             <label>Posisi / Jabatan</label>
@@ -157,6 +168,9 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
                                 <?php endforeach; ?>
                             </select>
                             <span class="hint">Memilih posisi akan mengisi gaji pokok standar.</span>
+                            <span class="hint" id="position-hint" hidden>
+                                Belum ada posisi untuk departemen ini — daftar menampilkan semua posisi.
+                            </span>
                         </div>
                         <div class="field">
                             <label>Atasan Langsung</label>
@@ -332,41 +346,91 @@ $photo = $isEdit ? ($employee['photo'] ?? null) : null;
     var dept = document.getElementById('field-department');
     var position = document.getElementById('field-position');
     var salary = document.getElementById('field-salary');
+    var deptHint = document.getElementById('department-hint');
+    var posHint = document.getElementById('position-hint');
     if (!unit || !dept) { return; }
 
-    function filterDepartments() {
-        var selected = unit.value;
-        var current = dept.value;
-        var stillVisible = false;
-        Array.prototype.forEach.call(dept.options, function (opt) {
-            if (!opt.value) { return; }
-            var match = !selected || opt.dataset.unit === selected;
-            opt.hidden = !match;
-            opt.disabled = !match;
-            if (opt.selected && match) { stillVisible = true; }
+    /**
+     * Saring opsi <select> berdasarkan atribut data-*.
+     * Bila tidak ada satu pun opsi yang cocok (data pemetaan belum lengkap),
+     * semua opsi ditampilkan lagi + petunjuk, supaya formulir tidak buntu.
+     */
+    function applyFilter(select, attr, selected, includeUnmapped) {
+        if (!select) { return false; }
+        var options = Array.prototype.slice.call(select.options).filter(function (opt) { return opt.value; });
+        var matches = options.filter(function (opt) {
+            return !selected || (opt.dataset[attr] || '0') === selected || includeUnmapped === true && (opt.dataset[attr] || '0') === '0';
         });
-        if (!stillVisible) { dept.value = ''; }
+
+        var fallback = selected !== '' && options.length > 0 && matches.length === 0;
+        var visible = fallback ? options : matches;
+
+        options.forEach(function (opt) {
+            var show = visible.indexOf(opt) !== -1;
+            opt.hidden = !show;
+            opt.disabled = !show;
+        });
+
+        if (select.value) {
+            var current = select.options[select.selectedIndex];
+            if (!current || current.hidden || current.disabled) { select.value = ''; }
+        }
+
+        return fallback;
+    }
+
+    function filterDepartments() {
+        if (deptHint) { deptHint.hidden = !applyFilter(dept, 'unit', unit.value, false); }
         filterPositions();
     }
 
     function filterPositions() {
         if (!position) { return; }
-        var selected = dept.value;
-        var current = position.value;
-        var stillVisible = false;
-        Array.prototype.forEach.call(position.options, function (opt) {
-            if (!opt.value) { return; }
-            var optDept = opt.dataset.department || '0';
-            var match = !selected || optDept === selected || optDept === '0';
-            opt.hidden = !match;
-            opt.disabled = !match;
-            if (opt.selected && match) { stillVisible = true; }
-        });
-        if (!stillVisible) { position.value = ''; }
+        var fallback = applyFilter(position, 'department', dept.value, true);
+        if (posHint) { posHint.hidden = !fallback; }
     }
 
     unit.addEventListener('change', filterDepartments);
     dept.addEventListener('change', filterPositions);
+
+    /**
+     * ID karyawan otomatis: ambil ulang preview dari server setiap kali
+     * business unit / departemen berubah, supaya kode yang tampil sama persis
+     * dengan yang diterbitkan saat formulir disimpan.
+     */
+    var codeInput = document.getElementById('field-code');
+    var codeSource = document.getElementById('field-code-source');
+    var codeBadge = document.getElementById('code-preview-badge');
+    var codeHint = document.getElementById('code-hint');
+    var codeUrl = <?= json_encode($codeUrl ?? '', JSON_UNESCAPED_SLASHES) ?>;
+
+    if (!codeInput || !codeSource || !codeUrl) { return; }
+
+    var codeRequest = 0;
+    function refreshCode() {
+        var request = ++codeRequest;
+        var query = codeUrl + (codeUrl.indexOf('?') === -1 ? '?' : '&')
+            + 'unit=' + encodeURIComponent(unit.value || '')
+            + '&department=' + encodeURIComponent(dept.value || '');
+
+        fetch(query, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (res) { return res.ok ? res.json() : null; })
+            .then(function (data) {
+                if (request !== codeRequest || !data || !data.code) { return; }
+                codeInput.value = data.code;
+                if (codeBadge) { codeBadge.textContent = data.code; }
+                codeSource.value = 'auto';
+            })
+            .catch(function () { /* biarkan nilai lama; server tetap menerbitkan ID saat simpan */ });
+    }
+
+    codeInput.addEventListener('input', function () {
+        codeSource.value = 'manual';
+        if (codeHint) { codeHint.textContent = 'ID diubah manual. Kosongkan untuk memakai ID otomatis dari format.'; }
+    });
+
+    unit.addEventListener('change', refreshCode);
+    dept.addEventListener('change', refreshCode);
 
     if (position && salary) {
         position.addEventListener('change', function () {

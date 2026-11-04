@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\ApprovalEngine;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
@@ -213,6 +214,15 @@ final class ScheduleController extends Controller
      |===================================================================*/
     public function requests(): void
     {
+        $user = $this->employee() ?? [];
+        $isHr = ($user['role'] ?? '') === 'HR';
+
+        // Karyawan tanpa bawahan hanya melihat pengajuan perubahannya sendiri
+        // (tersedia di halaman Jadwal Saya), bukan antrean milik orang lain.
+        if (!$isHr && !Auth::hasReports((int) ($user['id'] ?? 0))) {
+            redirect('/me/schedule');
+        }
+
         $status = (string) ($_GET['status'] ?? 'OPEN');
         $filters = [
             'status' => in_array($status, ['OPEN', 'PENDING', 'MANAGER_APPROVED', 'APPROVED', 'REJECTED', 'ALL'], true) ? $status : 'OPEN',
@@ -222,12 +232,17 @@ final class ScheduleController extends Controller
         if ($filters['status'] === 'ALL') {
             $filters['status'] = '';
         }
+        // Atasan langsung: batasi ke anggota timnya sendiri.
+        if (!$isHr) {
+            $filters['manager'] = (int) ($user['id'] ?? 0);
+        }
 
         $this->view('schedules/requests', [
             'title'      => 'Persetujuan Perubahan Jadwal',
             'pageTitle'  => 'Perubahan Jadwal',
+            'isHr'       => $isHr,
             'requests'   => $this->schedules->requests($filters, 60),
-            'stats'      => $this->schedules->requestStats(),
+            'stats'      => $this->schedules->requestStats($isHr ? null : (int) ($user['id'] ?? 0)),
             'filters'    => $filters,
             'units'      => $this->org->units(),
             'badges'     => $this->dashboard->badges($this->employee() ?? []),
@@ -235,19 +250,10 @@ final class ScheduleController extends Controller
         ]);
     }
 
-    /** Manager of the employee at stage 1, HR at stage 2. */
+    /** Atasan di tahap 1, HR di tahap final — tanpa memutus pengajuan sendiri. */
     public static function canDecide(array $request): bool
     {
-        $user = Auth::user();
-        if (!$user) {
-            return false;
-        }
-        $status = (string) $request['status'];
-        if ($status === 'PENDING' && Auth::isManagerOf((int) $request['employee_id'])) {
-            return true;
-        }
-        return $user['role'] === 'HR' && in_array($status, ['PENDING', 'MANAGER_APPROVED'], true)
-            && (int) $request['employee_id'] !== (int) $user['id'];
+        return ApprovalEngine::canAct('schedule', $request, Auth::user());
     }
 
     /* =====================================================================
@@ -324,6 +330,12 @@ final class ScheduleController extends Controller
         $current = $this->schedules->shiftOn((int) $employee['id'], $from);
         if ($current && (int) $current['shift_id'] === (int) $shift['id']) {
             flash('error', 'Shift yang diajukan sama dengan jadwal Anda saat ini.');
+            back('/me/schedule');
+        }
+
+        $blocked = ApprovalEngine::submissionError((int) $employee['id'], 'schedule');
+        if ($blocked !== null) {
+            flash('error', $blocked);
             back('/me/schedule');
         }
 

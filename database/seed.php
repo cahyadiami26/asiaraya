@@ -1867,6 +1867,11 @@ return static function (): array {
         Database::insert('holidays', ['holiday_date' => $date, 'name' => $name, 'is_national' => 1]);
     }
 
+    /* ---------------- Batch 21: token demo REST API ---------------- */
+    $seedApi = require BASE_PATH . '/database/seed_api.php';
+    $log = array_merge($log, $seedApi());
+    // >>> api-seed
+
     $totalEmployees = (int) Database::value('SELECT COUNT(*) FROM employees');
     $log[] = 'Data organisasi, ' . $totalEmployees . ' karyawan, presensi, lembur, cuti, dan komponen gaji dibuat.';
     $log[] = 'Login demo: hr@asiaraya.co.id / Password123! (HR), finance@asiaraya.co.id (FIN), dimas.aditya@asiaraya.co.id (Karyawan)';

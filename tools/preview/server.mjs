@@ -112,6 +112,14 @@ foreach (($ctx['headers'] ?? []) as $name => $value) {
     $headers[strtolower((string) $name)] = $value;
 }
 
+// Teruskan SEMUA header sebagai HTTP_* supaya REST API /api/v1 bisa membaca
+// Authorization, Idempotency-Key, X-Request-Id, dan header kustom Android.
+foreach ($headers as $name => $value) {
+    $key = 'HTTP_' . strtoupper(str_replace('-', '_', (string) $name));
+    if (in_array($key, ['HTTP_CONTENT_TYPE', 'HTTP_CONTENT_LENGTH'], true)) { continue; }
+    $_SERVER[$key] = $value;
+}
+
 $_SERVER = array_merge($_SERVER, [
     'REQUEST_METHOD'  => $method,
     'REQUEST_URI'     => $path . ($queryString !== '' ? '?' . $queryString : ''),

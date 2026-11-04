@@ -68,22 +68,49 @@ final class EmployeeController extends Controller
     /* ----------------------------------------------------------------- create */
     public function create(): void
     {
+        $units = $this->org->units();
         $unitId = (int) ($_GET['unit'] ?? 0);
+        if ($unitId <= 0) {
+            // Preview awal memakai unit aktif pertama supaya bentuk ID yang
+            // tampil sudah sesuai format (bukan kode karangan "HQ").
+            $unitId = (int) (EmployeeCode::defaultUnitId() ?? 0);
+        }
+        $deptId = (int) ($_GET['department'] ?? 0);
+
         $this->view('employees/form', [
             'title'        => 'Tambah Karyawan',
             'pageTitle'    => 'Tambah Karyawan',
             'employee'     => null,
-            'units'        => $this->org->units(),
+            'units'        => $units,
             'departments'  => $this->employees->departmentsOf(null),
             'positions'    => $this->employees->positionsOf(null),
             'managers'     => $this->employees->managerOptions(),
             'roles'        => self::ROLES,
             'statuses'     => self::STATUSES,
             'taxStatuses'  => self::TAX_STATUSES,
-            'nextCode'     => EmployeeCode::preview($unitId ?: null),
-            'idFormat'     => EmployeeCode::format(),
+            'nextCode'      => EmployeeCode::preview($unitId ?: null, $deptId ?: null),
+            'idFormat'      => EmployeeCode::format(),
+            // Unit yang dipakai untuk preview awal — dipilihkan di formulir agar
+            // ID yang tampil konsisten dengan unit yang terlihat HR.
+            'defaultUnitId' => $unitId ?: null,
+            'codeUrl'      => url('employees/next-code'),
             'badges'       => $this->dashboard->badges($this->employee() ?? []),
         ] + $this->withInput());
+    }
+
+    /**
+     * Preview ID otomatis (JSON) — dipanggil formulir saat business unit atau
+     * departemen diganti supaya yang tampil = yang akan diterbitkan saat simpan.
+     */
+    public function nextCode(): void
+    {
+        $unitId = (int) ($_GET['unit'] ?? 0);
+        $deptId = (int) ($_GET['department'] ?? 0);
+
+        $this->json([
+            'code'   => EmployeeCode::preview($unitId ?: null, $deptId ?: null),
+            'format' => EmployeeCode::format(),
+        ]);
     }
 
     public function store(): void
@@ -109,12 +136,22 @@ final class EmployeeController extends Controller
             back('/employees/create');
         }
 
+        $unitId = !empty($data['business_unit_id']) ? (int) $data['business_unit_id'] : null;
+        $deptId = !empty($data['department_id']) ? (int) $data['department_id'] : null;
+
         $code = strtoupper(trim((string) ($data['employee_code'] ?? '')));
-        if ($code === '') {
-            $code = EmployeeCode::next(
-                !empty($data['business_unit_id']) ? (int) $data['business_unit_id'] : null,
-                !empty($data['department_id']) ? (int) $data['department_id'] : null
-            );
+        // Nilai bawaan formulir (hasil preview) bukan ID pilihan HR: selalu
+        // diterbitkan ulang dari counter supaya format & nomor urutnya benar
+        // dan tidak bentrok walaupun dua formulir dibuka bersamaan.
+        // `code_source` dikirim formulir (auto/manual); klien lama tidak
+        // mengirimnya, jadi nilainya dibandingkan dengan preview terbaru.
+        $source = (string) ($data['code_source'] ?? '');
+        $isAuto = $code === ''
+            || $source === 'auto'
+            || ($source !== 'manual' && $code === EmployeeCode::preview($unitId, $deptId));
+
+        if ($isAuto) {
+            $code = EmployeeCode::nextUnique($unitId, $deptId);
         } elseif ($this->employees->codeExists($code)) {
             flash('error', 'ID karyawan ' . $code . ' sudah digunakan.');
             back('/employees/create');

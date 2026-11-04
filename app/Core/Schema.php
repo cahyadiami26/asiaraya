@@ -16,7 +16,7 @@ final class Schema
      * Versi skema. Naikkan saat batch baru menambah tabel/kolom; bootstrap
      * akan menjalankan ulang installer (idempoten) untuk basis data lama.
      */
-    public const VERSION = 21;
+    public const VERSION = 24;
 
     /** Additional indexes (created separately so both engines accept them). */
     private const INDEXES = [
@@ -38,6 +38,7 @@ final class Schema
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_payroll_period ON payroll_periods (business_unit_id, period_year, period_month)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_day ON attendance (employee_id, work_date)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_code ON employees (employee_code)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_id_sequences_scope ON id_sequences (scope_key)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_setting_key ON settings (setting_key)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_leave_balance ON leave_balances (employee_id, leave_type_id, period_year)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_component_code ON salary_components (code)',
@@ -91,6 +92,12 @@ final class Schema
         'CREATE INDEX IF NOT EXISTS idx_offboarding_asset ON offboarding_assets (request_id, status)',
         'CREATE UNIQUE INDEX IF NOT EXISTS uq_offboarding_bast_number ON offboarding_bast (bast_number)',
         'CREATE INDEX IF NOT EXISTS idx_offboarding_bast_request ON offboarding_bast (request_id, issued_at)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_token_hash ON api_tokens (token_hash)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_refresh_hash ON api_tokens (refresh_hash)',
+        'CREATE INDEX IF NOT EXISTS idx_api_token_employee ON api_tokens (employee_id, revoked_at)',
+        'CREATE INDEX IF NOT EXISTS idx_api_token_expiry ON api_tokens (expires_at)',
+        'CREATE UNIQUE INDEX IF NOT EXISTS uq_api_punch_idem ON api_punch_logs (employee_id, action, idempotency_key)',
+        'CREATE INDEX IF NOT EXISTS idx_api_punch_created ON api_punch_logs (created_at)',
     ];
 
     public static function install(bool $withSeed = true, bool $fresh = false): array
@@ -134,6 +141,22 @@ final class Schema
 
         if ($withSeed) {
             $log = array_merge($log, self::seed($fresh));
+        }
+
+        // Versi 24: pengajuan milik approver final (HR, atau HR/Finance untuk
+        // klaim) selesai di atasan langsung. Baris lama yang masih tertahan pada
+        // MANAGER_APPROVED diselesaikan sekali di sini agar ikut terhitung
+        // (saldo cuti, jadwal, lembur payroll, klaim siap bayar).
+        try {
+            $finished = (new \App\Core\ApprovalEngine())->finalizeLegacy();
+            $total = array_sum($finished);
+            if ($total > 0) {
+                $log[] = 'Pengajuan lama yang menunggu HR diselesaikan: ' . $total
+                    . ' (cuti ' . $finished['leave'] . ', lembur ' . $finished['overtime']
+                    . ', jadwal ' . $finished['schedule'] . ', klaim ' . $finished['claim'] . ').';
+            }
+        } catch (\Throwable $e) {
+            $log[] = 'Penyelesaian pengajuan lama dilewati: ' . $e->getMessage();
         }
 
         self::markInstalled();

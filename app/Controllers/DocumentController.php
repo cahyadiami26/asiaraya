@@ -235,6 +235,11 @@ final class DocumentController extends Controller
             flash('error', 'Dokumen tidak ditemukan.');
             redirect('/documents');
         }
+        // Verifikasi harus dilakukan pihak lain, bukan pemilik dokumen.
+        if ((int) $document['employee_id'] === (int) $this->employeeId()) {
+            flash('error', 'Anda tidak dapat memverifikasi dokumen milik sendiri.');
+            redirect('/documents/' . (int) $id);
+        }
 
         $status = strtoupper((string) ($_POST['status'] ?? 'VERIFIED'));
         if (!in_array($status, ['VERIFIED', 'REJECTED'], true)) {

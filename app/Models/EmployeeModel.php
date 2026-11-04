@@ -238,25 +238,37 @@ final class EmployeeModel
         ];
     }
 
-    /** Departments of a unit (used by the cascading selects). */
+    /**
+     * Departemen aktif untuk dropdown (dipakai select berjenjang di form karyawan).
+     *
+     * `business_unit_id` wajib ikut dikirim: formulir karyawan memakainya untuk
+     * menyaring departemen sesuai unit yang dipilih (atribut data-unit). Tanpa
+     * kolom ini semua opsi dianggap milik unit 0 sehingga tersembunyi semua.
+     */
     public function departmentsOf(?int $unitId): array
     {
         if (!$unitId) {
-            return Database::all('SELECT id, name, code FROM departments WHERE is_active = 1 ORDER BY name');
+            return Database::all('SELECT id, name, code, business_unit_id FROM departments WHERE is_active = 1 ORDER BY name');
         }
         return Database::all(
-            'SELECT id, name, code FROM departments WHERE business_unit_id = ? AND is_active = 1 ORDER BY name',
+            'SELECT id, name, code, business_unit_id FROM departments WHERE business_unit_id = ? AND is_active = 1 ORDER BY name',
             [$unitId]
         );
     }
 
+    /**
+     * Posisi aktif untuk dropdown.
+     *
+     * `department_id` dipakai untuk menyaring posisi sesuai departemen dan
+     * `basic_salary` untuk mengisi gaji pokok otomatis saat posisi dipilih.
+     */
     public function positionsOf(?int $departmentId): array
     {
         if (!$departmentId) {
-            return Database::all('SELECT id, name, code FROM positions WHERE is_active = 1 ORDER BY name');
+            return Database::all('SELECT id, name, code, department_id, basic_salary FROM positions WHERE is_active = 1 ORDER BY name');
         }
         return Database::all(
-            'SELECT id, name, code, basic_salary FROM positions WHERE department_id = ? AND is_active = 1 ORDER BY name',
+            'SELECT id, name, code, department_id, basic_salary FROM positions WHERE department_id = ? AND is_active = 1 ORDER BY name',
             [$departmentId]
         );
     }

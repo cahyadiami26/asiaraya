@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Audit;
+use App\Core\ApprovalEngine;
 use App\Core\Auth;
 use App\Core\Controller;
 use App\Core\Database;
@@ -30,33 +31,57 @@ final class OvertimeController extends Controller
 
     public function index(): void
     {
+        $user = $this->employee() ?? [];
+        $isHr = ($user['role'] ?? '') === 'HR';
+
+        // Atasan langsung memakai halaman ini sebagai kotak persetujuan tim.
+        // Karyawan tanpa bawahan diarahkan ke halaman lembur pribadinya.
+        if (!$isHr && !Auth::hasReports((int) ($user['id'] ?? 0))) {
+            redirect('/me/overtime');
+        }
+
         $filters = $this->filters();
         $page = max(1, (int) ($_GET['page'] ?? 1));
         $perPage = 15;
+
+        if (!$isHr) {
+            // Cakupan data dibatasi ke anggota tim sendiri.
+            $filters['manager'] = (int) $user['id'];
+            $filters['unit'] = 0;
+            $filters['department'] = 0;
+            if (($filters['status'] ?? '') === '' || $filters['status'] === 'ALL') {
+                $filters['status'] = 'OPEN';
+            }
+        }
+
         $total = $this->overtime->count($filters);
         $paginator = new Paginator($total, $perPage, min($page, max(1, (int) ceil($total / $perPage))));
 
         $month = $filters['month'] ?: date('Y-m');
 
         $this->view('overtime/index', [
-            'title'      => 'Manajemen Lembur',
-            'pageTitle'  => 'Manajemen Lembur',
+            'isHr'       => $isHr,
+            'title'      => $isHr ? 'Manajemen Lembur' : 'Persetujuan Lembur Tim',
+            'pageTitle'  => $isHr ? 'Manajemen Lembur' : 'Persetujuan Lembur Tim',
             'rows'       => $this->overtime->requests($filters, $perPage, $paginator->offset()),
             'paginator'  => $paginator,
             'filters'    => $filters,
             'stats'      => $this->overtime->stats($filters),
-            'daily'      => $this->overtime->dailyHours($month),
+            // Grafik, rekap per unit, dan daftar karyawan hanya relevan (dan
+            // hanya boleh tersedia) untuk HR.
+            'daily'      => $isHr ? $this->overtime->dailyHours($month) : [],
             'units'      => $this->org->units(),
             'departments' => $this->org->departments(),
-            'employees'  => $this->overtime->employeeOptions(),
+            'employees'  => $isHr ? $this->overtime->employeeOptions() : [],
             'month'      => $month,
             'monthLabel' => $this->monthLabel($month),
             'prevMonth'  => $this->overtime->adjacentMonth($month, -1),
             'nextMonth'  => $this->overtime->adjacentMonth($month, +1),
             'policy'     => $this->overtime->settings(),
             'preview'    => $this->overtime->policyPreview(),
-            'top'        => $this->overtime->topEmployees($month, 5),
-            'byUnit'     => $this->overtime->byUnit($month),
+            'top'        => $isHr ? $this->overtime->topEmployees($month, 5) : [],
+            'byUnit'     => $isHr ? $this->overtime->byUnit($month) : [],
+            'canDecide'  => static fn (array $row): bool => ApprovalEngine::canAct('overtime', $row, Auth::user()),
         ] + $this->withInput());
     }
 
@@ -176,17 +201,26 @@ final class OvertimeController extends Controller
 
         $decision = strtoupper((string) input('decision', 'APPROVED')) === 'REJECTED' ? 'REJECTED' : 'APPROVED';
         $note = substr(trim((string) input('note', '')), 0, 255);
-        $done = $this->overtime->decideMany($ids, $decision === 'APPROVED', $this->employeeId(), $note);
 
+        // Lewat ApprovalEngine agar aturan tahap & larangan menyetujui
+        // pengajuan sendiri sama dengan aksi satuan.
+        $engine = new ApprovalEngine();
+        $actor = Auth::user() ?? [];
+        $done = 0;
+        $skipped = 0;
         foreach ($ids as $id) {
-            $row = $this->overtime->find($id);
-            if ($row) {
-                $this->notify((int) $row['employee_id'], $decision === 'APPROVED' ? 'approved' : 'rejected', $row);
+            $request = $engine->find('overtime', $id);
+            if (!$request) {
+                $skipped++;
+                continue;
             }
+            $result = $engine->decide('overtime', $request, $decision, $note, $actor);
+            $result['ok'] ? $done++ : $skipped++;
         }
 
-        Audit::log('overtime.bulk-decide', 'overtime_request', null, ['ids' => $ids, 'decision' => $decision]);
-        flash($decision === 'APPROVED' ? 'success' : 'warning', $done . ' pengajuan lembur ' . ($decision === 'APPROVED' ? 'disetujui' : 'ditolak') . '.');
+        Audit::log('overtime.bulk-decide', 'overtime_request', null, ['ids' => $ids, 'decision' => $decision, 'done' => $done, 'skipped' => $skipped]);
+        flash($done > 0 ? 'success' : 'warning', $done . ' pengajuan lembur diproses'
+            . ($skipped > 0 ? ', ' . $skipped . ' dilewati (status tidak sesuai/pengajuan sendiri).' : '.'));
         back('/overtime');
     }
 

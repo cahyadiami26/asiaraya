@@ -69,7 +69,7 @@ final class Nav
                 'items' => [
                     ['route' => 'shifts.index', 'label' => 'Jadwal Kerja & Shift', 'icon' => 'calendar', 'roles' => ['HR']],
                     ['route' => 'schedules.index', 'label' => 'Penjadwalan Karyawan', 'icon' => 'calendar-check', 'roles' => ['HR']],
-                    ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN'], 'badge_key' => 'shift'],
+                    ['route' => 'schedules.requests', 'label' => 'Perubahan Jadwal', 'icon' => 'refresh', 'roles' => ['HR', 'KARYAWAN', 'FIN'], 'badge_key' => 'shift', 'requires_reports' => true],
                     ['route' => 'attendance.live', 'label' => 'Presensi & GPS Live Log', 'icon' => 'map-pin', 'roles' => ['HR'], 'live' => true],
                     ['route' => 'attendance.daily', 'label' => 'Presensi Harian', 'icon' => 'list', 'roles' => ['HR']],
                     ['route' => 'attendance.rekap', 'label' => 'Rekap Presensi Bulanan', 'icon' => 'receipt', 'roles' => ['HR']],
@@ -86,6 +86,8 @@ final class Nav
                 'roles' => ['HR', 'FIN'],
                 'items' => [
                     ['route' => 'payroll.index', 'label' => 'Payroll', 'icon' => 'wallet', 'roles' => ['HR', 'FIN']],
+                    // Antrean persetujuan Finance: periode yang sudah dikirim HR.
+                    ['route' => 'payroll.index', 'key' => 'payroll.approvals', 'label' => 'Persetujuan Payroll', 'icon' => 'check', 'roles' => ['FIN'], 'query' => ['status' => 'SENT_TO_FINANCE'], 'badge_key' => 'payroll'],
                     ['route' => 'components.index', 'label' => 'Komponen Gaji', 'icon' => 'layers', 'roles' => ['HR']],
                     ['route' => 'claims.index', 'label' => 'Klaim & Reimbursement', 'icon' => 'wallet', 'roles' => ['HR', 'FIN'], 'badge_key' => 'claims'],
                     ['route' => 'reports.index', 'label' => 'Laporan', 'icon' => 'receipt', 'roles' => ['HR', 'FIN']],
@@ -146,19 +148,20 @@ final class Nav
             [
                 'key' => 'portal',
                 'label' => 'Portal Karyawan',
-                'roles' => ['KARYAWAN'],
+                'roles' => ['HR', 'FIN', 'KARYAWAN'],
                 'items' => [
-                    ['route' => 'me.profile', 'label' => 'Profil Saya', 'icon' => 'user', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.attendance', 'label' => 'Presensi Saya', 'icon' => 'map-pin', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.schedule', 'label' => 'Jadwal Saya', 'icon' => 'calendar', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.overtime', 'label' => 'Lembur Saya', 'icon' => 'clock', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.leave', 'label' => 'Cuti Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
-                    ['route' => 'leave.index', 'key' => 'leave.approvals', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.claims', 'label' => 'Klaim Saya', 'icon' => 'wallet', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['KARYAWAN']],
-                    ['route' => 'me.tax', 'label' => 'Bukti Potong Pajak', 'icon' => 'receipt', 'roles' => ['KARYAWAN']],
+                    ['route' => 'me.profile', 'label' => 'Profil Saya', 'icon' => 'user', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.attendance', 'label' => 'Presensi Saya', 'icon' => 'map-pin', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.schedule', 'label' => 'Jadwal Saya', 'icon' => 'calendar', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.overtime', 'label' => 'Lembur Saya', 'icon' => 'clock', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.leave', 'label' => 'Cuti Saya', 'icon' => 'file', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'leave.index', 'key' => 'leave.approvals', 'label' => 'Persetujuan Cuti Tim', 'icon' => 'user', 'roles' => ['KARYAWAN', 'FIN'], 'requires_reports' => true, 'badge_key' => 'leave'],
+                    ['route' => 'overtime.index', 'key' => 'overtime.approvals', 'label' => 'Persetujuan Lembur Tim', 'icon' => 'clock', 'roles' => ['KARYAWAN', 'FIN'], 'requires_reports' => true, 'badge_key' => 'overtime'],
+                    ['route' => 'me.claims', 'label' => 'Klaim Saya', 'icon' => 'wallet', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.payslip', 'label' => 'Slip Gaji', 'icon' => 'receipt', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.documents', 'label' => 'Dokumen Saya', 'icon' => 'file', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.career', 'label' => 'Riwayat Jabatan Saya', 'icon' => 'trending', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
+                    ['route' => 'me.tax', 'label' => 'Bukti Potong Pajak', 'icon' => 'receipt', 'roles' => ['HR', 'FIN', 'KARYAWAN']],
                 ],
             ],
             [
@@ -446,15 +449,37 @@ final class Nav
                 if (!in_array($role, $item['roles'], true)) {
                     continue;
                 }
+                // Menu persetujuan tim hanya untuk atasan yang benar-benar punya bawahan;
+                // HR tetap melihat semua menu operasional yang menjadi tugasnya.
+                if (!empty($item['requires_reports']) && $role !== 'HR' && !Auth::hasReports((int) $user['id'])) {
+                    continue;
+                }
                 if (in_array(self::itemKey($item), $hiddenItems, true)) {
                     continue;
                 }
                 $ready = $router->has($item['route']);
-                $item['url'] = $ready
+                $query = (array) ($item['query'] ?? []);
+
+                $baseUrl = $ready
                     ? Router::route($item['route'])
                     : url('coming-soon?module=' . rawurlencode($item['label']));
-                $item['path'] = $ready ? $router->path($item['route']) : null;
-                $item['active'] = $ready && $item['path'] !== null && is_path($item['path']);
+                if ($ready && $query) {
+                    $baseUrl .= (str_contains($baseUrl, '?') ? '&' : '?') . http_build_query($query);
+                }
+
+                $path = $ready ? $router->path($item['route']) : null;
+                $queryMatch = true;
+                foreach ($query as $name => $value) {
+                    if ((string) ($_GET[$name] ?? '') !== (string) $value) {
+                        $queryMatch = false;
+                        break;
+                    }
+                }
+
+                $item['url'] = $baseUrl;
+                $item['path'] = $path;
+                $item['query'] = $query;
+                $item['active'] = $ready && $path !== null && is_path($path) && $queryMatch;
                 $item['ready'] = $ready;
                 $item['live'] = (bool) ($item['live'] ?? false);
                 $item['badge'] = isset($item['badge_key']) ? (int) ($badges[$item['badge_key']] ?? 0) : 0;
@@ -463,11 +488,51 @@ final class Nav
             if (!$items) {
                 continue;
             }
-            // Portal karyawan hanya untuk peran KARYAWAN (item lain sudah difilter peran).
+
+            // Grup portal memuat layanan mandiri + persetujuan tim. Untuk peran
+            // non-karyawan (HR/FIN yang juga atasan) keduanya dipisah agar jelas
+            // mana halaman pribadi dan mana antrean persetujuan.
             if (self::groupKey($group) === 'portal' && $role !== 'KARYAWAN') {
+                $selfItems = [];
+                $teamItems = [];
+                foreach ($items as $item) {
+                    if (!empty($item['requires_reports'])) {
+                        $teamItems[] = $item;
+                    } else {
+                        $selfItems[] = $item;
+                    }
+                }
+                if ($selfItems) {
+                    $groups[] = ['label' => 'Layanan Mandiri', 'items' => $selfItems];
+                }
+                if ($teamItems) {
+                    $groups[] = ['label' => 'Persetujuan Tim', 'items' => $teamItems];
+                }
                 continue;
             }
+
             $groups[] = ['label' => $group['label'], 'items' => $items];
+        }
+
+        // Item dengan filter query (mis. "Persetujuan Payroll") lebih spesifik
+        // daripada item umum di path yang sama ("Payroll"); hanya yang spesifik
+        // ditandai aktif agar tidak ada dua menu yang menyala bersamaan.
+        $specificPaths = [];
+        foreach ($groups as $group) {
+            foreach ($group['items'] as $item) {
+                if (!empty($item['active']) && !empty($item['query'])) {
+                    $specificPaths[(string) $item['path']] = true;
+                }
+            }
+        }
+        if ($specificPaths) {
+            foreach ($groups as $gi => $group) {
+                foreach ($group['items'] as $ii => $item) {
+                    if (!empty($item['active']) && empty($item['query']) && isset($specificPaths[(string) $item['path']])) {
+                        $groups[$gi]['items'][$ii]['active'] = false;
+                    }
+                }
+            }
         }
 
         return $groups;

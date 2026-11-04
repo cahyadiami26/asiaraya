@@ -64,6 +64,12 @@ abstract class Controller
                     0
                 );
             }
+            if (Auth::hasRole('FIN')) {
+                // Antrean persetujuan payroll (menu "Persetujuan Payroll").
+                $badges['payroll'] = \App\Core\Database::tableExists('payroll_periods')
+                    ? (int) \App\Core\Database::value("SELECT COUNT(*) FROM payroll_periods WHERE status = 'SENT_TO_FINANCE'", [], 0)
+                    : 0;
+            }
 
             return [
                 'unreadNotifications' => $unreadNotifications,

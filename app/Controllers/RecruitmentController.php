@@ -506,7 +506,7 @@ final class RecruitmentController extends Controller
             back('/recruitment/candidates/' . (int) $id);
         }
 
-        $code = EmployeeCode::next($unitId > 0 ? $unitId : null, $departmentId > 0 ? $departmentId : null);
+        $code = EmployeeCode::nextUnique($unitId > 0 ? $unitId : null, $departmentId > 0 ? $departmentId : null);
         $username = strtolower((string) preg_replace('/[^a-z0-9.]+/', '.', str_replace(' ', '.', mb_strtolower($email))));
 
         $employeeId = $this->employees->create([

@@ -110,6 +110,17 @@ final class Router
             return;
         }
 
+        // Endpoint API selalu menjawab JSON, termasuk saat tidak ditemukan.
+        if (str_starts_with($path, '/api/')) {
+            $this->json([
+                'success' => false,
+                'code'    => 'NOT_FOUND',
+                'message' => 'Endpoint API tidak ditemukan: ' . $method . ' ' . $path,
+                'errors'  => [],
+                'meta'    => ['request_id' => ApiRequest::requestId(), 'server_time' => date('c')],
+            ], 404);
+        }
+
         http_response_code(404);
         View::render('errors/404', ['title' => 'Halaman Tidak Ditemukan'], Auth::check() ? 'layouts/app' : 'layouts/auth');
     }

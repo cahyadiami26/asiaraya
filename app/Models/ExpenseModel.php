@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Core\ApprovalEngine;
 use App\Core\Database;
 use App\Core\Settings;
 
@@ -126,6 +127,9 @@ final class ExpenseModel
         $status = (string) ($filters['status'] ?? '');
         if ($status === 'OPEN') {
             $clauses[] = "c.status IN ('PENDING','MANAGER_APPROVED','APPROVED','SCHEDULED')";
+        } elseif ($status === 'AWAITING') {
+            // Menunggu keputusan atasan / HR-Finance (dipakai kotak masuk API).
+            $clauses[] = "c.status IN ('PENDING','MANAGER_APPROVED')";
         } elseif ($status !== '' && isset(self::STATUSES[$status])) {
             $clauses[] = 'c.status = ?';
             $params[] = $status;
@@ -142,6 +146,17 @@ final class ExpenseModel
         if (!empty($filters['manager'])) {
             $clauses[] = "c.status = 'PENDING' AND e.direct_manager_id = ?";
             $params[] = (int) $filters['manager'];
+        }
+        // Kotak masuk approver: jangan tampilkan klaim sendiri.
+        if (!empty($filters['exclude_employee'])) {
+            $clauses[] = 'c.employee_id <> ?';
+            $params[] = (int) $filters['exclude_employee'];
+        }
+        // Klaim rekan HR/Finance yang masih menunggu atasan bukan kewenangan HR/Finance.
+        if (!empty($filters['final_ready'])) {
+            $clauses[] = "NOT (c.status = 'PENDING' AND e.role IN ('HR','FIN') AND EXISTS (
+                              SELECT 1 FROM employees m
+                               WHERE m.id = e.direct_manager_id AND m.flag = 'ACTIVE' AND m.id <> e.id))";
         }
         if (!empty($filters['department'])) {
             $clauses[] = 'e.department_id = ?';
@@ -357,9 +372,14 @@ final class ExpenseModel
             return ['id' => null, 'error' => $category['name'] . ' mewajibkan lampiran bukti (foto/PDF nota).', 'status' => null, 'number' => null, 'manager' => null];
         }
 
-        $managerId = (int) ($employee['direct_manager_id'] ?? 0);
-        if ($managerId === (int) $employee['id']) {
-            $managerId = 0;
+        $managerId = ApprovalEngine::managerOf((int) $employee['id']) ?? 0;
+        if ($managerId === 0) {
+            // Tanpa atasan langsung, klaim langsung ke HR/Finance — kecuali
+            // pemohon sendiri satu-satunya approver (tidak akan ada pemutus).
+            $blocked = ApprovalEngine::submissionError((int) $employee['id'], 'claim');
+            if ($blocked !== null) {
+                return ['id' => null, 'error' => $blocked, 'status' => null, 'number' => null, 'manager' => null];
+            }
         }
         $status = $managerId > 0 ? 'PENDING' : 'MANAGER_APPROVED';
         $now = date('Y-m-d H:i:s');
@@ -418,6 +438,35 @@ final class ExpenseModel
     }
 
     /**
+     * Apakah aktor boleh memutus klaim ini sekarang? (tanpa efek samping)
+     * Dipakai untuk menampilkan tombol/kotak centang yang benar-benar valid.
+     */
+    public static function canDecide(array $claim, ?array $actor): bool
+    {
+        if (!$actor) {
+            return false;
+        }
+        $actorId = (int) ($actor['id'] ?? 0);
+        if ($actorId <= 0 || (int) $claim['employee_id'] === $actorId) {
+            return false;
+        }
+        $status = (string) ($claim['status'] ?? '');
+        if (!in_array($status, ['PENDING', 'MANAGER_APPROVED'], true)) {
+            return false;
+        }
+
+        $roles = ApprovalEngine::finalRoles('claim');
+        if ($status === 'PENDING' && ApprovalEngine::managerOf((int) $claim['employee_id']) === $actorId) {
+            return true;
+        }
+        if (!in_array((string) ($actor['role'] ?? ''), $roles, true)) {
+            return false;
+        }
+
+        return !ApprovalEngine::awaitingManager($claim, $roles);
+    }
+
+    /**
      * Putuskan klaim. Tahap 1 (atasan): PENDING → MANAGER_APPROVED.
      * Tahap 2 (HR/Finance): PENDING/MANAGER_APPROVED → APPROVED.
      * Penolakan di tahap mana pun mengakhiri klaim sebagai REJECTED.
@@ -439,26 +488,34 @@ final class ExpenseModel
         $now = date('Y-m-d H:i:s');
         $note = mb_substr(trim((string) ($actor['note'] ?? '')), 0, 255) ?: null;
 
-        $isManager = (int) Database::value('SELECT direct_manager_id FROM employees WHERE id = ?', [(int) $claim['employee_id']]) === (int) $actor['id'];
-        $isFinal = in_array($actor['role'] ?? '', ['HR', 'FIN'], true);
+        $finalRoles = ApprovalEngine::finalRoles('claim');
+        $isManager = ApprovalEngine::managerOf((int) $claim['employee_id']) === (int) $actor['id'];
+        $isFinal = in_array((string) ($actor['role'] ?? ''), $finalRoles, true);
 
         if ($claim['status'] === 'PENDING' && $isManager) {
             $stage = 'MANAGER';
         } elseif ($isFinal) {
+            if (ApprovalEngine::awaitingManager($claim, $finalRoles)) {
+                return ['error' => 'Klaim masih menunggu keputusan atasan langsung.'];
+            }
             $stage = 'FINAL';
         } else {
             return ['error' => 'Anda tidak berhak memproses klaim ini pada tahap saat ini.'];
         }
 
+        // Bila pemohon satu-satunya approver final, keputusan atasan adalah final.
+        $finalByManager = $stage === 'MANAGER'
+            && ApprovalEngine::managerStageIsFinal((int) $claim['employee_id'], $finalRoles);
+
         if ($stage === 'MANAGER') {
+            $status = $approved ? ($finalByManager ? 'APPROVED' : 'MANAGER_APPROVED') : 'REJECTED';
             Database::update('expense_claims', [
-                'status'              => $approved ? 'MANAGER_APPROVED' : 'REJECTED',
+                'status'              => $status,
                 'manager_id'          => (int) $actor['id'],
                 'manager_approved_at' => $now,
                 'manager_note'        => $note,
                 'updated_at'          => $now,
             ], 'id = ?', [$id]);
-            $status = $approved ? 'MANAGER_APPROVED' : 'REJECTED';
         } else {
             Database::update('expense_claims', [
                 'status'         => $approved ? 'APPROVED' : 'REJECTED',
@@ -477,12 +534,17 @@ final class ExpenseModel
             '/claims/' . $id,
             $approved ? 'success' : 'warning');
 
-        if ($approved && $stage === 'MANAGER') {
+        if ($approved && $stage === 'MANAGER' && !$finalByManager) {
             $this->notifyRole('HR', 'Klaim menunggu persetujuan HR/Finance',
                 $claim['full_name'] . ' — ' . $label . ' telah disetujui atasan.', '/claims/' . $id);
         }
 
-        return ['error' => null, 'status' => $status, 'stage' => $stage];
+        return [
+            'error'  => null,
+            'status' => $status,
+            'stage'  => $stage,
+            'final'  => $stage === 'FINAL' || $finalByManager,
+        ];
     }
 
     /** Finance menandai klaim (yang tidak lewat payroll) sebagai dibayarkan. */
