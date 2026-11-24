@@ -98,14 +98,8 @@ final class PayrollApiController extends ApiController
             'components' => $components,
             'verifyUrl' => $verifyUrl,
             'qrPath'    => Qr::png($verifyUrl, 260, 6),
-            'company'   => [
-                'name'    => (string) setting('company_name', 'PT Asia Raya Group'),
-                'legal'   => (string) setting('company_legal_name', ''),
-                'address' => (string) setting('company_address', ''),
-                'phone'   => (string) setting('company_phone', ''),
-                'email'   => (string) setting('company_email', ''),
-                'npwp'    => (string) setting('company_npwp', ''),
-            ],
+            'company'   => $this->payroll->slipCompany($item),
+            'unit'      => $this->payroll->slipUnit($item),
             'printedAt' => date('d M Y H:i'),
         ]);
 

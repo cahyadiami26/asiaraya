@@ -99,6 +99,11 @@ GET /api/v1/payslips/{id}/pdf  (header Authorization)
    yang bisa diunduh tanpa header
 ```
 
+PDF yang dihasilkan memakai template yang sama dengan web
+(`app/Views/payroll/slip_pdf.php`), sehingga **kop mencetak nama perusahaan dan
+unit bisnis tempat karyawan terdaftar** (`employees.business_unit_id`, bukan unit
+periode payroll). Judul berkas: `<no-slip>.pdf`.
+
 ### 3.5 Profil karyawan
 
 ```text

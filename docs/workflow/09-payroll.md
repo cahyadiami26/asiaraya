@@ -63,9 +63,40 @@
 
 ### 3.2 Slip & verifikasi
 
+```text
+/payroll/items/{id}/pdf  (atau /me/payslip → PDF)
+        │
+        ▼
+kop slip: NAMA PERUSAHAAN (badan hukum pemilik unit)
+          UNIT BISNIS tempat karyawan terdaftar (kode · tipe · kota)
+          alamat/telepon/email/NPWP perusahaan
+        ▼
+badan slip: karyawan, pembayaran, rincian komponen, take home pay,
+            rekap presensi, tanda tangan HR & Finance, QR verifikasi
+```
+
 * Slip memuat rincian pendapatan/potongan, tanda tangan HR & Finance, dan QR.
 * QR menuju `/verify/slip/{id}/{token}` (publik, tanpa login) untuk memastikan
   keaslian slip.
+* **Kop selalu menyebut perusahaan + unit bisnis karyawan**, bukan unit periode
+  payroll:
+  * `PayrollModel::findItem()` mengambil unit dari `employees.business_unit_id`
+    (`unit_name`, `unit_code`, `unit_city`, `unit_type`) dan menyimpan unit
+    periode sebagai `period_unit_name` / `period_unit_code`;
+  * perusahaan diambil dari tabel `companies` milik unit karyawan
+    (`company_name`, `company_legal_name`, alamat, telepon, email, NPWP) dengan
+    cadangan pengaturan `company_*` di Settings;
+  * `PayrollController::slipUnit()` + `slipCompany()` merapikan data itu untuk
+    `payroll/slip_pdf.php` (kop), `payroll/item.php` (kepala halaman) dan
+    `payroll/verify.php` (halaman publik hasil pindai QR).
+* Bila karyawan **dipindahkan unit** setelah periode berjalan, slip mencetak
+  unit tempat ia terdaftar sekarang dan menambahkan keterangan kecil
+  “periode payroll: <unit periode>” di baris *Unit Kerja* — tidak ada data yang
+  disembunyikan maupun salah sebut.
+* Kop yang sama dipakai tiga jalur: halaman detail `/payroll/items/{id}`
+  (`payroll/item.php`), PDF `slip_pdf.php` (web maupun `GET
+  /api/v1/payslips/{id}/pdf`), dan halaman verifikasi publik
+  `/verify/slip/{id}/{token}` (`payroll/verify.php`).
 
 ## 4. Status
 
@@ -96,11 +127,13 @@
 | `GET /me/payslip` | `PayrollController@mine` | Slip karyawan |
 
 Berkas pendukung: `app/Models/PayrollModel.php`, `app/Models/SalaryModel.php`,
-`app/Views/payroll/*`, tabel `payroll_periods`, `payroll_items`.
+`app/Views/payroll/*` (kop PDF: `payroll/slip_pdf.php`), tabel `payroll_periods`,
+`payroll_items`, `employees.business_unit_id`, `business_units`, `companies`.
 
 ## 6. Integrasi & catatan
 
 * Menu **Persetujuan Payroll** (FIN) menampilkan filter
   `status=SENT_TO_FINANCE` dengan badge jumlah antrean.
-* Slip dan bukti potong pajak memakai kop & penandatangan dari profil perusahaan.
+* Slip dan bukti potong pajak memakai kop & penandatangan dari profil perusahaan;
+  untuk slip, unit bisnis di kop mengikuti unit **karyawan** (lihat §3.2).
 * Data slip yang sudah `PAID` bersifat final; koreksi dilakukan lewat periode baru.

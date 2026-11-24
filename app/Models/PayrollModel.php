@@ -117,19 +117,116 @@ final class PayrollModel
         );
     }
 
+    /**
+     * Identitas badan hukum untuk kepala slip (web, PDF, dan API Android).
+     *
+     * Urutan sumber: tabel `companies` milik unit **karyawan** (hasil join
+     * `findItem`) → pengaturan `company_*` di Settings → nilai bawaan.
+     *
+     * @return array{name:string,legal:string,address:string,phone:string,email:string,npwp:string}
+     */
+    public function slipCompany(array $item): array
+    {
+        $name = trim((string) ($item['company_name'] ?? ''));
+        $legal = trim((string) ($item['company_legal_name'] ?? ''));
+        $address = trim((string) ($item['company_address'] ?? ''));
+        $city = trim((string) ($item['company_city'] ?? ''));
+        $phone = trim((string) ($item['company_phone'] ?? ''));
+        $email = trim((string) ($item['company_email'] ?? ''));
+        $npwp = trim((string) ($item['company_npwp'] ?? ''));
+
+        if ($name === '') {
+            $name = (string) setting('company_name', 'PT Asia Raya Group');
+        }
+        if ($legal === '') {
+            $legal = (string) setting('company_legal_name', '');
+        }
+        if ($address === '') {
+            $address = (string) setting('company_address', '');
+        } elseif ($city !== '' && stripos($address, $city) === false) {
+            $address .= ', ' . $city;
+        }
+        if ($phone === '') {
+            $phone = (string) setting('company_phone', '');
+        }
+        if ($email === '') {
+            $email = (string) setting('company_email', '');
+        }
+        if ($npwp === '') {
+            $npwp = (string) setting('company_npwp', '');
+        }
+
+        return [
+            'name'    => $name,
+            'legal'   => $legal,
+            'address' => $address,
+            'phone'   => $phone,
+            'email'   => $email,
+            'npwp'    => $npwp,
+        ];
+    }
+
+    /**
+     * Unit bisnis tempat karyawan terdaftar (bukan unit periode payroll).
+     *
+     * @return array{id:?int,name:string,code:string,type:string,city:string,address:string,phone:string,period_name:string}
+     */
+    public function slipUnit(array $item): array
+    {
+        $name = trim((string) ($item['unit_name'] ?? ''));
+
+        return [
+            'id'          => isset($item['unit_id']) ? (int) $item['unit_id'] : null,
+            'name'        => $name !== '' ? $name : '-',
+            'code'        => trim((string) ($item['unit_code'] ?? '')),
+            'type'        => trim((string) ($item['unit_type'] ?? '')),
+            'city'        => trim((string) ($item['unit_city'] ?? '')),
+            'address'     => trim((string) ($item['unit_address'] ?? '')),
+            'phone'       => trim((string) ($item['unit_phone'] ?? '')),
+            'period_name' => trim((string) ($item['period_unit_name'] ?? '')),
+        ];
+    }
+
+    /**
+     * Satu baris slip + data pendukung untuk tampilan/PDF.
+     *
+     * Unit kerja diambil dari **karyawan** (`employees.business_unit_id`), bukan
+     * dari periode payroll: sebuah periode bisa saja mencakup karyawan yang
+     * dipindahkan ke unit lain, dan slip harus mencetak unit tempat karyawan
+     * benar-benar terdaftar. Kolom `unit_name`/`unit_code` tetap menunjuk unit
+     * karyawan; unit periode tersedia sebagai `period_unit_*`.
+     */
     public function findItem(int $id): ?array
     {
         return Database::one(
             "SELECT pi.*, p.period_year, p.period_month, p.start_date, p.end_date, p.pay_date,
                     p.status AS period_status, p.business_unit_id,
                     p.hr_signature_name, p.fin_signature_name, p.paid_at, p.cutoff_date,
-                    bu.name AS unit_name, bu.code AS unit_code,
+                    COALESCE(emp_bu.name, per_bu.name) AS unit_name,
+                    COALESCE(emp_bu.code, per_bu.code) AS unit_code,
+                    COALESCE(emp_bu.address, per_bu.address) AS unit_address,
+                    COALESCE(emp_bu.city, per_bu.city) AS unit_city,
+                    COALESCE(emp_bu.phone, per_bu.phone) AS unit_phone,
+                    COALESCE(emp_bu.type, per_bu.type) AS unit_type,
+                    COALESCE(emp_bu.id, per_bu.id) AS unit_id,
+                    per_bu.name AS period_unit_name, per_bu.code AS period_unit_code,
+                    COALESCE(c.name, cc.name) AS company_name,
+                    COALESCE(c.legal_name, cc.legal_name) AS company_legal_name,
+                    COALESCE(c.address, cc.address) AS company_address,
+                    COALESCE(c.city, cc.city) AS company_city,
+                    COALESCE(c.phone, cc.phone) AS company_phone,
+                    COALESCE(c.email, cc.email) AS company_email,
+                    COALESCE(c.npwp, cc.npwp) AS company_npwp,
                     e.photo, e.email, e.bank_name, e.bank_account_number, e.bank_account_name,
-                    e.npwp, e.bpjs_kesehatan_no, e.bpjs_tk_no, e.tax_status, e.join_date
+                    e.npwp, e.bpjs_kesehatan_no, e.bpjs_tk_no, e.tax_status, e.join_date,
+                    e.business_unit_id AS employee_business_unit_id
              FROM payroll_items pi
              JOIN payroll_periods p ON p.id = pi.period_id
-             LEFT JOIN business_units bu ON bu.id = p.business_unit_id
              LEFT JOIN employees e ON e.id = pi.employee_id
+             LEFT JOIN business_units emp_bu ON emp_bu.id = e.business_unit_id
+             LEFT JOIN business_units per_bu ON per_bu.id = p.business_unit_id
+             LEFT JOIN companies c ON c.id = emp_bu.company_id
+             LEFT JOIN companies cc ON cc.id = per_bu.company_id
              WHERE pi.id = ?",
             [$id]
         );
@@ -836,10 +933,13 @@ final class PayrollModel
     public function mySlips(int $employeeId): array
     {
         return Database::all(
-            "SELECT pi.*, p.period_year, p.period_month, p.pay_date, p.status AS period_status, bu.name AS unit_name
+            "SELECT pi.*, p.period_year, p.period_month, p.pay_date, p.status AS period_status,
+                    COALESCE(emp_bu.name, per_bu.name) AS unit_name, COALESCE(emp_bu.code, per_bu.code) AS unit_code
              FROM payroll_items pi
              JOIN payroll_periods p ON p.id = pi.period_id
-             LEFT JOIN business_units bu ON bu.id = p.business_unit_id
+             LEFT JOIN employees e ON e.id = pi.employee_id
+             LEFT JOIN business_units emp_bu ON emp_bu.id = e.business_unit_id
+             LEFT JOIN business_units per_bu ON per_bu.id = p.business_unit_id
              WHERE pi.employee_id = ? AND p.status IN ('FINANCE_APPROVED','PAID')
              ORDER BY p.period_year DESC, p.period_month DESC LIMIT 24",
             [$employeeId]

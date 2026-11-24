@@ -1,7 +1,12 @@
 <?php
 /**
  * Detail satu slip gaji (tampilan web).
- * @var array $item, $components
+ *
+ * Kepala halaman menampilkan **nama perusahaan** (`$company`) dan **unit bisnis
+ * tempat karyawan terdaftar** (`$unit`, dari `employees.business_unit_id`),
+ * sama seperti kepala PDF slip.
+ *
+ * @var array $item, $components, $company, $unit
  * @var bool $isHr, $isFin, $isOwner
  * @var string $verifyUrl
  */
@@ -9,19 +14,28 @@ $benefits = array_values(array_filter($components, static fn ($c) => $c['type'] 
 $deductions = array_values(array_filter($components, static fn ($c) => $c['type'] === 'DEDUCTION'));
 $periodLabel = bulan_id((int) $item['period_month']) . ' ' . (int) $item['period_year'];
 ?>
+<?php
+$unitLabel = trim((string) ($unit['name'] ?? '')) !== '' ? (string) $unit['name'] : (string) ($item['unit_name'] ?? '-');
+$unitMoved = ($unit['period_name'] ?? '') !== '' && $unit['period_name'] !== $unitLabel;
+?>
 <div class="page-head">
     <div>
         <div class="sub" style="margin-bottom:2px">
             <a href="<?= url('payroll/' . $item['period_id']) ?>" style="color:inherit">Payroll <?= e($periodLabel) ?></a> / Slip
         </div>
         <h1><?= e($item['employee_name']) ?></h1>
-        <div class="sub">
-            <span class="mono"><?= e($item['slip_number']) ?></span>
+        <div class="sub" style="margin-top:4px">
+            <span style="font-weight:650;color:var(--text)"><?= e($company['name'] ?? '') ?></span>
             <span class="dot" style="background:var(--line-strong)"></span>
-            <span><?= e($item['unit_name'] ?? '-') ?></span>
+            <span>Unit <?= e($unitLabel) ?><?= ($unit['code'] ?? '') !== '' ? ' (' . e($unit['code']) . ')' : '' ?></span>
+            <span class="dot" style="background:var(--line-strong)"></span>
+            <span class="mono"><?= e($item['slip_number']) ?></span>
             <span class="dot" style="background:var(--line-strong)"></span>
             <span>Bayar <?= tanggal($item['pay_date']) ?></span>
         </div>
+        <?php if ($unitMoved): ?>
+            <div class="small muted" style="margin-top:4px">Unit pada periode payroll ini: <?= e($unit['period_name']) ?>.</div>
+        <?php endif; ?>
     </div>
     <div class="page-head__actions">
         <?= status_badge($item['payment_status']) ?>

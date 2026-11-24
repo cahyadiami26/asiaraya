@@ -256,6 +256,8 @@ final class PayrollController extends Controller
             'title'      => 'Slip ' . ($item['slip_number'] ?? ''),
             'pageTitle'  => 'Detail Slip Gaji',
             'item'       => $item,
+            'unit'       => $this->slipUnit($item),
+            'company'    => $this->slipCompany($item),
             'components' => $this->payroll->itemComponents((int) $id),
             'isHr'       => Auth::hasRole('HR'),
             'isFin'      => Auth::hasRole('FIN'),
@@ -281,14 +283,8 @@ final class PayrollController extends Controller
             'components' => $components,
             'verifyUrl'  => $verifyUrl,
             'qrPath'     => $qrPath,
-            'company'    => [
-                'name'    => (string) setting('company_name', 'PT Asia Raya Group'),
-                'legal'   => (string) setting('company_legal_name', ''),
-                'address' => (string) setting('company_address', ''),
-                'phone'   => (string) setting('company_phone', ''),
-                'email'   => (string) setting('company_email', ''),
-                'npwp'    => (string) setting('company_npwp', ''),
-            ],
+            'company'    => $this->slipCompany($item),
+            'unit'       => $this->slipUnit($item),
             'printedAt'  => date('d M Y H:i'),
         ]);
 
@@ -330,11 +326,25 @@ final class PayrollController extends Controller
             'pageTitle'  => 'Verifikasi Slip Gaji',
             'item'       => $item,
             'components' => $components,
-            'company'    => (string) setting('company_name', 'PT Asia Raya Group'),
+            'company'    => $item !== null
+                ? ($this->slipCompany($item)['name'] ?? setting('company_name', 'PT Asia Raya Group'))
+                : (string) setting('company_name', 'PT Asia Raya Group'),
+            'unit'       => $item !== null ? $this->slipUnit($item) : null,
         ], 'layouts/auth');
     }
 
     /* ============================================================ internal */
+
+    /** Identitas badan hukum & unit karyawan untuk kepala slip (lihat PayrollModel). */
+    private function slipCompany(array $item): array
+    {
+        return $this->payroll->slipCompany($item);
+    }
+
+    private function slipUnit(array $item): array
+    {
+        return $this->payroll->slipUnit($item);
+    }
 
     private function canView(array $item): bool
     {
