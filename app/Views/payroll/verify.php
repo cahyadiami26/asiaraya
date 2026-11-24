@@ -1,9 +1,14 @@
 <?php
 /**
  * Halaman verifikasi publik slip gaji (hasil pindai QR).
+ *
+ * Menampilkan perusahaan + unit bisnis **karyawan** (sumber sama dengan PDF),
+ * bukan unit periode payroll.
+ *
  * @var array|null $item
  * @var array $components
  * @var string $company
+ * @var array|null $unit
  */
 $valid = $item !== null;
 $net = $valid ? (float) $item['net_salary'] : 0.0;
@@ -35,7 +40,9 @@ if ($valid) {
             <div class="card__body flex-col gap-8">
                 <div class="sim-line"><span>No. Slip</span><b class="mono"><?= e($item['slip_number'] ?? '-') ?></b></div>
                 <div class="sim-line"><span>Karyawan</span><b><?= e($masked) ?> · <?= e($item['employee_code']) ?></b></div>
-                <div class="sim-line"><span>Unit / Departemen</span><b><?= e($item['unit_name'] ?? '-') ?> · <?= e($item['department_name'] ?: '-') ?></b></div>
+                <div class="sim-line"><span>Perusahaan</span><b><?= e($company) ?></b></div>
+                <div class="sim-line"><span>Unit Bisnis</span><b><?= e($unit['name'] ?? ($item['unit_name'] ?? '-')) ?><?= ($unit['code'] ?? '') !== '' ? ' (' . e($unit['code']) . ')' : '' ?></b></div>
+                <div class="sim-line"><span>Departemen</span><b><?= e($item['department_name'] ?: '-') ?></b></div>
                 <div class="sim-line"><span>Periode</span><b><?= e(bulan_id((int) $item['period_month'])) ?> <?= (int) $item['period_year'] ?></b></div>
                 <div class="sim-line"><span>Tanggal Bayar</span><b><?= tanggal($item['pay_date']) ?></b></div>
                 <div class="sim-line sim-total sim-net"><span>Gaji Bersih</span><b><?= rupiah($net) ?></b></div>

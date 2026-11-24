@@ -9,6 +9,9 @@ storage/cache/*
 storage/uploads/*
 storage/database.sqlite
 storage/*.sqlite
+# berkas sementara SQLite (WAL/SHM) saat inspeksi basis data
+*.sqlite-wal
+*.sqlite-shm
 storage/exports/*
 !storage/logs/.gitkeep
 !storage/cache/.gitkeep

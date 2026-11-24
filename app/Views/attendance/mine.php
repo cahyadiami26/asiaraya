@@ -182,13 +182,23 @@ $dayNames = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat
             </div>
             <div class="table-wrap" style="max-height:420px;overflow-y:auto">
                 <table class="data">
-                    <thead><tr><th>Tanggal</th><th>Masuk</th><th>Keluar</th><th class="num">Terlambat</th><th>Status</th></tr></thead>
+                    <thead><tr><th>Tanggal</th><th>Shift</th><th>Masuk</th><th>Keluar</th><th class="num">Terlambat</th><th>Status</th></tr></thead>
                     <tbody>
                     <?php foreach ($history as $row): ?>
                         <tr>
                             <td class="small">
                                 <b><?= tanggal($row['work_date'], 'd M') ?></b>
                                 <span class="muted"><?= e($dayNames[(int) date('N', strtotime((string) $row['work_date']))]) ?></span>
+                            </td>
+                            <td class="small">
+                                <?php if (!empty($row['shift_name'])): ?>
+                                    <?= e($row['shift_name']) ?>
+                                    <?php if (!empty($row['check_in_time']) && !empty($row['check_out_time'])): ?>
+                                        <div class="muted mono" style="font-size:10.4px"><?= e(substr((string) $row['check_in_time'], 0, 5)) ?>–<?= e(substr((string) $row['check_out_time'], 0, 5)) ?></div>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="muted">—</span>
+                                <?php endif; ?>
                             </td>
                             <td class="mono small"><?= $row['check_in_at'] ? date('H:i', strtotime((string) $row['check_in_at'])) : '—' ?></td>
                             <td class="mono small"><?= $row['check_out_at'] ? date('H:i', strtotime((string) $row['check_out_at'])) : '—' ?></td>
@@ -197,7 +207,7 @@ $dayNames = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat
                         </tr>
                     <?php endforeach; ?>
                     <?php if (!$history): ?>
-                        <tr><td colspan="5" class="table-empty"><?= icon('calendar') ?>Belum ada catatan presensi pada bulan ini.</td></tr>
+                        <tr><td colspan="6" class="table-empty"><?= icon('calendar') ?>Belum ada catatan presensi pada bulan ini.</td></tr>
                     <?php endif; ?>
                     </tbody>
                 </table>

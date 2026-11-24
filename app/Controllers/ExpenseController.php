@@ -161,6 +161,7 @@ final class ExpenseController extends Controller
             'statuses'    => ExpenseModel::STATUSES,
             'tones'       => ExpenseModel::STATUS_TONES,
             'canDecide'   => Auth::hasRole(['HR', 'FIN']),
+            'canAct'      => static fn (array $claim): bool => ExpenseModel::canDecide($claim, Auth::user()),
             'canPay'      => Auth::hasRole('FIN'),
         ] + $this->withInput());
     }
@@ -180,8 +181,7 @@ final class ExpenseController extends Controller
             $this->abort(403, 'Anda tidak memiliki akses ke klaim ini.');
         }
 
-        $canDecide = !$isOwner && in_array($claim['status'], ['PENDING', 'MANAGER_APPROVED'], true)
-            && ($isManager || $isStaff);
+        $canDecide = ExpenseModel::canDecide($claim, $this->employee());
 
         $this->view('claims/show', [
             'title'     => 'Klaim ' . $claim['claim_number'],
@@ -211,7 +211,7 @@ final class ExpenseController extends Controller
             Audit::log('claim.' . strtolower($decision), 'expense_claim', (int) $id, ['stage' => $result['stage'] ?? null]);
             flash($decision === 'APPROVED' ? 'success' : 'info',
                 $decision === 'APPROVED'
-                    ? 'Klaim disetujui' . (($result['stage'] ?? '') === 'MANAGER' ? ' dan diteruskan ke HR/Finance.' : ' dan siap dibayarkan.')
+                    ? 'Klaim disetujui' . (empty($result['final']) ? ' dan diteruskan ke HR/Finance.' : ' dan siap dibayarkan.')
                     : 'Klaim ditolak. Pengaju telah diberi notifikasi.');
         }
 

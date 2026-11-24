@@ -2,6 +2,7 @@
 /**
  * Persetujuan perubahan jadwal.
  * @var array $requests, $stats, $filters, $units
+ * @var bool $isHr
  * @var callable $canApprove
  */
 $statusTabs = [
@@ -17,10 +18,16 @@ $stepLabels = ['PENDING' => 1, 'MANAGER_APPROVED' => 2, 'APPROVED' => 3, 'REJECT
 <div class="page-head">
     <div>
         <h1>Perubahan Jadwal</h1>
-        <div class="sub">Alur dua tahap: atasan langsung → HR. Persetujuan HR langsung memperbarui jadwal karyawan.</div>
+        <div class="sub">
+            <?= !empty($isHr)
+                ? 'Alur dua tahap: atasan langsung → HR. Persetujuan HR langsung memperbarui jadwal karyawan.'
+                : 'Pengajuan perubahan jadwal anggota tim Anda yang menunggu keputusan atasan langsung.' ?>
+        </div>
     </div>
     <div class="page-head__actions">
-        <a class="btn btn-outline" href="<?= url('schedules') ?>"><?= icon('calendar-check') ?> Penjadwalan</a>
+        <?php if (!empty($isHr)): ?>
+            <a class="btn btn-outline" href="<?= url('schedules') ?>"><?= icon('calendar-check') ?> Penjadwalan</a>
+        <?php endif; ?>
         <a class="btn btn-soft" href="<?= url('me/schedule') ?>"><?= icon('send') ?> Ajukan Perubahan</a>
     </div>
 </div>

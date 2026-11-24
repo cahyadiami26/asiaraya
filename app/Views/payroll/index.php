@@ -120,8 +120,13 @@ $maxTrend = max(1, ...array_map(static fn ($t) => (float) $t['net'], $trend ?: [
                     <tr><td colspan="8">
                         <div class="empty-state">
                             <div class="empty-icon"><?= icon('wallet') ?></div>
-                            <h3>Belum ada periode payroll</h3>
-                            <p>Buat periode untuk unit dan bulan tertentu, lalu jalankan kalkulasi.</p>
+                            <?php if ($isFin && !$isHr): ?>
+                                <h3>Tidak ada periode menunggu persetujuan</h3>
+                                <p>Semua periode yang dikirim HR sudah diproses. Antrean ini terisi otomatis saat HR mengirim periode ke Finance.</p>
+                            <?php else: ?>
+                                <h3>Belum ada periode payroll</h3>
+                                <p>Buat periode untuk unit dan bulan tertentu, lalu jalankan kalkulasi.</p>
+                            <?php endif; ?>
                         </div>
                     </td></tr>
                 <?php endif; ?>

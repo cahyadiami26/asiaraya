@@ -15,6 +15,9 @@ final class Auth
     private static ?array $user = null;
     private static bool $resolved = false;
 
+    /** @var array<int,bool> cache hasil pengecekan bawahan langsung per karyawan */
+    private static array $hasReports = [];
+
     /** Nama cookie "ingat saya" + masa berlakunya (hari). */
     public const REMEMBER_COOKIE = 'ASRAYA_REMEMBER';
     public const REMEMBER_DAYS = 30;
@@ -55,25 +58,57 @@ final class Auth
             return self::$user = null;
         }
 
-        $user = Database::one(
-            'SELECT e.*, bu.name AS business_unit_name, bu.code AS business_unit_code,
-                    d.name AS department_name, p.name AS position_name,
-                    m.full_name AS manager_name
-             FROM employees e
-             LEFT JOIN business_units bu ON bu.id = e.business_unit_id
-             LEFT JOIN departments d ON d.id = e.department_id
-             LEFT JOIN positions p ON p.id = e.position_id
-             LEFT JOIN employees m ON m.id = e.direct_manager_id
-             WHERE e.id = ?',
-            [$id]
-        );
-
-        if (!$user || $user['flag'] !== 'ACTIVE') {
+        $user = self::findById((int) $id);
+        if (!$user) {
             Session::forget('auth_id');
             return self::$user = null;
         }
 
         return self::$user = $user;
+    }
+
+    /**
+     * Profil lengkap karyawan aktif (dipakai sesi web dan token REST API).
+     * Mengembalikan null bila tidak ada atau statusnya bukan ACTIVE.
+     */
+    public static function findById(int $id): ?array
+    {
+        if ($id <= 0 || !Database::tableExists('employees')) {
+            return null;
+        }
+
+        $user = Database::one(
+            'SELECT e.*, bu.name AS business_unit_name, bu.code AS business_unit_code,
+                    d.name AS department_name, d.code AS department_code,
+                    p.name AS position_name, p.code AS position_code,
+                    m.full_name AS manager_name, m.email AS manager_email,
+                    mp.name AS manager_position
+             FROM employees e
+             LEFT JOIN business_units bu ON bu.id = e.business_unit_id
+             LEFT JOIN departments d ON d.id = e.department_id
+             LEFT JOIN positions p ON p.id = e.position_id
+             LEFT JOIN employees m ON m.id = e.direct_manager_id
+             LEFT JOIN positions mp ON mp.id = m.position_id
+             WHERE e.id = ?',
+            [$id]
+        );
+
+        if (!$user || $user['flag'] !== 'ACTIVE') {
+            return null;
+        }
+
+        return $user;
+    }
+
+    /**
+     * Menetapkan pengguna aktif tanpa menyentuh sesi web.
+     * Dipakai ApiAuth setelah bearer token diverifikasi, sehingga model dan
+     * controller yang memakai Auth::id()/isManagerOf() tetap bekerja.
+     */
+    public static function setUser(?array $user): void
+    {
+        self::$user = $user;
+        self::$resolved = true;
     }
 
     public static function id(): ?int
@@ -123,9 +158,24 @@ final class Auth
     /** Attempt username / employee code / email login. */
     public static function attempt(string $identifier, string $password): bool
     {
+        $employee = self::verifyCredentials($identifier, $password);
+        if (!$employee) {
+            return false;
+        }
+
+        self::login($employee);
+        return true;
+    }
+
+    /**
+     * Verifikasi kredensial tanpa membuat sesi (dipakai login REST API).
+     * Menerima employee_code, email, atau username.
+     */
+    public static function verifyCredentials(string $identifier, string $password): ?array
+    {
         $identifier = trim($identifier);
         if ($identifier === '' || $password === '') {
-            return false;
+            return null;
         }
 
         $employee = Database::one(
@@ -134,17 +184,16 @@ final class Auth
         );
 
         if (!$employee || empty($employee['password_hash'])) {
-            return false;
+            return null;
         }
         if (!password_verify($password, $employee['password_hash'])) {
-            return false;
+            return null;
         }
         if ($employee['flag'] !== 'ACTIVE') {
-            return false;
+            return null;
         }
 
-        self::login($employee);
-        return true;
+        return $employee;
     }
 
     /**
@@ -380,5 +429,30 @@ final class Auth
     public static function isSelf(int $employeeId): bool
     {
         return self::id() === $employeeId;
+    }
+
+    /**
+     * Apakah karyawan ini punya bawahan langsung yang aktif?
+     *
+     * Dipakai untuk menentukan akses kotak persetujuan tim: karyawan yang
+     * tidak membawahi siapa pun hanya boleh melihat pengajuannya sendiri
+     * (cuti, lembur, perubahan jadwal), sedangkan atasan langsung tetap dapat
+     * memproses pengajuan anggota timnya.
+     */
+    public static function hasReports(?int $employeeId = null): bool
+    {
+        $id = $employeeId ?? self::id();
+        if (!$id) {
+            return false;
+        }
+        if (array_key_exists($id, self::$hasReports)) {
+            return self::$hasReports[$id];
+        }
+
+        return self::$hasReports[$id] = (int) Database::value(
+            'SELECT COUNT(*) FROM employees WHERE direct_manager_id = ? AND flag = ?',
+            [$id, 'ACTIVE'],
+            0
+        ) > 0;
     }
 }

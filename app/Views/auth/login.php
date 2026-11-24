@@ -4,11 +4,10 @@
  * @var array $company
  * @var array $stats
  * @var bool $googleReady
- * @var array $demoAccounts
  */
 $oldIdentifier = $_SESSION['_old_identifier'] ?? '';
 unset($_SESSION['_old_identifier']);
-$activeUnitLabel = setting('company_city', 'Jakarta');
+$activeUnitLabel = setting('company_city', 'Bandar Lampung');
 ?>
 <header class="auth-top">
     <div class="auth-brand">
@@ -39,11 +38,6 @@ $activeUnitLabel = setting('company_city', 'Jakarta');
             <div class="auth-visual__overlay">
                 <span class="kicker">Pusat Operasional Digital</span>
                 <b>Menara Asia Raya, Mega Kuningan Jakarta</b>
-            </div>
-            <div class="auth-visual__card">
-                <div class="t">Login HRIS</div>
-                <div class="v">Employee ID · 100642</div>
-                <div class="bar"><i></i></div>
             </div>
         </div>
 
@@ -180,32 +174,6 @@ $activeUnitLabel = setting('company_city', 'Jakarta');
             <div>Kendala akses atau akun terkunci? Hubungi Divisi IT Support &amp; HR Helpdesk via
                 <b>ext. 1042</b> atau surel <b><?= e(setting('support_email', 'helpdesk@asiaraya.co.id')) ?></b>.</div>
         </div>
-
-        <?php if ($demoAccounts): ?>
-            <details class="demo-box">
-                <summary>Akun demo untuk pengujian (klik untuk melihat)</summary>
-                <div class="demo-box__body">
-                    <?php foreach ($demoAccounts as $acc): ?>
-                        <button type="button" class="demo-cred"
-                                data-cred-user="<?= e($acc['email']) ?>">
-                            <span class="demo-cred__role"><?= e(role_label($acc['role'])) ?></span>
-                            <span class="demo-cred__mail mono"><?= e($acc['email']) ?></span>
-                            <span class="demo-cred__pass">Password123!</span>
-                        </button>
-                    <?php endforeach; ?>
-                    <p class="hint" style="margin-top:6px">Klik salah satu akun untuk mengisi formulir otomatis. Hapus data demo sebelum produksi.</p>
-                </div>
-            </details>
-            <script>
-            document.querySelectorAll('[data-cred-user]').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    document.getElementById('identifier').value = btn.getAttribute('data-cred-user');
-                    document.getElementById('password').value = 'Password123!';
-                    document.getElementById('password').focus();
-                });
-            });
-            </script>
-        <?php endif; ?>
 
         <div class="auth-footer">
             <span class="server"><span class="dot"></span> Server: Production Cluster <?= e($activeUnitLabel) ?></span>

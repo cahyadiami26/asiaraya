@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Core\ApprovalEngine;
 use App\Core\Database;
 use App\Core\Settings;
 
@@ -599,6 +600,13 @@ final class LeaveModel
      */
     public function create(array $data, int $employeeId): array
     {
+        // Tolak lebih awal bila pengajuan tidak akan punya approver sama sekali
+        // (mis. HR satu-satunya yang belum punya atasan langsung).
+        $blocked = ApprovalEngine::submissionError($employeeId, 'leave');
+        if ($blocked !== null) {
+            return ['id' => null, 'error' => $blocked, 'days' => null, 'warnings' => []];
+        }
+
         $policy = $this->settings();
         $type = $this->findType((int) ($data['leave_type_id'] ?? 0));
         if (!$type) {

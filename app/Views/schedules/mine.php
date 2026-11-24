@@ -24,7 +24,9 @@ $today = date('Y-m-d');
         <div class="sub">Pola shift, hari kerja, dan pengajuan perubahan jadwal Anda.</div>
     </div>
     <div class="page-head__actions">
-        <a class="btn btn-outline" href="<?= url('schedules/requests') ?>"><?= icon('refresh') ?> Status Pengajuan</a>
+        <?php if (\App\Core\Auth::hasReports()): ?>
+            <a class="btn btn-outline" href="<?= url('schedules/requests') ?>"><?= icon('refresh') ?> Persetujuan Tim</a>
+        <?php endif; ?>
         <a class="btn btn-primary" href="#request-form" data-open-form><?= icon('send') ?> Ajukan Perubahan</a>
     </div>
 </div>

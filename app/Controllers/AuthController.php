@@ -41,7 +41,6 @@ final class AuthController extends Controller
             'company'      => $company,
             'stats'        => $stats,
             'googleReady'  => GoogleAuth::isConfigured() && setting('google_login_enabled', '1') === '1',
-            'demoAccounts' => $this->demoAccounts(),
             'error'        => Session::pull('login_error'),
         ], 'layouts/auth');
     }
@@ -396,20 +395,5 @@ final class AuthController extends Controller
         } catch (\Throwable) {
             // ignore
         }
-    }
-
-    /** Demo accounts surfaced on the login card (only when demo data exists). */
-    private function demoAccounts(): array
-    {
-        if (!Database::tableExists('employees')) {
-            return [];
-        }
-        $rows = Database::all(
-            "SELECT email, role, full_name FROM employees
-             WHERE email IN ('hr@asiaraya.co.id','finance@asiaraya.co.id','dimas.aditya@asiaraya.co.id')"
-        );
-        $order = ['HR' => 0, 'FIN' => 1, 'KARYAWAN' => 2];
-        usort($rows, static fn ($a, $b) => ($order[$a['role']] ?? 9) <=> ($order[$b['role']] ?? 9));
-        return $rows;
     }
 }

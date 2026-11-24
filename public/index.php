@@ -10,6 +10,18 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/app/bootstrap.php';
 
+use App\Controllers\Api\V1\AnnouncementApiController;
+use App\Controllers\Api\V1\ApprovalApiController;
+use App\Controllers\Api\V1\AttendanceApiController;
+use App\Controllers\Api\V1\AuthApiController;
+use App\Controllers\Api\V1\ClaimApiController;
+use App\Controllers\Api\V1\LeaveApiController;
+use App\Controllers\Api\V1\NotificationApiController;
+use App\Controllers\Api\V1\OvertimeApiController;
+use App\Controllers\Api\V1\PayrollApiController;
+use App\Controllers\Api\V1\ProfileApiController;
+use App\Controllers\Api\V1\ScheduleApiController;
+use App\Controllers\Api\V1\TaxApiController;
 use App\Controllers\AnnouncementController;
 use App\Controllers\ApprovalController;
 use App\Controllers\AttendanceController;
@@ -87,6 +99,8 @@ $router->post('/company', [OrgController::class, 'saveCompany'], ['roles' => ['H
 $router->get('/employees', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.index']);
 $router->get('/employees/contracts', [EmployeeController::class, 'index'], ['roles' => ['HR'], 'name' => 'employees.contracts', 'params' => ['contract' => 'expiring', 'flag' => 'ACTIVE', 'sort' => 'contract']]);
 $router->get('/employees/create', [EmployeeController::class, 'create'], ['roles' => ['HR'], 'name' => 'employees.create']);
+// Preview ID otomatis untuk formulir tambah karyawan (non-consuming).
+$router->get('/employees/next-code', [EmployeeController::class, 'nextCode'], ['roles' => ['HR'], 'name' => 'employees.next-code']);
 $router->post('/employees', [EmployeeController::class, 'store'], ['roles' => ['HR'], 'name' => 'employees.store']);
 $router->get('/employees/{id}', [EmployeeController::class, 'show'], ['roles' => ['HR'], 'name' => 'employees.show']);
 $router->get('/employees/{id}/edit', [EmployeeController::class, 'edit'], ['roles' => ['HR'], 'name' => 'employees.edit']);
@@ -102,7 +116,7 @@ $router->add('POST|DELETE', '/shifts/{id}/delete', [ShiftController::class, 'des
 $router->get('/schedules', [ScheduleController::class, 'index'], ['roles' => ['HR'], 'name' => 'schedules.index']);
 $router->post('/schedules/assign', [ScheduleController::class, 'assign'], ['roles' => ['HR'], 'name' => 'schedules.assign']);
 $router->add('POST|DELETE', '/schedules/{id}/delete', [ScheduleController::class, 'removeAssignment'], ['roles' => ['HR'], 'name' => 'schedules.delete']);
-$router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.requests']);
+$router->get('/schedules/requests', [ScheduleController::class, 'requests'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'schedules.requests']);
 $router->get('/me/schedule', [ScheduleController::class, 'mine'], ['name' => 'me.schedule']);
 $router->post('/me/schedule/request', [ScheduleController::class, 'storeRequest'], ['name' => 'me.schedule.request']);
 
@@ -117,7 +131,7 @@ $router->get('/attendance/settings', [AttendanceController::class, 'settings'], 
 $router->post('/attendance/settings', [AttendanceController::class, 'saveSettings'], ['roles' => ['HR'], 'name' => 'attendance.settings.save']);
 
 /* ------------------------------------------------- Batch 5: lembur & terjadwal */
-$router->get('/overtime', [OvertimeController::class, 'index'], ['roles' => ['HR'], 'name' => 'overtime.index']);
+$router->get('/overtime', [OvertimeController::class, 'index'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'overtime.index']);
 $router->post('/overtime', [OvertimeController::class, 'store'], ['roles' => ['HR'], 'name' => 'overtime.store']);
 $router->get('/overtime/schedules', [OvertimeController::class, 'schedules'], ['roles' => ['HR'], 'name' => 'overtime.schedules']);
 $router->post('/overtime/schedules', [OvertimeController::class, 'storeScheduled'], ['roles' => ['HR'], 'name' => 'overtime.schedules.store']);
@@ -132,7 +146,7 @@ $router->post('/me/overtime', [OvertimeController::class, 'request'], ['name' =>
 $router->post('/me/overtime/{id}/cancel', [OvertimeController::class, 'myCancel'], ['name' => 'me.overtime.cancel']);
 
 /* ------------------------------------------------------- Batch 6: cuti & saldo */
-$router->get('/leave', [LeaveController::class, 'index'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.index']);
+$router->get('/leave', [LeaveController::class, 'index'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'leave.index']);
 $router->get('/leave/export', [LeaveController::class, 'export'], ['roles' => ['HR', 'FIN'], 'name' => 'leave.export']);
 $router->get('/leave/types', [LeaveController::class, 'types'], ['roles' => ['HR'], 'name' => 'leave.types']);
 $router->post('/leave/types', [LeaveController::class, 'storeType'], ['roles' => ['HR'], 'name' => 'leave.types.store']);
@@ -184,9 +198,9 @@ $router->get('/verify/slip/{id}/{token}', [PayrollController::class, 'verify'], 
 $router->get('/media/{folder}/{file}', [MediaController::class, 'show'], ['name' => 'media.show', 'csrf' => false]);
 
 /* --------------------------------------------------- Approval engine */
-$router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOvertime'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'overtime.decide']);
-$router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'leave.decide']);
-$router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'decideShiftChange'], ['roles' => ['HR', 'KARYAWAN'], 'name' => 'schedules.decide']);
+$router->post('/overtime/{id}/decide', [ApprovalController::class, 'decideOvertime'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'overtime.decide']);
+$router->post('/leave/{id}/decide', [ApprovalController::class, 'decideLeave'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'leave.decide']);
+$router->post('/schedules/requests/{id}/decide', [ApprovalController::class, 'decideShiftChange'], ['roles' => ['HR', 'KARYAWAN', 'FIN'], 'name' => 'schedules.decide']);
 
 
 /* ---------------------------------------- Batch 9: laporan & log aktivitas */
@@ -401,6 +415,75 @@ $router->get('/me/tax', [TaxController::class, 'mine'], ['name' => 'me.tax']);
 /* --------------------------------------------------- Reset sistem (Batch 17) */
 $router->get('/system/reset', [SystemController::class, 'reset'], ['roles' => ['HR'], 'name' => 'system.reset']);
 $router->post('/system/reset', [SystemController::class, 'runReset'], ['roles' => ['HR'], 'name' => 'system.reset.run']);
+
+/* ---------------------------------------------------------------------------
+ | REST API v1 — aplikasi Android karyawan (Batch 21)
+ | Semua route di bawah ini stateless: autentikasi memakai bearer token
+ | (ApiAuth), bukan cookie sesi, sehingga CSRF dimatikan.
+ |-------------------------------------------------------------------------*/
+$api = ['auth' => false, 'csrf' => false];
+
+$router->post('/api/v1/auth/login', [AuthApiController::class, 'login'], $api + ['name' => 'api.login']);
+$router->post('/api/v1/auth/refresh', [AuthApiController::class, 'refresh'], $api + ['name' => 'api.refresh']);
+$router->post('/api/v1/auth/logout', [AuthApiController::class, 'logout'], $api + ['name' => 'api.logout']);
+$router->get('/api/v1/auth/me', [AuthApiController::class, 'me'], $api + ['name' => 'api.me']);
+// Profil karyawan lengkap (identitas, masa kerja, kontrak, payroll, saldo cuti).
+// `/me` dan `/profile` adalah alias supaya klien yang salah menuliskan path
+// tetap mendapat data yang sama (kanonis: /api/v1/me/profile).
+$router->get('/api/v1/me/profile', [ProfileApiController::class, 'show'], $api + ['name' => 'api.profile']);
+$router->get('/api/v1/me', [ProfileApiController::class, 'show'], $api + ['name' => 'api.profile.me']);
+$router->get('/api/v1/profile', [ProfileApiController::class, 'show'], $api + ['name' => 'api.profile.alias']);
+$router->get('/api/v1/app/config', [AuthApiController::class, 'appConfig'], $api + ['name' => 'api.config']);
+
+$router->get('/api/v1/announcements', [AnnouncementApiController::class, 'index'], $api + ['name' => 'api.announcements']);
+$router->get('/api/v1/announcements/{id}', [AnnouncementApiController::class, 'show'], $api + ['name' => 'api.announcements.show']);
+$router->post('/api/v1/announcements/{id}/read', [AnnouncementApiController::class, 'read'], $api + ['name' => 'api.announcements.read']);
+
+$router->get('/api/v1/schedule/today', [ScheduleApiController::class, 'today'], $api + ['name' => 'api.schedule.today']);
+$router->get('/api/v1/schedule', [ScheduleApiController::class, 'index'], $api + ['name' => 'api.schedule']);
+$router->get('/api/v1/shifts', [ScheduleApiController::class, 'shifts'], $api + ['name' => 'api.shifts']);
+$router->get('/api/v1/schedule-requests', [ScheduleApiController::class, 'requests'], $api + ['name' => 'api.schedule.requests']);
+$router->post('/api/v1/schedule-requests', [ScheduleApiController::class, 'storeRequest'], $api + ['name' => 'api.schedule.store']);
+$router->post('/api/v1/schedule-requests/{id}/cancel', [ScheduleApiController::class, 'cancelRequest'], $api + ['name' => 'api.schedule.cancel']);
+
+$router->get('/api/v1/attendance/today', [AttendanceApiController::class, 'today'], $api + ['name' => 'api.attendance.today']);
+$router->post('/api/v1/attendance/punch', [AttendanceApiController::class, 'punch'], $api + ['name' => 'api.attendance.punch']);
+$router->get('/api/v1/attendance/history', [AttendanceApiController::class, 'history'], $api + ['name' => 'api.attendance.history']);
+$router->get('/api/v1/attendance/summary', [AttendanceApiController::class, 'summary'], $api + ['name' => 'api.attendance.summary']);
+
+$router->get('/api/v1/overtimes', [OvertimeApiController::class, 'index'], $api + ['name' => 'api.overtimes']);
+$router->get('/api/v1/overtimes/policy', [OvertimeApiController::class, 'policy'], $api + ['name' => 'api.overtimes.policy']);
+$router->post('/api/v1/overtimes', [OvertimeApiController::class, 'store'], $api + ['name' => 'api.overtimes.store']);
+$router->post('/api/v1/overtimes/{id}/cancel', [OvertimeApiController::class, 'cancel'], $api + ['name' => 'api.overtimes.cancel']);
+
+$router->get('/api/v1/leave/types', [LeaveApiController::class, 'types'], $api + ['name' => 'api.leave.types']);
+$router->get('/api/v1/leave/balances', [LeaveApiController::class, 'balances'], $api + ['name' => 'api.leave.balances']);
+$router->get('/api/v1/leaves', [LeaveApiController::class, 'index'], $api + ['name' => 'api.leaves']);
+$router->post('/api/v1/leaves', [LeaveApiController::class, 'store'], $api + ['name' => 'api.leaves.store']);
+$router->get('/api/v1/leaves/{id}', [LeaveApiController::class, 'show'], $api + ['name' => 'api.leaves.show']);
+$router->post('/api/v1/leaves/{id}/cancel', [LeaveApiController::class, 'cancel'], $api + ['name' => 'api.leaves.cancel']);
+
+$router->get('/api/v1/payslips', [PayrollApiController::class, 'index'], $api + ['name' => 'api.payslips']);
+$router->get('/api/v1/payslips/{id}', [PayrollApiController::class, 'show'], $api + ['name' => 'api.payslips.show']);
+$router->get('/api/v1/payslips/{id}/pdf', [PayrollApiController::class, 'pdf'], $api + ['name' => 'api.payslips.pdf']);
+
+$router->get('/api/v1/claim-categories', [ClaimApiController::class, 'categories'], $api + ['name' => 'api.claims.categories']);
+$router->get('/api/v1/claims', [ClaimApiController::class, 'index'], $api + ['name' => 'api.claims']);
+$router->post('/api/v1/claims', [ClaimApiController::class, 'store'], $api + ['name' => 'api.claims.store']);
+$router->get('/api/v1/claims/{id}', [ClaimApiController::class, 'show'], $api + ['name' => 'api.claims.show']);
+$router->post('/api/v1/claims/{id}/cancel', [ClaimApiController::class, 'cancel'], $api + ['name' => 'api.claims.cancel']);
+
+$router->get('/api/v1/tax-slips', [TaxApiController::class, 'index'], $api + ['name' => 'api.tax']);
+$router->get('/api/v1/tax-slips/{year}', [TaxApiController::class, 'show'], $api + ['name' => 'api.tax.show']);
+$router->get('/api/v1/tax-slips/{year}/pdf', [TaxApiController::class, 'pdf'], $api + ['name' => 'api.tax.pdf']);
+
+$router->get('/api/v1/notifications', [NotificationApiController::class, 'index'], $api + ['name' => 'api.notifications']);
+$router->post('/api/v1/notifications/read-all', [NotificationApiController::class, 'readAll'], $api + ['name' => 'api.notifications.readAll']);
+$router->post('/api/v1/notifications/{id}/read', [NotificationApiController::class, 'read'], $api + ['name' => 'api.notifications.read']);
+
+$router->get('/api/v1/approvals', [ApprovalApiController::class, 'index'], $api + ['name' => 'api.approvals']);
+$router->get('/api/v1/approvals/summary', [ApprovalApiController::class, 'summary'], $api + ['name' => 'api.approvals.summary']);
+$router->post('/api/v1/approvals/{type}/{id}/decide', [ApprovalApiController::class, 'decide'], $api + ['name' => 'api.approvals.decide']);
 
 /* --------------------------------------------- Halaman modul "segera hadir" */
 $router->get('/coming-soon', [PlaceholderController::class, 'show'], ['name' => 'coming-soon', 'csrf' => false]);

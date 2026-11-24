@@ -1,7 +1,13 @@
 <?php
 /**
  * Template PDF slip gaji (dirender dompdf, tanpa layout aplikasi).
- * @var array $item, $components, $company
+ *
+ * Kepala slip mencetak **nama perusahaan** (badan hukum pemilik unit) dan
+ * **unit bisnis tempat karyawan terdaftar** — keduanya berasal dari data
+ * karyawan (`$unit`, hasil `PayrollController::slipUnit()`), bukan dari unit
+ * periode payroll yang bisa berbeda bila karyawan dipindahkan.
+ *
+ * @var array $item, $components, $company, $unit
  * @var string $verifyUrl
  * @var string|null $qrPath
  * @var string $printedAt
@@ -10,6 +16,9 @@ $benefits = array_values(array_filter($components, static fn ($c) => $c['type'] 
 $deductions = array_values(array_filter($components, static fn ($c) => $c['type'] === 'DEDUCTION'));
 $rupiah = static fn (mixed $value): string => 'Rp ' . number_format((float) $value, 0, ',', '.');
 $periodLabel = bulan_id((int) $item['period_month']) . ' ' . (int) $item['period_year'];
+$unit = $unit ?? ['name' => (string) ($item['unit_name'] ?? '-'), 'code' => (string) ($item['unit_code'] ?? ''), 'type' => '', 'city' => '', 'address' => '', 'phone' => '', 'period_name' => ''];
+$unitLabel = trim((string) ($unit['name'] ?? '')) !== '' ? (string) $unit['name'] : '-';
+$unitMoved = ($unit['period_name'] ?? '') !== '' && $unit['period_name'] !== $unitLabel;
 $rows = max(count($benefits), count($deductions));
 $qrSrc = $qrPath ? 'file://' . $qrPath : null;
 ?>
@@ -28,6 +37,9 @@ $qrSrc = $qrPath ? 'file://' . $qrPath : null;
         .head table { width: 100%; border-collapse: collapse; }
         .head td { vertical-align: top; }
         .brand { font-size: 13.5pt; font-weight: bold; letter-spacing: -.2pt; color: #0b2135; }
+        .unit-strip { margin-top: 7px; padding-top: 6px; border-top: 1px solid #d7e3e0; font-size: 8.2pt; color: #334155; }
+        .unit-strip b { color: #0f766e; font-size: 9.2pt; letter-spacing: .01em; }
+        .unit-strip .tag { font-size: 6.4pt; letter-spacing: .09em; text-transform: uppercase; color: #94a3b8; margin-bottom: 1px; }
         .brand-sub { font-size: 7.6pt; color: #64748b; margin-top: 2px; line-height: 1.45; }
         .doc-title { text-align: right; }
         .doc-title b { display: block; font-size: 10.5pt; letter-spacing: .10em; text-transform: uppercase; color: #0f766e; }
@@ -74,6 +86,15 @@ $qrSrc = $qrPath ? 'file://' . $qrPath : null;
         <tr>
             <td style="width:62%">
                 <div class="brand"><?= e($company['name']) ?></div>
+                <div class="unit-strip">
+                    <div class="tag">Unit Bisnis</div>
+                    <div>
+                        <b><?= e($unitLabel) ?></b><?php if (($unit['code'] ?? '') !== ''): ?> <span class="muted mono" style="font-size:7.6pt">(<?= e($unit['code']) ?>)</span><?php endif; ?>
+                        <?php if (($unit['city'] ?? '') !== '' || ($unit['type'] ?? '') !== ''): ?>
+                            <span class="muted">· <?= e(implode(' · ', array_filter([(string) ($unit['type'] ?? ''), (string) ($unit['city'] ?? '')]))) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
                 <div class="brand-sub">
                     <?php if ($company['legal'] && $company['legal'] !== $company['name']): ?><?= e($company['legal']) ?><br><?php endif; ?>
                     <?= e($company['address'] ?: '-') ?><br>
@@ -93,7 +114,11 @@ $qrSrc = $qrPath ? 'file://' . $qrPath : null;
 <table class="meta">
     <tr>
         <td class="k">Tanggal Bayar</td><td><?= tanggal($item['pay_date']) ?></td>
-        <td class="k">Unit Kerja</td><td><?= e($item['unit_name'] ?? '-') ?></td>
+        <td class="k">Unit Kerja</td>
+        <td>
+            <?= e($unitLabel) ?><?php if (($unit['code'] ?? '') !== ''): ?> <span class="muted mono">(<?= e($unit['code']) ?>)</span><?php endif; ?>
+            <?php if ($unitMoved): ?><br><span class="muted" style="font-size:7pt">periode payroll: <?= e($unit['period_name']) ?></span><?php endif; ?>
+        </td>
     </tr>
     <tr>
         <td class="k">NPWP</td><td class="mono"><?= e($item['npwp'] ?: '-') ?></td>
